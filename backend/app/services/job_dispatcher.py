@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+import sqlite3
+from typing import Any
+
+from ..gateway.inventory import ERPInventoryGateway
+from ..gateway.materials import ERPMaterialGateway
+from ..gateway.supply import ERPSupplyGateway
+from ..repositories.capacity import CapacityRepository
+from ..repositories.inventory import InventoryRepository
+from ..repositories.materials import BomChildrenRepository, MaterialIssueRepository
+from ..repositories.orders import ProductionOrderRepository
+from ..repositories.reports import WorkReportRepository
+from ..repositories.supply import MaterialSupplyRepository
+from .capacity_query_service import CapacityQueryService
+from .inventory_refresh_service import InventoryRefreshService
+from .material_query_service import MaterialQueryService
+from .material_refresh_service import MaterialRefreshService
+from .order_query_service import OrderQueryService
+from .report_query_service import ReportQueryService
+
+
+class ServiceFactory:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.connection = connection
+        self.order_repository = ProductionOrderRepository(connection)
+        self.material_issue_repository = MaterialIssueRepository(connection)
+        self.bom_children_repository = BomChildrenRepository(connection)
+        self.inventory_repository = InventoryRepository(connection)
+        self.supply_repository = MaterialSupplyRepository(connection)
+        self.report_repository = WorkReportRepository(connection)
+        self.capacity_repository = CapacityRepository(connection)
+        self.material_gateway = ERPMaterialGateway()
+        self.supply_gateway = ERPSupplyGateway()
+        self.inventory_gateway = ERPInventoryGateway()
+
+    def build_order_query_service(self) -> OrderQueryService:
+        return OrderQueryService(self.order_repository)
+
+    def build_material_query_service(self) -> MaterialQueryService:
+        return MaterialQueryService(
+            order_repository=self.order_repository,
+            material_issue_repository=self.material_issue_repository,
+            bom_children_repository=self.bom_children_repository,
+            inventory_repository=self.inventory_repository,
+            supply_repository=self.supply_repository,
+        )
+
+    def build_report_query_service(self) -> ReportQueryService:
+        return ReportQueryService(
+            order_repository=self.order_repository,
+            report_repository=self.report_repository,
+        )
+
+    def build_capacity_query_service(self) -> CapacityQueryService:
+        return CapacityQueryService(
+            order_repository=self.order_repository,
+            capacity_repository=self.capacity_repository,
+        )
+
+    def build_material_refresh_service(self) -> MaterialRefreshService:
+        return MaterialRefreshService(
+            connection=self.connection,
+            order_repository=self.order_repository,
+            material_issue_repository=self.material_issue_repository,
+            bom_children_repository=self.bom_children_repository,
+            supply_repository=self.supply_repository,
+            material_gateway=self.material_gateway,
+            supply_gateway=self.supply_gateway,
+        )
+
+    def build_inventory_refresh_service(self) -> InventoryRefreshService:
+        return InventoryRefreshService(
+            connection=self.connection,
+            inventory_repository=self.inventory_repository,
+            material_issue_repository=self.material_issue_repository,
+            bom_children_repository=self.bom_children_repository,
+            inventory_gateway=self.inventory_gateway,
+        )
+
+
+class JobDispatcher:
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self.factory = ServiceFactory(connection)
+
+    def dispatch(self, job: dict[str, Any]) -> dict[str, Any]:
+        payload = job.get("payload") or {}
+        job_type = str(job["job_type"])
+
+        if job_type == "ORDER_MATERIALS_REFRESH":
+            return self.factory.build_material_refresh_service().refresh_order_materials(
+                str(payload["order_no"])
+            )
+        if job_type == "SELF_MADE_MATERIALS_REFRESH":
+            return self.factory.build_material_refresh_service().refresh_self_made_materials(
+                str(payload["order_no"]),
+                [str(item) for item in payload.get("parent_material_codes", [])],
+            )
+        if job_type == "INVENTORY_REFRESH":
+            return self.factory.build_inventory_refresh_service().refresh_inventory(
+                [str(item) for item in payload.get("material_codes", [])]
+            )
+        if job_type == "LEGACY_ORDER_PATCH":
+            return self._dispatch_app_service("patch_order_pool_order", str(payload["order_no"]), payload)
+        if job_type == "LEGACY_ORDER_DELETE":
+            return self._dispatch_app_service("delete_order_pool_order", str(payload["order_no"]))
+        if job_type == "LEGACY_DISPATCH_COMMAND_CREATE":
+            return self._dispatch_app_service("create_dispatch_command", payload)
+        if job_type == "LEGACY_DISPATCH_COMMAND_APPROVE":
+            return self._dispatch_app_service(
+                "approve_dispatch_command",
+                str(payload["command_id"]),
+                payload,
+            )
+        if job_type == "LEGACY_REPORT_CREATE":
+            return self._dispatch_app_service("create_reporting", payload)
+        if job_type == "LEGACY_REPORT_DELETE":
+            return self._dispatch_app_service("delete_reporting", str(payload["report_id"]))
+        if job_type == "LEGACY_SCHEDULE_GENERATE":
+            return self._dispatch_app_service("generate_schedule", payload)
+        if job_type == "LEGACY_SCHEDULE_PUBLISH":
+            return self._dispatch_app_service("publish_schedule_version", str(payload["version_no"]))
+        if job_type == "LEGACY_CALENDAR_RULES_SAVE":
+            return self._dispatch_app_service("save_schedule_calendar_rules", payload)
+        if job_type == "LEGACY_MASTERDATA_CONFIG_SAVE":
+            return self._dispatch_app_service("save_masterdata_config", payload)
+        if job_type == "LEGACY_PROCESS_ROUTE_CREATE":
+            return self._dispatch_app_service("create_process_routes", payload)
+        if job_type == "LEGACY_PROCESS_ROUTE_UPDATE":
+            return self._dispatch_app_service("update_process_routes", payload)
+        if job_type == "LEGACY_PROCESS_ROUTE_COPY":
+            return self._dispatch_app_service("copy_process_routes", payload)
+        if job_type == "LEGACY_PROCESS_ROUTE_DELETE":
+            return self._dispatch_app_service("delete_process_routes", payload)
+        if job_type == "LEGACY_SIMULATION_ADVANCE_DAY":
+            return self._dispatch_app_service("advance_simulation_one_day", payload)
+        if job_type == "LEGACY_SIMULATION_RESET":
+            return self._dispatch_app_service("reset_manual_simulation")
+        if job_type == "LEGACY_IMPORT_PRODUCTION_ORDERS":
+            return self._dispatch_app_service("import_production_orders", payload)
+        if job_type == "LEGACY_TEST_MATERIAL_ISSUES_QUERY":
+            return self._dispatch_app_service(
+                "test_material_issues",
+                str(payload["order_no"]),
+                str(payload.get("mode") or "fast"),
+            )
+        if job_type == "LEGACY_TEST_MATERIAL_SUPPLY_QUERY":
+            return self._dispatch_app_service(
+                "test_material_supply",
+                str(payload["material_code"]),
+            )
+        if job_type == "LEGACY_TEST_MATERIAL_INVENTORY_QUERY":
+            return self._dispatch_app_service(
+                "test_material_inventory",
+                str(payload["material_code"]),
+            )
+
+        raise ValueError(f"Unsupported job type: {job_type}")
+
+    def _dispatch_app_service(self, method_name: str, *args: Any) -> dict[str, Any]:
+        from .app_service import AppService
+
+        service = AppService(self.factory.connection)
+        method = getattr(service, method_name)
+        return method(*args)

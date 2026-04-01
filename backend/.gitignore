@@ -1,0 +1,10 @@
+data/
+logs/
+__pycache__/
+app/__pycache__/
+app/api/__pycache__/
+app/api/routes/__pycache__/
+app/gateway/__pycache__/
+app/repositories/__pycache__/
+app/schemas/__pycache__/
+app/services/__pycache__/
