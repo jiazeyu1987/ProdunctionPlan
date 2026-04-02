@@ -30,6 +30,8 @@ SUPPORTED_STRATEGY_CODES = {
     "MIN_DELAY_FIRST",
 }
 SUPPORTED_CN_HOLIDAY_YEARS = {2024, 2025, 2026, 2027, 2028}
+PRIORITY_LEVEL_MIN = 1
+PRIORITY_LEVEL_MAX = 5
 CN_STATUTORY_HOLIDAY_DATE_SET = frozenset(
     {
         # 2024
@@ -181,6 +183,18 @@ def _to_number(value: object, fallback: float = 0.0) -> float:
     return number if number == number else fallback
 
 
+def _normalize_priority_level(value: object, default: int = PRIORITY_LEVEL_MAX) -> int:
+    try:
+        level = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(PRIORITY_LEVEL_MIN, min(PRIORITY_LEVEL_MAX, level))
+
+
+def _urgent_flag_from_priority_level(priority_level: object) -> int:
+    return 1 if _normalize_priority_level(priority_level) == PRIORITY_LEVEL_MIN else 0
+
+
 def _route_row_id(product_code: str, sequence_no: int) -> str:
     return f"route-{product_code}-{sequence_no}"
 
@@ -325,7 +339,8 @@ class AppService:
             "expected_start_date": current.get("expected_start_date"),
             "expected_start_time": current.get("expected_start_time"),
             "expected_finish_time": current.get("expected_finish_time"),
-            "urgent_flag": int(current.get("urgent_flag") or 0),
+            "priority_level": _normalize_priority_level(current.get("priority_level"), PRIORITY_LEVEL_MAX),
+            "urgent_flag": _urgent_flag_from_priority_level(current.get("priority_level")),
             "lock_flag": int(current.get("lock_flag") or 0),
             "frozen_flag": int(current.get("frozen_flag") or 0),
             "status": current.get("status") or base_row.get("status"),
@@ -350,7 +365,14 @@ class AppService:
             next_row["expected_finish_time"] = _iso_at(finish_date, "18:00:00")
             next_row["promised_due_date"] = finish_date
 
-        for field in ("urgent_flag", "lock_flag", "frozen_flag"):
+        if "priority_level" in payload:
+            next_row["priority_level"] = _normalize_priority_level(payload.get("priority_level"), PRIORITY_LEVEL_MAX)
+            next_row["urgent_flag"] = _urgent_flag_from_priority_level(next_row["priority_level"])
+        elif "urgent_flag" in payload:
+            next_row["priority_level"] = PRIORITY_LEVEL_MIN if int(payload["urgent_flag"] or 0) == 1 else PRIORITY_LEVEL_MAX
+            next_row["urgent_flag"] = _urgent_flag_from_priority_level(next_row["priority_level"])
+
+        for field in ("lock_flag", "frozen_flag"):
             if field in payload:
                 next_row[field] = int(payload[field] or 0)
 
@@ -939,7 +961,7 @@ class AppService:
             if due_date < start_date:
                 due_date = start_date
 
-            urgent_flag = int(_to_number(state_row.get("urgent_flag"), 0))
+            priority_level = _normalize_priority_level(state_row.get("priority_level"), PRIORITY_LEVEL_MAX)
             lock_flag = int(_to_number(state_row.get("lock_flag"), 0))
             frozen_flag = int(_to_number(state_row.get("frozen_flag"), 0))
 
@@ -977,7 +999,7 @@ class AppService:
                     "start_date": start_date,
                     "due_date": due_date,
                     "start_slot": start_slot,
-                    "urgent_flag": urgent_flag,
+                    "priority_level": priority_level,
                     "lock_flag": lock_flag,
                     "frozen_flag": frozen_flag,
                     "updated_at": str(order_row.get("updated_at") or ""),
@@ -1444,6 +1466,7 @@ class AppService:
                         "expected_start_date": start_date,
                         "expected_start_time": _iso_at(start_date, "08:00:00"),
                         "expected_finish_time": _iso_at(end_date, "18:00:00"),
+                        "priority_level": PRIORITY_LEVEL_MAX,
                         "urgent_flag": 0,
                         "lock_flag": 0,
                         "frozen_flag": 0,
@@ -1567,6 +1590,7 @@ class AppService:
                         "expected_start_date": start_date,
                         "expected_start_time": _iso_at(start_date, "08:00:00"),
                         "expected_finish_time": _iso_at(end_date, "18:00:00"),
+                        "priority_level": PRIORITY_LEVEL_MAX,
                         "urgent_flag": 0,
                         "lock_flag": 0,
                         "frozen_flag": 0,
@@ -1652,6 +1676,7 @@ class AppService:
                 expected_start_date,
                 expected_start_time,
                 expected_finish_time,
+                priority_level,
                 urgent_flag,
                 lock_flag,
                 frozen_flag,
@@ -1681,6 +1706,7 @@ class AppService:
                 expected_start_date,
                 expected_start_time,
                 expected_finish_time,
+                priority_level,
                 urgent_flag,
                 lock_flag,
                 frozen_flag,
@@ -1708,6 +1734,7 @@ class AppService:
                 expected_start_date,
                 expected_start_time,
                 expected_finish_time,
+                priority_level,
                 urgent_flag,
                 lock_flag,
                 frozen_flag,
@@ -1718,12 +1745,13 @@ class AppService:
                 progress_rate,
                 production_batch_no,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(production_order_no) DO UPDATE SET
                 promised_due_date = excluded.promised_due_date,
                 expected_start_date = excluded.expected_start_date,
                 expected_start_time = excluded.expected_start_time,
                 expected_finish_time = excluded.expected_finish_time,
+                priority_level = excluded.priority_level,
                 urgent_flag = excluded.urgent_flag,
                 lock_flag = excluded.lock_flag,
                 frozen_flag = excluded.frozen_flag,
@@ -1741,7 +1769,8 @@ class AppService:
                 row.get("expected_start_date"),
                 row.get("expected_start_time"),
                 row.get("expected_finish_time"),
-                int(row.get("urgent_flag") or 0),
+                _normalize_priority_level(row.get("priority_level"), PRIORITY_LEVEL_MAX),
+                _urgent_flag_from_priority_level(row.get("priority_level")),
                 int(row.get("lock_flag") or 0),
                 int(row.get("frozen_flag") or 0),
                 row.get("status"),
@@ -1858,7 +1887,8 @@ class AppService:
             "expected_start_time": expected_start_time,
             "expected_finish_time": expected_finish_time,
             "expected_start_date": expected_start_date,
-            "urgent_flag": int((state_row or {}).get("urgent_flag") or 0),
+            "priority_level": _normalize_priority_level((state_row or {}).get("priority_level"), PRIORITY_LEVEL_MAX),
+            "urgent_flag": _urgent_flag_from_priority_level((state_row or {}).get("priority_level")),
             "lock_flag": int((state_row or {}).get("lock_flag") or 0),
             "frozen_flag": int((state_row or {}).get("frozen_flag") or 0),
             "status": status,
@@ -2423,7 +2453,7 @@ class AppService:
                 key=lambda item: (
                     -int(item.get("frozen_flag") or 0),
                     -int(item.get("lock_flag") or 0),
-                    -int(item.get("urgent_flag") or 0),
+                    _normalize_priority_level(item.get("priority_level"), PRIORITY_LEVEL_MAX),
                     int(item.get("base_first_task_no") or 10**9),
                     item.get("start_date"),
                     item.get("due_date"),
@@ -2437,7 +2467,7 @@ class AppService:
                 key=lambda item: (
                     -int(item.get("frozen_flag") or 0),
                     -int(item.get("lock_flag") or 0),
-                    -int(item.get("urgent_flag") or 0),
+                    _normalize_priority_level(item.get("priority_level"), PRIORITY_LEVEL_MAX),
                     -_to_number(item.get("total_capacity_per_shift"), 0),
                     -_to_number(item.get("min_capacity_per_shift"), 0),
                     int(item.get("base_first_task_no") or 10**9),
@@ -2452,7 +2482,7 @@ class AppService:
                 key=lambda item: (
                     -int(item.get("frozen_flag") or 0),
                     -int(item.get("lock_flag") or 0),
-                    -int(item.get("urgent_flag") or 0),
+                    _normalize_priority_level(item.get("priority_level"), PRIORITY_LEVEL_MAX),
                     int(_to_number(item.get("slack_days"), 0)),
                     item.get("due_date"),
                     item.get("start_date"),
@@ -2585,7 +2615,7 @@ class AppService:
             business_head = (
                 -int(candidate.get("frozen_flag") or 0),
                 -int(candidate.get("lock_flag") or 0),
-                -int(candidate.get("urgent_flag") or 0),
+                _normalize_priority_level(candidate.get("priority_level"), PRIORITY_LEVEL_MAX),
             )
             base_tail = (
                 int(candidate.get("base_first_task_no") or 10**9),
@@ -3193,7 +3223,8 @@ class AppService:
             "expected_start_date": current.get("expected_start_date"),
             "expected_start_time": current.get("expected_start_time"),
             "expected_finish_time": current.get("expected_finish_time"),
-            "urgent_flag": int(current.get("urgent_flag") or 0),
+            "priority_level": _normalize_priority_level(current.get("priority_level"), PRIORITY_LEVEL_MAX),
+            "urgent_flag": _urgent_flag_from_priority_level(current.get("priority_level")),
             "lock_flag": int(current.get("lock_flag") or 0),
             "frozen_flag": int(current.get("frozen_flag") or 0),
             "status": current.get("status"),
@@ -3208,9 +3239,17 @@ class AppService:
             next_row["lock_flag"] = 1
         elif normalized == "UNLOCK":
             next_row["lock_flag"] = 0
+        elif normalized == "PRIORITY_UP":
+            next_row["priority_level"] = max(PRIORITY_LEVEL_MIN, next_row["priority_level"] - 1)
+            next_row["urgent_flag"] = _urgent_flag_from_priority_level(next_row["priority_level"])
+        elif normalized == "PRIORITY_DOWN":
+            next_row["priority_level"] = min(PRIORITY_LEVEL_MAX, next_row["priority_level"] + 1)
+            next_row["urgent_flag"] = _urgent_flag_from_priority_level(next_row["priority_level"])
         elif normalized == "PRIORITY":
+            next_row["priority_level"] = PRIORITY_LEVEL_MIN
             next_row["urgent_flag"] = 1
         elif normalized == "UNPRIORITY":
+            next_row["priority_level"] = PRIORITY_LEVEL_MAX
             next_row["urgent_flag"] = 0
         self._upsert_order_state(next_row)
 

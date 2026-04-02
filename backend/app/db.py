@@ -33,6 +33,8 @@ def open_connection() -> sqlite3.Connection:
     connection = sqlite3.connect(database_path, check_same_thread=False)
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
+    migrate_database_schema(connection)
+    connection.commit()
     return connection
 
 
@@ -94,7 +96,34 @@ def initialize_database(database_path: Path | None = None) -> Path:
     connection = sqlite3.connect(target_path)
     try:
         connection.executescript(load_init_sql())
+        migrate_database_schema(connection)
         connection.commit()
     finally:
         connection.close()
     return target_path
+
+
+def _table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
+    rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    return {str(row[1]) for row in rows}
+
+
+def migrate_database_schema(connection: sqlite3.Connection) -> None:
+    order_pool_columns = _table_columns(connection, "order_pool_state")
+    if "priority_level" not in order_pool_columns:
+        connection.execute(
+            """
+            ALTER TABLE order_pool_state
+            ADD COLUMN priority_level INTEGER NOT NULL DEFAULT 5
+            """
+        )
+    connection.execute(
+        """
+        UPDATE order_pool_state
+        SET priority_level = CASE
+            WHEN COALESCE(urgent_flag, 0) = 1 THEN 1
+            ELSE 5
+        END
+        WHERE priority_level IS NULL OR priority_level < 1 OR priority_level > 5
+        """
+    )

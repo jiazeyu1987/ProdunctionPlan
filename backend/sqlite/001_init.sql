@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS order_pool_state (
     expected_start_date TEXT,
     expected_start_time TEXT,
     expected_finish_time TEXT,
+    priority_level INTEGER NOT NULL DEFAULT 5,
     urgent_flag INTEGER NOT NULL DEFAULT 0,
     lock_flag INTEGER NOT NULL DEFAULT 0,
     frozen_flag INTEGER NOT NULL DEFAULT 0,
