@@ -50,3 +50,30 @@ class ERPMaterialSupplyInfo(BaseModel):
     material_code: str
     supply_type_code: str
     supply_type_name: str
+
+
+class UpstreamProcessRoute(BaseModel):
+    route_no: str
+    product_code: str
+    product_name_cn: str | None = None
+    route_name_cn: str | None = None
+    sequence_no: int
+    process_code: str
+    process_name_cn: str | None = None
+    dependency_type: str | None = None
+    capacity_per_shift: float | None = None
+    required_manpower_per_group: int | None = None
+    required_equipment_count: int | None = None
+    enabled_flag: int | None = None
+
+
+class UpstreamEquipmentProcessCapability(BaseModel):
+    equipment_code: str
+    process_code: str
+    company_code: str | None = None
+    line_code: str | None = None
+    line_name: str | None = None
+    workshop_code: str | None = None
+    enabled_flag: int | None = None
+    capacity_factor: float | None = None
+    process_name_cn: str | None = None

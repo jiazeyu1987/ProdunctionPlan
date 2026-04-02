@@ -81,8 +81,15 @@ class MaterialQueryService:
                     "child_unit": row.get("child_unit"),
                     "supply_type_code": str(supply_type_code),
                     "supply_type_name": str(supply_type_name),
+                    "child_material_supply_type": str(supply_type_code),
+                    "child_material_supply_type_name_cn": str(supply_type_name),
                     "inventory_qty": inventory_row.get("inventory_qty", row.get("inventory_qty")),
                     "inventory_status": str(inventory_status),
+                    "child_material_inventory_qty": inventory_row.get(
+                        "inventory_qty",
+                        row.get("inventory_qty"),
+                    ),
+                    "child_material_inventory_status": str(inventory_status),
                     "expandable": bool(row.get("expandable"))
                     or supply_type_code == "SELF_MADE",
                 }

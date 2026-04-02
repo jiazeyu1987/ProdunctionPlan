@@ -1,0 +1,29 @@
+services:
+  backend:
+    container_name: productionplan-backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/data:/app/backend/data
+      - ./backend/.env:/app/backend/.env:ro
+
+  fronted:
+    container_name: productionplan-frontend
+    build:
+      context: .
+      dockerfile: fronted/Dockerfile
+      args:
+        NEXT_PUBLIC_BACKEND_BASE_URL: http://172.30.30.59:8000
+        BACKEND_API_BASE_URL: http://productionplan-backend:8000
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      BACKEND_API_BASE_URL: http://productionplan-backend:8000
+      NEXT_PUBLIC_BACKEND_BASE_URL: http://172.30.30.59:8000
+    ports:
+      - "2798:2798"

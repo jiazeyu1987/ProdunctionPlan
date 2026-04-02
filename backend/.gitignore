@@ -1,5 +1,6 @@
 data/
 logs/
+.env
 __pycache__/
 app/__pycache__/
 app/api/__pycache__/

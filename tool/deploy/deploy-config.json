@@ -1,0 +1,17 @@
+{
+  "server": {
+    "host": "172.30.30.59",
+    "user": "root",
+    "password": "KDLyx2021",
+    "port": 22
+  },
+  "deploy": {
+    "remote_dir": "/opt/productionplan",
+    "archive_name": "productionplan_deploy.tar.gz",
+    "compose_file": "docker-compose.prod.yml"
+  },
+  "healthcheck": {
+    "backend_url": "http://127.0.0.1:8000/api/health",
+    "frontend_url": "http://127.0.0.1:2798"
+  }
+}

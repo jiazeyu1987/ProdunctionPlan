@@ -191,3 +191,7 @@ ERP 响应字段需满足：
 
 ## 9. 结论
 截至 2026-04-01，后端与 ERP 的通信接口定义是正确的，代码实现与文档一致；当前唯一未必成立的是“真实 ERP 环境是否已配置”，这属于部署前提，不属于接口定义错误。
+## 10. 2026-04-01 Test Import Note
+- `/api/test/import-production-orders` now reuses `ERPOrderGateway`.
+- The backend first fetches ERP production orders, then filters by `material_code` or `keyword`, truncates by `n`, and upserts the matched orders into SQLite.
+- `completed=true` forces imported orders into `DONE`; otherwise imported orders are written as `OPEN`.

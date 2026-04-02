@@ -14,7 +14,13 @@ class ERPClient:
     def __init__(self, settings: Settings | None = None) -> None:
         self.settings = settings or get_settings()
 
-    def post_items(self, endpoint_path: str | None, payload: dict[str, Any]) -> list[dict[str, Any]]:
+    def request_json(
+        self,
+        endpoint_path: str | None,
+        *,
+        method: str,
+        payload: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         base_url = self.settings.erp_base_url
         if not base_url:
             raise server_error(
@@ -28,9 +34,13 @@ class ERPClient:
             )
 
         url = urljoin(f"{base_url.rstrip('/')}/", endpoint_path.lstrip("/"))
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        request = Request(url, data=body, method="POST")
-        request.add_header("Content-Type", "application/json")
+        normalized_method = str(method or "POST").strip().upper() or "POST"
+        body = None
+        if normalized_method not in {"GET", "HEAD"}:
+            body = json.dumps(payload or {}, ensure_ascii=False).encode("utf-8")
+        request = Request(url, data=body, method=normalized_method)
+        if body is not None:
+            request.add_header("Content-Type", "application/json")
         request.add_header("Accept", "application/json")
         if self.settings.erp_authorization:
             request.add_header("Authorization", self.settings.erp_authorization)
@@ -61,11 +71,30 @@ class ERPClient:
                 details={"url": url},
             ) from exc
 
-        if not isinstance(payload_json, dict) or not isinstance(payload_json.get("items"), list):
+        if not isinstance(payload_json, dict):
             raise server_error(
                 code="ERP_INVALID_PAYLOAD",
-                message="ERP payload must be an object with an items array.",
+                message="ERP payload must be a JSON object.",
                 details={"url": url},
             )
 
+        return payload_json
+
+    def request_items(
+        self,
+        endpoint_path: str | None,
+        *,
+        method: str,
+        payload: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        payload_json = self.request_json(endpoint_path, method=method, payload=payload)
+        if not isinstance(payload_json.get("items"), list):
+            raise server_error(
+                code="ERP_INVALID_PAYLOAD",
+                message="ERP payload must be an object with an items array.",
+                details={"path": endpoint_path},
+            )
         return payload_json["items"]
+
+    def post_items(self, endpoint_path: str | None, payload: dict[str, Any]) -> list[dict[str, Any]]:
+        return self.request_items(endpoint_path, method="POST", payload=payload)

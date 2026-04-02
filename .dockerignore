@@ -1,0 +1,12 @@
+.git
+.codex
+doc
+backend/__pycache__
+backend/**/*.pyc
+backend/.pytest_cache
+fronted/.git
+fronted/node_modules
+fronted/.next
+fronted/logs
+fronted/.logs
+fronted/CON

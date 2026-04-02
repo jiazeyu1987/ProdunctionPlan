@@ -39,7 +39,7 @@ class MaterialRefreshService:
                 details={"order_no": order_no},
             )
 
-        items = self.material_gateway.fetch_order_materials(order_no)
+        items = self.material_gateway.fetch_order_materials(order_no, mode="fast")
         material_codes = [str(item["child_material_code"]) for item in items]
         supply_rows = self.supply_gateway.fetch_material_supply(material_codes)
         supply_map = {str(row["material_code"]): row for row in supply_rows}

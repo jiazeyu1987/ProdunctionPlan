@@ -137,7 +137,7 @@ class JobDispatcher:
         if job_type == "LEGACY_SIMULATION_RESET":
             return self._dispatch_app_service("reset_manual_simulation")
         if job_type == "LEGACY_IMPORT_PRODUCTION_ORDERS":
-            return self._dispatch_app_service("import_production_orders", payload)
+            return self._dispatch_app_service("import_production_orders_from_erp", payload)
         if job_type == "LEGACY_TEST_MATERIAL_ISSUES_QUERY":
             return self._dispatch_app_service(
                 "test_material_issues",

@@ -37,16 +37,18 @@ def get_order_pool_item(
 def list_order_pool_materials(
     order_no: str,
     service: Annotated[AppService, Depends(get_app_service)],
+    refresh: bool = Query(default=False),
 ) -> dict[str, Any]:
-    return service.list_order_pool_materials(order_no, refresh=False)
+    return service.list_order_pool_materials(order_no, refresh=refresh)
 
 
 @router.get("/order-pool/materials/{parent_material_code}/children")
 def list_material_children(
     parent_material_code: str,
     service: Annotated[AppService, Depends(get_app_service)],
+    refresh: bool = Query(default=False),
 ) -> dict[str, Any]:
-    return service.list_material_children(parent_material_code, refresh=False)
+    return service.list_material_children(parent_material_code, refresh=refresh)
 
 
 @router.get("/schedules")
