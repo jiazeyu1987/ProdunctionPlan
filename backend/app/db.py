@@ -129,6 +129,29 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
     )
     connection.executescript(
         """
+        CREATE TABLE IF NOT EXISTS app_users (
+            user_id TEXT PRIMARY KEY,
+            username TEXT NOT NULL UNIQUE,
+            display_name TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            password_salt TEXT NOT NULL,
+            role_code TEXT NOT NULL,
+            enabled_flag INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_users_role
+            ON app_users (role_code, enabled_flag);
+        CREATE TABLE IF NOT EXISTS app_sessions (
+            session_token TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            revoked_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES app_users(user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_sessions_user
+            ON app_sessions (user_id, revoked_at, expires_at);
         CREATE TABLE IF NOT EXISTS daily_line_capacity_plan (
             calendar_date TEXT NOT NULL,
             company_code TEXT NOT NULL,
@@ -158,5 +181,28 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_actual_date
             ON daily_line_capacity_actual (calendar_date, workshop_code, line_code, process_code);
+        CREATE TABLE IF NOT EXISTS daily_line_capacity_plan_audit (
+            audit_id TEXT PRIMARY KEY,
+            calendar_date TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            old_planned_capacity_qty REAL,
+            new_planned_capacity_qty REAL,
+            old_worker_count INTEGER,
+            new_worker_count INTEGER,
+            old_machine_count INTEGER,
+            new_machine_count INTEGER,
+            operator_user_id TEXT,
+            operator_username TEXT,
+            operator_display_name TEXT,
+            changed_at TEXT NOT NULL,
+            FOREIGN KEY (operator_user_id) REFERENCES app_users(user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_audit_date
+            ON daily_line_capacity_plan_audit (calendar_date, changed_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_audit_line
+            ON daily_line_capacity_plan_audit (workshop_code, line_code, process_code, changed_at DESC);
         """
     )

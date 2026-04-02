@@ -38,6 +38,22 @@ def bad_request(
     return AppError(code=code, message=message, status_code=400, details=details)
 
 
+def unauthorized(
+    code: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+) -> AppError:
+    return AppError(code=code, message=message, status_code=401, details=details)
+
+
+def forbidden(
+    code: str,
+    message: str,
+    details: dict[str, Any] | None = None,
+) -> AppError:
+    return AppError(code=code, message=message, status_code=403, details=details)
+
+
 def server_error(
     code: str,
     message: str,

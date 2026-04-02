@@ -5,6 +5,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Body, Depends
 
+from ...auth import ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER, require_roles
 from ...db import get_db
 from ...repositories.jobs import JobRepository
 from ...schemas.jobs import AcceptedCommandResponse
@@ -41,6 +42,7 @@ def enqueue_command_job(
 def create_dispatch_command(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     order_no = str(payload.get("target_order_no") or "").strip()
@@ -59,6 +61,7 @@ def approve_dispatch_command(
     command_id: str,
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -76,6 +79,7 @@ def patch_order_pool_order(
     order_no: str,
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -93,6 +97,7 @@ def delete_order_pool_order(
     order_no: str,
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -109,6 +114,7 @@ def delete_order_pool_order(
 def save_masterdata_config(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -125,6 +131,7 @@ def save_masterdata_config(
 def save_schedule_calendar_rules(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -141,6 +148,7 @@ def save_schedule_calendar_rules(
 def create_process_routes(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -157,6 +165,7 @@ def create_process_routes(
 def update_process_routes(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -173,6 +182,7 @@ def update_process_routes(
 def copy_process_routes(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -189,6 +199,7 @@ def copy_process_routes(
 def delete_process_routes(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -205,16 +216,26 @@ def delete_process_routes(
 def save_line_daily_capacity(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    current_user: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
+    ] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     calendar_date = str(payload.get("calendar_date") or "").strip() or "UNKNOWN"
+    actor = {
+        "user_id": str(current_user.get("user_id") or "").strip(),
+        "username": str(current_user.get("username") or "").strip(),
+        "display_name": str(current_user.get("display_name") or "").strip(),
+        "role_code": str(current_user.get("role_code") or "").strip(),
+    }
     return enqueue_command_job(
         connection,
         job_type="LEGACY_DAILY_LINE_CAPACITY_SAVE",
         target_type="LINE_CAPACITY_DAILY",
         target_key=calendar_date,
         request_id=str(payload.get("request_id") or "").strip() or None,
-        payload=payload,
+        payload={**payload, "actor": actor},
     )
 
 
@@ -222,6 +243,7 @@ def save_line_daily_capacity(
 def rebuild_line_daily_actual_capacity(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     calendar_date = str(payload.get("calendar_date") or "").strip() or "UNKNOWN"
@@ -240,6 +262,7 @@ def publish_schedule_version(
     version_no: str,
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -256,6 +279,7 @@ def publish_schedule_version(
 def advance_simulation_one_day(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -272,6 +296,7 @@ def advance_simulation_one_day(
 def reset_manual_simulation(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -288,6 +313,10 @@ def reset_manual_simulation(
 def create_reporting(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
+    ] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -305,6 +334,10 @@ def delete_reporting(
     report_id: str,
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
+    ] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -321,6 +354,7 @@ def delete_reporting(
 def generate_schedule(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(
@@ -337,6 +371,7 @@ def generate_schedule(
 def test_material_issues(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     order_no = str(payload.get("order_no") or "").strip()
@@ -355,6 +390,7 @@ def test_material_issues(
 def test_material_supply(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     material_code = str(payload.get("material_code") or "").strip()
@@ -372,6 +408,7 @@ def test_material_supply(
 def test_material_inventory(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     material_code = str(payload.get("material_code") or "").strip()
@@ -389,6 +426,7 @@ def test_material_inventory(
 def import_production_orders(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
     return enqueue_command_job(

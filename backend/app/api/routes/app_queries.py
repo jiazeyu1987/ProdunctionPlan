@@ -5,6 +5,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query
 
+from ...auth import ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER, require_roles
 from ...db import get_db
 from ...services.app_service import AppService
 
@@ -21,6 +22,7 @@ def get_app_service(
 @router.get("/order-pool")
 def list_order_pool(
     service: Annotated[AppService, Depends(get_app_service)],
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.list_order_pool()
 
@@ -29,6 +31,7 @@ def list_order_pool(
 def get_order_pool_item(
     order_no: str,
     service: Annotated[AppService, Depends(get_app_service)],
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.get_order_pool_item(order_no)
 
@@ -38,6 +41,7 @@ def list_order_pool_materials(
     order_no: str,
     service: Annotated[AppService, Depends(get_app_service)],
     refresh: bool = Query(default=False),
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.list_order_pool_materials(order_no, refresh=refresh)
 
@@ -47,6 +51,7 @@ def list_material_children(
     parent_material_code: str,
     service: Annotated[AppService, Depends(get_app_service)],
     refresh: bool = Query(default=False),
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.list_material_children(parent_material_code, refresh=refresh)
 
@@ -54,6 +59,7 @@ def list_material_children(
 @router.get("/schedules")
 def list_schedule_versions(
     service: Annotated[AppService, Depends(get_app_service)],
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.list_schedule_versions()
 
@@ -62,6 +68,7 @@ def list_schedule_versions(
 def get_schedule_version(
     version_no: str,
     service: Annotated[AppService, Depends(get_app_service)],
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.get_schedule_version(version_no)
 
@@ -70,6 +77,7 @@ def get_schedule_version(
 def list_schedule_tasks(
     version_no: str,
     service: Annotated[AppService, Depends(get_app_service)],
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.list_schedule_tasks(version_no)
 
@@ -78,6 +86,7 @@ def list_schedule_tasks(
 def get_schedule_algorithm(
     version_no: str,
     service: Annotated[AppService, Depends(get_app_service)],
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.get_schedule_algorithm(version_no)
 
@@ -87,6 +96,7 @@ def get_schedule_diff(
     version_no: str,
     compare_with: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     assert service is not None
     return service.get_schedule_diff(version_no, compare_with)
@@ -96,6 +106,7 @@ def get_schedule_diff(
 def get_schedule_daily_process_load(
     version_no: str,
     service: Annotated[AppService, Depends(get_app_service)],
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.get_schedule_daily_process_load(version_no)
 
@@ -103,6 +114,7 @@ def get_schedule_daily_process_load(
 @router.get("/masterdata/config")
 def get_masterdata_config(
     service: Annotated[AppService, Depends(get_app_service)],
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.get_masterdata_config()
 
@@ -110,6 +122,7 @@ def get_masterdata_config(
 @router.get("/masterdata/calendar-rules")
 def get_schedule_calendar_rules(
     service: Annotated[AppService, Depends(get_app_service)],
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.get_schedule_calendar_rules()
 
@@ -117,6 +130,7 @@ def get_schedule_calendar_rules(
 @router.get("/masterdata/process-routes")
 def list_process_routes(
     service: Annotated[AppService, Depends(get_app_service)],
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.list_process_routes()
 
@@ -128,9 +142,34 @@ def list_line_daily_capacity(
     line_code: str | None = Query(default=None),
     process_code: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)] = None,
+    _: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
+    ] = None,
 ) -> dict[str, Any]:
     assert service is not None
     return service.list_line_daily_capacity(
+        calendar_date,
+        workshop_code=workshop_code,
+        line_code=line_code,
+        process_code=process_code,
+    )
+
+
+@router.get("/masterdata/line-capacity/daily/audits")
+def list_line_daily_capacity_audits(
+    calendar_date: str = Query(...),
+    workshop_code: str | None = Query(default=None),
+    line_code: str | None = Query(default=None),
+    process_code: str | None = Query(default=None),
+    service: Annotated[AppService, Depends(get_app_service)] = None,
+    _: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
+    ] = None,
+) -> dict[str, Any]:
+    assert service is not None
+    return service.list_line_daily_capacity_audits(
         calendar_date,
         workshop_code=workshop_code,
         line_code=line_code,
@@ -143,6 +182,10 @@ def list_mes_reportings(
     start_time: str | None = Query(default=None),
     end_time: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)] = None,
+    _: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
+    ] = None,
 ) -> dict[str, Any]:
     assert service is not None
     return service.list_mes_reportings(start_time=start_time, end_time=end_time)

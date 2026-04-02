@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
+from ...auth import ROLE_SCHEDULER, require_roles
 from ...db import get_db
 from ...repositories.jobs import JobRepository
 from ...schemas.common import ItemResponse, ListResponse
@@ -88,6 +89,7 @@ def refresh_order_materials(
     order_no: str,
     body: RequestCommandBody,
     connection: Annotated[sqlite3.Connection, Depends(get_db)],
+    _: Annotated[dict[str, str], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     factory = ServiceFactory(connection)
     factory.build_order_query_service().get_order(order_no)
@@ -115,6 +117,7 @@ def refresh_self_made_materials(
     order_no: str,
     body: RefreshSelfMadeMaterialsBody,
     connection: Annotated[sqlite3.Connection, Depends(get_db)],
+    _: Annotated[dict[str, str], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> AcceptedCommandResponse:
     factory = ServiceFactory(connection)
     factory.build_order_query_service().get_order(order_no)

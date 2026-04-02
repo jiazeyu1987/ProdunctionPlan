@@ -5,6 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
+from ...auth import ROLE_SCHEDULER, require_roles
 from ...db import get_db
 from ...errors import not_found
 from ...repositories.jobs import JobRepository
@@ -22,6 +23,7 @@ def list_jobs(
     job_type: str | None = Query(default=None),
     target_key: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=200),
+    _: Annotated[dict[str, str], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> ListResponse[JobRecord]:
     items = JobRepository(connection).list(
         status=status,

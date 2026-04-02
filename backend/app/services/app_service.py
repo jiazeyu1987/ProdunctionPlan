@@ -537,13 +537,17 @@ class AppService:
                 message="items must be a non-empty array.",
             )
         updated_at = utc_now()
+        actor = payload.get("actor") if isinstance(payload.get("actor"), dict) else {}
         rows: list[tuple[Any, ...]] = []
+        audit_rows: list[tuple[Any, ...]] = []
         for item in items:
             company_code = str(item.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
             workshop_code = str(item.get("workshop_code") or "").strip().upper()
             line_code = str(item.get("line_code") or "").strip().upper()
             process_code = str(item.get("process_code") or "").strip().upper()
             planned_capacity_qty = _to_number(item.get("planned_capacity_qty"), -1)
+            worker_count = int(_to_number(item.get("worker_count"), 0)) if item.get("worker_count") is not None else None
+            machine_count = int(_to_number(item.get("machine_count"), 0)) if item.get("machine_count") is not None else None
             if not workshop_code or not line_code or not process_code:
                 raise bad_request(
                     code="DAILY_CAPACITY_KEY_REQUIRED",
@@ -578,6 +582,37 @@ class AppService:
                         "process_code": process_code,
                     },
                 )
+            existing_row = fetch_one(
+                self.connection,
+                """
+                SELECT planned_capacity_qty, worker_count, machine_count
+                FROM daily_line_capacity_plan
+                WHERE calendar_date = ?
+                  AND company_code = ?
+                  AND workshop_code = ?
+                  AND line_code = ?
+                  AND process_code = ?
+                LIMIT 1
+                """,
+                (
+                    normalized_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                ),
+            )
+            old_planned_capacity_qty = (
+                _to_number(existing_row.get("planned_capacity_qty"), 0) if existing_row is not None else None
+            )
+            old_worker_count = int(_to_number(existing_row.get("worker_count"), 0)) if existing_row is not None and existing_row.get("worker_count") is not None else None
+            old_machine_count = int(_to_number(existing_row.get("machine_count"), 0)) if existing_row is not None and existing_row.get("machine_count") is not None else None
+            values_changed = (
+                existing_row is None
+                or old_planned_capacity_qty != planned_capacity_qty
+                or old_worker_count != worker_count
+                or old_machine_count != machine_count
+            )
             rows.append(
                 (
                     normalized_date,
@@ -586,12 +621,33 @@ class AppService:
                     line_code,
                     process_code,
                     planned_capacity_qty,
-                    int(_to_number(item.get("worker_count"), 0)) if item.get("worker_count") is not None else None,
-                    int(_to_number(item.get("machine_count"), 0)) if item.get("machine_count") is not None else None,
+                    worker_count,
+                    machine_count,
                     str(item.get("source_note") or "").strip() or None,
                     updated_at,
                 )
             )
+            if values_changed:
+                audit_rows.append(
+                    (
+                        f"DLC-AUD-{uuid4().hex[:16].upper()}",
+                        normalized_date,
+                        company_code,
+                        workshop_code,
+                        line_code,
+                        process_code,
+                        old_planned_capacity_qty,
+                        planned_capacity_qty,
+                        old_worker_count,
+                        worker_count,
+                        old_machine_count,
+                        machine_count,
+                        str(actor.get("user_id") or "").strip() or None,
+                        str(actor.get("username") or "").strip() or None,
+                        str(actor.get("display_name") or "").strip() or None,
+                        updated_at,
+                    )
+                )
         with transaction(self.connection):
             self.connection.executemany(
                 """
@@ -617,7 +673,109 @@ class AppService:
                 """,
                 rows,
             )
+            if audit_rows:
+                self.connection.executemany(
+                    """
+                    INSERT INTO daily_line_capacity_plan_audit (
+                        audit_id,
+                        calendar_date,
+                        company_code,
+                        workshop_code,
+                        line_code,
+                        process_code,
+                        old_planned_capacity_qty,
+                        new_planned_capacity_qty,
+                        old_worker_count,
+                        new_worker_count,
+                        old_machine_count,
+                        new_machine_count,
+                        operator_user_id,
+                        operator_username,
+                        operator_display_name,
+                        changed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    audit_rows,
+                )
         return self.list_line_daily_capacity(normalized_date)
+
+    def list_line_daily_capacity_audits(
+        self,
+        calendar_date: str,
+        *,
+        workshop_code: str | None = None,
+        line_code: str | None = None,
+        process_code: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_date = _normalize_date_text(calendar_date)
+        if normalized_date is None:
+            raise bad_request(
+                code="CALENDAR_DATE_REQUIRED",
+                message="calendar_date must be a valid YYYY-MM-DD date.",
+            )
+        filters = ["calendar_date = ?"]
+        parameters: list[Any] = [normalized_date]
+        if workshop_code:
+            filters.append("workshop_code = ?")
+            parameters.append(str(workshop_code).strip().upper())
+        if line_code:
+            filters.append("line_code = ?")
+            parameters.append(str(line_code).strip().upper())
+        if process_code:
+            filters.append("process_code = ?")
+            parameters.append(str(process_code).strip().upper())
+        where_sql = " AND ".join(filters)
+        rows = fetch_all(
+            self.connection,
+            f"""
+            SELECT
+                audit_id,
+                calendar_date,
+                company_code,
+                workshop_code,
+                line_code,
+                process_code,
+                old_planned_capacity_qty,
+                new_planned_capacity_qty,
+                old_worker_count,
+                new_worker_count,
+                old_machine_count,
+                new_machine_count,
+                operator_user_id,
+                operator_username,
+                operator_display_name,
+                changed_at
+            FROM daily_line_capacity_plan_audit
+            WHERE {where_sql}
+            ORDER BY changed_at DESC, audit_id DESC
+            """,
+            tuple(parameters),
+        )
+        return {
+            "calendar_date": normalized_date,
+            "items": [
+                {
+                    **row,
+                    "planned_capacity_delta": (
+                        None
+                        if row.get("old_planned_capacity_qty") is None or row.get("new_planned_capacity_qty") is None
+                        else _to_number(row.get("new_planned_capacity_qty"), 0)
+                        - _to_number(row.get("old_planned_capacity_qty"), 0)
+                    ),
+                    "worker_count_delta": (
+                        None
+                        if row.get("old_worker_count") is None or row.get("new_worker_count") is None
+                        else int(_to_number(row.get("new_worker_count"), 0) - _to_number(row.get("old_worker_count"), 0))
+                    ),
+                    "machine_count_delta": (
+                        None
+                        if row.get("old_machine_count") is None or row.get("new_machine_count") is None
+                        else int(_to_number(row.get("new_machine_count"), 0) - _to_number(row.get("old_machine_count"), 0))
+                    ),
+                }
+                for row in rows
+            ],
+        }
 
     def rebuild_line_daily_actual_capacity(self, payload: dict[str, Any]) -> dict[str, Any]:
         normalized_date = _normalize_date_text(payload.get("calendar_date"))
