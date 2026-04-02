@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+import math
+import random
 import sqlite3
 from typing import Any
 from uuid import uuid4
 
 from ..db import fetch_all, fetch_one, transaction, utc_now
-from ..errors import bad_request, not_found
+from ..errors import bad_request, not_found, server_error
 from ..gateway.inventory import ERPInventoryGateway
+from ..gateway.masterdata import UpstreamMasterdataGateway
+from ..gateway.orders import ERPOrderGateway
 from ..gateway.supply import ERPSupplyGateway
 from ..json_utils import dumps, loads
 from .job_dispatcher import ServiceFactory
@@ -16,6 +20,117 @@ from .job_dispatcher import ServiceFactory
 
 RULES_SINGLETON_KEY = "default"
 SHIFT_SEQUENCE = ("DAY", "NIGHT")
+SHIFT_INDEX_BY_CODE = {"DAY": 0, "NIGHT": 1}
+SHIFT_CODE_BY_INDEX = {0: "DAY", 1: "NIGHT"}
+WEEKEND_REST_MODES = {"NONE", "SINGLE", "DOUBLE"}
+DATE_SHIFT_MODES = {"REST", "DAY", "NIGHT", "BOTH"}
+SUPPORTED_STRATEGY_CODES = {
+    "KEY_ORDER_FIRST",
+    "MAX_CAPACITY_FIRST",
+    "MIN_DELAY_FIRST",
+}
+SUPPORTED_CN_HOLIDAY_YEARS = {2024, 2025, 2026, 2027, 2028}
+CN_STATUTORY_HOLIDAY_DATE_SET = frozenset(
+    {
+        # 2024
+        "2024-01-01",
+        "2024-02-10",
+        "2024-02-11",
+        "2024-02-12",
+        "2024-02-13",
+        "2024-02-14",
+        "2024-02-15",
+        "2024-02-16",
+        "2024-02-17",
+        "2024-04-04",
+        "2024-04-05",
+        "2024-04-06",
+        "2024-05-01",
+        "2024-05-02",
+        "2024-05-03",
+        "2024-05-04",
+        "2024-05-05",
+        "2024-06-08",
+        "2024-06-09",
+        "2024-06-10",
+        "2024-09-15",
+        "2024-09-16",
+        "2024-09-17",
+        "2024-10-01",
+        "2024-10-02",
+        "2024-10-03",
+        "2024-10-04",
+        "2024-10-05",
+        "2024-10-06",
+        "2024-10-07",
+        # 2025
+        "2025-01-01",
+        "2025-01-28",
+        "2025-01-29",
+        "2025-01-30",
+        "2025-01-31",
+        "2025-02-01",
+        "2025-02-02",
+        "2025-02-03",
+        "2025-02-04",
+        "2025-04-04",
+        "2025-04-05",
+        "2025-04-06",
+        "2025-05-01",
+        "2025-05-02",
+        "2025-05-03",
+        "2025-05-04",
+        "2025-05-05",
+        "2025-05-31",
+        "2025-06-01",
+        "2025-06-02",
+        "2025-10-01",
+        "2025-10-02",
+        "2025-10-03",
+        "2025-10-04",
+        "2025-10-05",
+        "2025-10-06",
+        "2025-10-07",
+        "2025-10-08",
+        # 2026
+        "2026-01-01",
+        "2026-01-02",
+        "2026-01-03",
+        "2026-02-15",
+        "2026-02-16",
+        "2026-02-17",
+        "2026-02-18",
+        "2026-02-19",
+        "2026-02-20",
+        "2026-02-21",
+        "2026-02-22",
+        "2026-02-23",
+        "2026-04-04",
+        "2026-04-05",
+        "2026-04-06",
+        "2026-05-01",
+        "2026-05-02",
+        "2026-05-03",
+        "2026-05-04",
+        "2026-05-05",
+        "2026-06-19",
+        "2026-06-20",
+        "2026-06-21",
+        "2026-09-25",
+        "2026-09-26",
+        "2026-09-27",
+        "2026-10-01",
+        "2026-10-02",
+        "2026-10-03",
+        "2026-10-04",
+        "2026-10-05",
+        "2026-10-06",
+        "2026-10-07",
+    }
+)
+SCHEDULE_SLOT_SEARCH_GUARD = 20000
+SCHEDULE_EPOCH_DAY = date(1970, 1, 1)
+SCHEDULE_NUMBER_EPSILON = 1e-9
 STATUS_NAME_BY_CODE = {
     "DRAFT": "Draft",
     "PUBLISHED": "Published",
@@ -75,6 +190,38 @@ def _status_name(status: str) -> str:
     return STATUS_NAME_BY_CODE.get(normalized, normalized or "-")
 
 
+def _normalize_shift_code(value: object) -> str:
+    normalized = str(value or "").strip().upper()
+    if normalized == "D":
+        return "DAY"
+    if normalized == "N":
+        return "NIGHT"
+    if normalized in SHIFT_INDEX_BY_CODE:
+        return normalized
+    return "DAY"
+
+
+def _slot_index_for(date_value: date, shift_code: str) -> int:
+    shift_index = SHIFT_INDEX_BY_CODE[_normalize_shift_code(shift_code)]
+    day_index = (date_value - SCHEDULE_EPOCH_DAY).days
+    return day_index * 2 + shift_index
+
+
+def _slot_index_from_text(date_text: str, shift_code: str) -> int:
+    return _slot_index_for(date.fromisoformat(date_text), shift_code)
+
+
+def _slot_to_date_shift(slot_index: int) -> tuple[date, str]:
+    if slot_index < 0:
+        raise ValueError("slot_index must be >= 0")
+    day_index = slot_index // 2
+    shift_index = slot_index % 2
+    return (
+        SCHEDULE_EPOCH_DAY + timedelta(days=day_index),
+        SHIFT_CODE_BY_INDEX[shift_index],
+    )
+
+
 def _material_row(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "order_no": row.get("production_order_no"),
@@ -97,6 +244,8 @@ class AppService:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.connection = connection
         self.factory = ServiceFactory(connection)
+        self.masterdata_gateway = UpstreamMasterdataGateway()
+        self.order_gateway = ERPOrderGateway()
         self.inventory_gateway = ERPInventoryGateway()
         self.supply_gateway = ERPSupplyGateway()
 
@@ -653,6 +802,16 @@ class AppService:
 
     def save_schedule_calendar_rules(self, payload: dict[str, Any]) -> dict[str, Any]:
         current = self._get_rules_row()
+        weekend_rest_mode = self._normalize_weekend_rest_mode(
+            payload.get("weekend_rest_mode")
+            if "weekend_rest_mode" in payload
+            else current["weekend_rest_mode"]
+        )
+        date_shift_mode_by_date = self._normalize_date_shift_mode_by_date(
+            payload.get("date_shift_mode_by_date")
+            if "date_shift_mode_by_date" in payload
+            else (loads(current["date_shift_mode_by_date_json"]) or {})
+        )
         next_row = {
             "singleton_key": RULES_SINGLETON_KEY,
             "horizon_start_date": _normalize_date_text(
@@ -670,15 +829,8 @@ class AppService:
                 if "skip_statutory_holidays" not in payload
                 else 0
             ),
-            "weekend_rest_mode": str(
-                payload.get("weekend_rest_mode") or current["weekend_rest_mode"] or "DOUBLE"
-            ).strip().upper()
-            or "DOUBLE",
-            "date_shift_mode_by_date_json": dumps(
-                payload.get("date_shift_mode_by_date")
-                if "date_shift_mode_by_date" in payload
-                else (loads(current["date_shift_mode_by_date_json"]) or {})
-            ),
+            "weekend_rest_mode": weekend_rest_mode,
+            "date_shift_mode_by_date_json": dumps(date_shift_mode_by_date),
             "updated_at": utc_now(),
         }
         with transaction(self.connection):
@@ -714,64 +866,193 @@ class AppService:
         return self.get_schedule_calendar_rules()
 
     def generate_schedule(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.factory.build_inventory_refresh_service().refresh_inventory([])
         self._ensure_masterdata_seeded()
-        strategy_code = str(payload.get("strategy_code") or "KEY_ORDER_FIRST").strip().upper() or "KEY_ORDER_FIRST"
+        strategy_code = self._normalize_strategy_code(payload.get("strategy_code"))
+        base_version_no = str(payload.get("base_version_no") or "").strip()
+        base_schedule_hints: dict[str, dict[str, Any]] = {}
+        if base_version_no:
+            self.get_schedule_version(base_version_no)
+            base_schedule_hints = self._build_base_schedule_hints(base_version_no)
+        planning_rules = self._build_planning_rules_from_current_config()
         version_no = self._next_schedule_version_no()
         order_rows = self._list_order_rows()
-        route_rows = self._group_routes_by_product(self._list_route_rows())
+        route_rows_by_product = self._group_routes_by_product(self._list_route_rows())
         capacity_map = self._get_capacity_map(
             [str(row["production_order_no"]) for row in order_rows]
         )
         states = self._get_order_state_map(
             [str(row["production_order_no"]) for row in order_rows]
         )
-        topology_by_process = self._first_topology_by_process(self._list_line_topology_rows())
-        tasks: list[tuple[Any, ...]] = []
-        task_no = 1
+        topology_by_process = self._enabled_topology_by_process(
+            self._list_line_topology_rows()
+        )
+
+        schedule_candidates: list[dict[str, Any]] = []
+        simulation_state = self._get_simulation_state()
+        simulation_start = _parse_date_or_today(simulation_state.get("current_date"))
         for order_row in order_rows:
             order_no = str(order_row["production_order_no"])
-            state_row = states.get(order_no)
+            state_row = states.get(order_no) or {}
             status = str(
-                (state_row or {}).get("order_status")
-                or (state_row or {}).get("status")
+                state_row.get("order_status")
+                or state_row.get("status")
                 or order_row.get("status")
                 or ""
             ).strip().upper()
             if status == "DONE":
                 continue
-            process_contexts = self._build_process_contexts(
+
+            remaining_qty = state_row.get("remaining_qty")
+            if remaining_qty is None:
+                production_qty = _to_number(order_row.get("production_qty"), 0)
+                completed_qty = _to_number(state_row.get("completed_qty"), 0)
+                remaining_qty = max(0.0, production_qty - completed_qty)
+            remaining_qty_value = max(0.0, _to_number(remaining_qty, 0))
+            if remaining_qty_value <= SCHEDULE_NUMBER_EPSILON:
+                continue
+
+            process_contexts = self._build_schedule_process_contexts(
                 order_no=order_no,
                 product_code=str(order_row["material_code"]),
                 capacity_rows=capacity_map.get(order_no, []),
-                route_rows=route_rows.get(str(order_row["material_code"]), []),
+                route_rows=route_rows_by_product.get(str(order_row["material_code"]), []),
                 topology_by_process=topology_by_process,
             )
             if len(process_contexts) == 0:
-                continue
-            start_date = _parse_date_or_today(
-                (state_row or {}).get("expected_start_date")
-                or order_row.get("planned_start_date")
-                or self._get_simulation_state()["current_date"]
-            )
-            production_qty = _to_number(order_row.get("production_qty"), 0)
-            per_task_qty = production_qty / max(len(process_contexts), 1) if production_qty > 0 else 0
-            for index, context in enumerate(process_contexts):
-                calendar_date = (start_date + timedelta(days=index)).isoformat()
-                shift_code = SHIFT_SEQUENCE[index % len(SHIFT_SEQUENCE)]
-                tasks.append(
-                    (
-                        version_no,
-                        task_no,
-                        order_no,
-                        str(context["process_code"]),
-                        str(context["process_name_cn"]),
-                        calendar_date,
-                        shift_code,
-                        per_task_qty,
-                        _iso_at(calendar_date, "08:00:00"),
-                    )
+                raise server_error(
+                    code="SCHEDULE_PROCESS_CONTEXTS_EMPTY",
+                    message="No process contexts available for schedule generation.",
+                    details={"order_no": order_no},
                 )
-                task_no += 1
+
+            start_date = _parse_date_or_today(
+                state_row.get("expected_start_date")
+                or order_row.get("planned_start_date")
+                or simulation_start.isoformat()
+            )
+            due_date = _parse_date_or_today(
+                state_row.get("promised_due_date")
+                or order_row.get("planned_end_date")
+                or start_date.isoformat()
+            )
+            if due_date < start_date:
+                due_date = start_date
+
+            urgent_flag = int(_to_number(state_row.get("urgent_flag"), 0))
+            lock_flag = int(_to_number(state_row.get("lock_flag"), 0))
+            frozen_flag = int(_to_number(state_row.get("frozen_flag"), 0))
+
+            base_hint = base_schedule_hints.get(order_no) or {}
+            if base_version_no and (lock_flag == 1 or frozen_flag == 1) and not base_hint:
+                raise bad_request(
+                    code="BASE_VERSION_LOCKED_ORDER_MISSING",
+                    message="Locked or frozen order is missing in base schedule version.",
+                    details={"order_no": order_no, "base_version_no": base_version_no},
+                )
+            base_first_slot = base_hint.get("first_slot")
+            start_slot = _slot_index_for(start_date, "DAY")
+            if (lock_flag == 1 or frozen_flag == 1) and base_first_slot is not None:
+                start_slot = max(start_slot, int(base_first_slot))
+
+            required_shifts = 0
+            min_capacity = None
+            total_capacity = 0.0
+            for context in process_contexts:
+                capacity_per_shift = _to_number(context.get("capacity_per_shift"), 0)
+                required_shifts += int(math.ceil(remaining_qty_value / capacity_per_shift))
+                min_capacity = (
+                    capacity_per_shift
+                    if min_capacity is None
+                    else min(min_capacity, capacity_per_shift)
+                )
+                total_capacity += capacity_per_shift
+            slack_days = (due_date - start_date).days - required_shifts
+
+            schedule_candidates.append(
+                {
+                    "order_no": order_no,
+                    "product_code": str(order_row["material_code"]),
+                    "remaining_qty": remaining_qty_value,
+                    "start_date": start_date,
+                    "due_date": due_date,
+                    "start_slot": start_slot,
+                    "urgent_flag": urgent_flag,
+                    "lock_flag": lock_flag,
+                    "frozen_flag": frozen_flag,
+                    "updated_at": str(order_row.get("updated_at") or ""),
+                    "process_contexts": process_contexts,
+                    "required_shifts": required_shifts,
+                    "slack_days": slack_days,
+                    "min_capacity_per_shift": _to_number(min_capacity, 0),
+                    "total_capacity_per_shift": total_capacity,
+                    "base_first_task_no": int(base_hint.get("first_task_no") or 10**9),
+                    "base_process_first_slot": base_hint.get("process_first_slot", {}),
+                }
+            )
+
+        pending_candidates = self._sort_schedule_candidates(
+            strategy_code=strategy_code,
+            candidates=schedule_candidates,
+        )
+
+        tasks: list[tuple[Any, ...]] = []
+        used_capacity_by_slot: dict[tuple[int, str, str, str], float] = {}
+        day_mode_cache: dict[str, str] = {}
+        task_no = 1
+        while pending_candidates:
+            selected_index = self._select_next_candidate_index(
+                strategy_code=strategy_code,
+                candidates=pending_candidates,
+                planning_rules=planning_rules,
+                day_mode_cache=day_mode_cache,
+                used_capacity_by_slot=used_capacity_by_slot,
+            )
+            candidate = pending_candidates.pop(selected_index)
+            order_no = str(candidate["order_no"])
+            next_start_slot = int(candidate["start_slot"])
+            process_base_first_slot = candidate.get("base_process_first_slot", {})
+            for context in candidate["process_contexts"]:
+                context_start_slot = next_start_slot
+                process_code = str(context["process_code"])
+                base_process_slot = process_base_first_slot.get(process_code)
+                if (
+                    (int(candidate["lock_flag"]) == 1 or int(candidate["frozen_flag"]) == 1)
+                    and base_process_slot is not None
+                ):
+                    context_start_slot = max(context_start_slot, int(base_process_slot))
+
+                allocations, last_slot = self._allocate_process_tasks(
+                    order_no=order_no,
+                    process_context=context,
+                    required_qty=_to_number(candidate["remaining_qty"], 0),
+                    first_slot=context_start_slot,
+                    planning_rules=planning_rules,
+                    day_mode_cache=day_mode_cache,
+                    used_capacity_by_slot=used_capacity_by_slot,
+                )
+                for allocation in allocations:
+                    calendar_date = allocation["calendar_date"]
+                    shift_code = allocation["shift_code"]
+                    tasks.append(
+                        (
+                            version_no,
+                            task_no,
+                            order_no,
+                            process_code,
+                            str(context["process_name_cn"]),
+                            calendar_date,
+                            shift_code,
+                            allocation["plan_qty"],
+                            _iso_at(
+                                calendar_date,
+                                "08:00:00" if shift_code == "DAY" else "20:00:00",
+                            ),
+                        )
+                    )
+                    task_no += 1
+                next_start_slot = last_slot + 1
+
         created_at = utc_now()
         with transaction(self.connection):
             self.connection.execute(
@@ -988,9 +1269,21 @@ class AppService:
 
     def test_material_issues(self, order_no: str, mode: str) -> dict[str, Any]:
         normalized_mode = str(mode or "fast").strip().lower()
-        if normalized_mode == "real":
-            self.factory.build_material_refresh_service().refresh_order_materials(order_no)
-        return self.list_order_pool_materials(order_no, refresh=False)
+        items = self.factory.material_gateway.fetch_order_materials(
+            order_no,
+            mode=normalized_mode,
+        )
+        return {
+            "items": [
+                {
+                    "order_no": item.get("production_order_no") or order_no,
+                    "child_material_code": item.get("child_material_code"),
+                    "child_material_name_cn": item.get("child_material_name"),
+                    "spec_model": item.get("spec_model"),
+                }
+                for item in items
+            ]
+        }
 
     def test_material_supply(self, material_code: str) -> dict[str, Any]:
         code = str(material_code or "").strip()
@@ -1099,11 +1392,7 @@ class AppService:
             for _ in range(count):
                 order_no = f"{next_number:04d}MO-TEST"
                 next_number += 1
-                order_qty = (
-                    datetime.now().microsecond % 4001 + 1000
-                    if random_guidewire
-                    else 100
-                )
+                order_qty = random.randint(1000, 5000) if random_guidewire else 100
                 start_date = _today_text()
                 end_date = (date.today() + timedelta(days=3)).isoformat()
                 source_bill_no = f"TEST-{order_no}"
@@ -1174,6 +1463,132 @@ class AppService:
             "product_name_cn": product_name,
             "completed": completed,
             "order_nos": order_nos,
+            "order_qty_list": order_qty_list,
+        }
+
+    def import_production_orders_from_erp(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if payload.get("random_guidewire_protection_order") is True:
+            return self.import_production_orders(payload)
+        material_code = str(payload.get("material_code") or "").strip().upper()
+        keyword = str(payload.get("keyword") or "").strip()
+        if not material_code and not keyword:
+            raise bad_request(
+                code="IMPORT_FILTER_REQUIRED",
+                message="material_code or keyword is required.",
+            )
+        requested_count = max(1, min(200, int(_to_number(payload.get("n"), 1))))
+        completed = payload.get("completed") is True
+        erp_orders = self.order_gateway.fetch_orders(
+            material_code=material_code or None,
+            keyword=keyword or None,
+            limit=requested_count,
+        )
+        if len(erp_orders) == 0:
+            raise bad_request(
+                code="ERP_PRODUCTION_ORDERS_EMPTY",
+                message="ERP production order list is empty.",
+            )
+
+        normalized_keyword = keyword.lower()
+        matched_orders: list[dict[str, Any]] = []
+        for row in erp_orders:
+            row_material_code = str(row.get("material_code") or "").strip().upper()
+            row_material_name = str(row.get("material_name") or "").strip()
+            if material_code and row_material_code != material_code:
+                continue
+            if normalized_keyword and normalized_keyword not in row_material_name.lower():
+                continue
+            matched_orders.append(row)
+
+        selected_orders = matched_orders[:requested_count]
+        updated_at = utc_now()
+        imported_order_nos: list[str] = []
+        order_qty_list: list[float] = []
+        with transaction(self.connection):
+            for row in selected_orders:
+                order_no = str(row.get("production_order_no") or "").strip()
+                if not order_no:
+                    continue
+                row_material_code = str(row.get("material_code") or "").strip().upper()
+                row_material_name = str(row.get("material_name") or row_material_code).strip() or row_material_code
+                order_qty = _to_number(row.get("production_qty"), 0)
+                if order_qty <= 0:
+                    continue
+                start_date = _normalize_date_text(row.get("planned_start_date")) or _today_text()
+                end_date = _normalize_date_text(row.get("planned_end_date")) or start_date
+                source_bill_no = str(row.get("source_bill_no") or "").strip() or None
+                material_list_no = str(row.get("material_list_no") or "").strip() or None
+                normalized_status = "DONE" if completed else "OPEN"
+                self.connection.execute(
+                    """
+                    INSERT INTO production_orders (
+                        production_order_no,
+                        material_code,
+                        material_name,
+                        material_specification,
+                        production_qty,
+                        status,
+                        planned_start_date,
+                        planned_end_date,
+                        source_bill_no,
+                        material_list_no,
+                        updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(production_order_no) DO UPDATE SET
+                        material_code = excluded.material_code,
+                        material_name = excluded.material_name,
+                        material_specification = excluded.material_specification,
+                        production_qty = excluded.production_qty,
+                        status = excluded.status,
+                        planned_start_date = excluded.planned_start_date,
+                        planned_end_date = excluded.planned_end_date,
+                        source_bill_no = excluded.source_bill_no,
+                        material_list_no = excluded.material_list_no,
+                        updated_at = excluded.updated_at
+                    """,
+                    (
+                        order_no,
+                        row_material_code,
+                        row_material_name,
+                        row.get("material_specification"),
+                        order_qty,
+                        normalized_status,
+                        start_date,
+                        end_date,
+                        source_bill_no,
+                        material_list_no,
+                        updated_at,
+                    ),
+                )
+                self._upsert_order_state(
+                    {
+                        "production_order_no": order_no,
+                        "promised_due_date": end_date,
+                        "expected_start_date": start_date,
+                        "expected_start_time": _iso_at(start_date, "08:00:00"),
+                        "expected_finish_time": _iso_at(end_date, "18:00:00"),
+                        "urgent_flag": 0,
+                        "lock_flag": 0,
+                        "frozen_flag": 0,
+                        "status": normalized_status,
+                        "order_status": normalized_status,
+                        "completed_qty": order_qty if completed else 0,
+                        "remaining_qty": 0 if completed else order_qty,
+                        "progress_rate": 100 if completed else 0,
+                        "production_batch_no": f"{source_bill_no}-B1" if source_bill_no else None,
+                    }
+                )
+                imported_order_nos.append(order_no)
+                order_qty_list.append(order_qty)
+        return {
+            "material_code": material_code,
+            "keyword": keyword,
+            "requested_count": requested_count,
+            "matched_count": len(matched_orders),
+            "imported_count": len(imported_order_nos),
+            "completed": completed,
+            "imported_order_nos": imported_order_nos,
+            "order_nos": imported_order_nos,
             "order_qty_list": order_qty_list,
         }
 
@@ -1468,32 +1883,148 @@ class AppService:
         route_rows: list[dict[str, Any]],
         topology_by_process: dict[str, dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        if capacity_rows:
-            return [
-                {
-                    "sequence_no": index + 1,
-                    "process_code": row["process_code"],
-                    "process_name_cn": row.get("process_name") or row["process_code"],
-                    "workshop_code": row.get("workshop_code") or "-",
-                    "line_code": row.get("line_code") or "-",
-                    "dependency_type": "FS",
-                }
-                for index, row in enumerate(capacity_rows)
-            ]
-        contexts: list[dict[str, Any]] = []
-        for index, row in enumerate(route_rows):
+        capacity_row_by_process = self._best_capacity_row_by_process(capacity_rows)
+
+        if route_rows:
+            contexts: list[dict[str, Any]] = []
+            for index, row in enumerate(route_rows):
+                process_code = str(row.get("process_code") or "").strip().upper()
+                if not process_code:
+                    continue
+                topology_row = topology_by_process.get(process_code, {})
+                capacity_row = capacity_row_by_process.get(process_code, {})
+                capacity_per_shift = _to_number(
+                    capacity_row.get("capacity_qty"),
+                    _to_number(topology_row.get("capacity_per_shift"), 0),
+                )
+                contexts.append(
+                    {
+                        "sequence_no": index + 1,
+                        "process_code": process_code,
+                        "process_name_cn": (
+                            str(
+                                row.get("process_name_cn")
+                                or capacity_row.get("process_name")
+                                or process_code
+                            ).strip()
+                            or process_code
+                        ),
+                        "workshop_code": str(
+                            capacity_row.get("workshop_code")
+                            or topology_row.get("workshop_code")
+                            or "-"
+                        ).strip()
+                        or "-",
+                        "line_code": str(
+                            capacity_row.get("line_code")
+                            or topology_row.get("line_code")
+                            or "-"
+                        ).strip()
+                        or "-",
+                        "dependency_type": str(row.get("dependency_type") or "FS").strip().upper() or "FS",
+                        "capacity_per_shift": capacity_per_shift,
+                    }
+                )
+            return contexts
+
+        contexts = []
+        deduplicated_rows = sorted(
+            capacity_row_by_process.values(),
+            key=lambda item: str(item.get("process_code") or ""),
+        )
+        for index, row in enumerate(deduplicated_rows):
             process_code = str(row.get("process_code") or "").strip().upper()
-            topology_row = topology_by_process.get(process_code, {})
+            if not process_code:
+                continue
             contexts.append(
                 {
                     "sequence_no": index + 1,
                     "process_code": process_code,
-                    "process_name_cn": row.get("process_name_cn") or process_code,
-                    "workshop_code": topology_row.get("workshop_code") or "-",
-                    "line_code": topology_row.get("line_code") or "-",
-                    "dependency_type": row.get("dependency_type") or "FS",
+                    "process_name_cn": str(row.get("process_name") or process_code).strip() or process_code,
+                    "workshop_code": str(row.get("workshop_code") or "-").strip() or "-",
+                    "line_code": str(row.get("line_code") or "-").strip() or "-",
+                    "dependency_type": "FS",
+                    "capacity_per_shift": _to_number(row.get("capacity_qty"), 0),
                 }
             )
+        return contexts
+
+    def _build_schedule_process_contexts(
+        self,
+        *,
+        order_no: str,
+        product_code: str,
+        capacity_rows: list[dict[str, Any]],
+        route_rows: list[dict[str, Any]],
+        topology_by_process: dict[str, dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        if len(route_rows) == 0:
+            raise server_error(
+                code="SCHEDULE_ROUTE_REQUIRED",
+                message="Process route is required for schedule generation.",
+                details={"order_no": order_no, "product_code": product_code},
+            )
+
+        contexts = self._build_process_contexts(
+            order_no=order_no,
+            product_code=product_code,
+            capacity_rows=capacity_rows,
+            route_rows=route_rows,
+            topology_by_process=topology_by_process,
+        )
+        if len(contexts) == 0:
+            raise server_error(
+                code="SCHEDULE_PROCESS_CONTEXTS_EMPTY",
+                message="No process contexts available for schedule generation.",
+                details={"order_no": order_no, "product_code": product_code},
+            )
+
+        for context in contexts:
+            process_code = str(context.get("process_code") or "").strip().upper()
+            workshop_code = str(context.get("workshop_code") or "").strip().upper()
+            line_code = str(context.get("line_code") or "").strip().upper()
+            capacity_per_shift = _to_number(context.get("capacity_per_shift"), 0)
+            if not process_code:
+                raise server_error(
+                    code="SCHEDULE_PROCESS_CODE_REQUIRED",
+                    message="Process code is missing in schedule process context.",
+                    details={"order_no": order_no, "product_code": product_code},
+                )
+            if not workshop_code or workshop_code == "-":
+                raise server_error(
+                    code="SCHEDULE_WORKSHOP_CODE_REQUIRED",
+                    message="Workshop code is missing in schedule process context.",
+                    details={
+                        "order_no": order_no,
+                        "product_code": product_code,
+                        "process_code": process_code,
+                    },
+                )
+            if not line_code or line_code == "-":
+                raise server_error(
+                    code="SCHEDULE_LINE_CODE_REQUIRED",
+                    message="Line code is missing in schedule process context.",
+                    details={
+                        "order_no": order_no,
+                        "product_code": product_code,
+                        "process_code": process_code,
+                    },
+                )
+            if capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
+                raise server_error(
+                    code="SCHEDULE_CAPACITY_PER_SHIFT_INVALID",
+                    message="capacity_per_shift must be greater than 0 for all scheduled processes.",
+                    details={
+                        "order_no": order_no,
+                        "product_code": product_code,
+                        "process_code": process_code,
+                        "capacity_per_shift": capacity_per_shift,
+                    },
+                )
+            context["workshop_code"] = workshop_code
+            context["line_code"] = line_code
+            context["process_code"] = process_code
+            context["capacity_per_shift"] = capacity_per_shift
         return contexts
 
     def _refresh_bom_children(self, parent_material_code: str) -> None:
@@ -1568,6 +2099,544 @@ class AppService:
             if process_code and process_code not in names:
                 names[process_code] = str(row.get("process_name") or process_code)
         return names
+
+    def _normalize_strategy_code(self, value: object) -> str:
+        normalized = str(value or "KEY_ORDER_FIRST").strip().upper() or "KEY_ORDER_FIRST"
+        if normalized not in SUPPORTED_STRATEGY_CODES:
+            raise bad_request(
+                code="SCHEDULE_STRATEGY_INVALID",
+                message="strategy_code is invalid.",
+                details={
+                    "strategy_code": normalized,
+                    "supported": sorted(SUPPORTED_STRATEGY_CODES),
+                },
+            )
+        return normalized
+
+    def _normalize_weekend_rest_mode(self, value: object) -> str:
+        normalized = str(value or "DOUBLE").strip().upper() or "DOUBLE"
+        if normalized not in WEEKEND_REST_MODES:
+            raise bad_request(
+                code="WEEKEND_REST_MODE_INVALID",
+                message="weekend_rest_mode is invalid.",
+                details={
+                    "weekend_rest_mode": normalized,
+                    "supported": sorted(WEEKEND_REST_MODES),
+                },
+            )
+        return normalized
+
+    def _normalize_date_shift_mode(self, value: object) -> str:
+        normalized = str(value or "").strip().upper()
+        if normalized not in DATE_SHIFT_MODES:
+            raise bad_request(
+                code="DATE_SHIFT_MODE_INVALID",
+                message="date_shift_mode is invalid.",
+                details={
+                    "date_shift_mode": normalized,
+                    "supported": sorted(DATE_SHIFT_MODES),
+                },
+            )
+        return normalized
+
+    def _normalize_date_shift_mode_by_date(self, value: object) -> dict[str, str]:
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            raise bad_request(
+                code="DATE_SHIFT_MODE_BY_DATE_INVALID",
+                message="date_shift_mode_by_date must be an object.",
+            )
+        out: dict[str, str] = {}
+        for key, mode_value in value.items():
+            date_text = _normalize_date_text(key)
+            if not date_text:
+                raise bad_request(
+                    code="DATE_SHIFT_MODE_DATE_INVALID",
+                    message="date_shift_mode_by_date contains invalid date key.",
+                    details={"date": str(key)},
+                )
+            out[date_text] = self._normalize_date_shift_mode(mode_value)
+        return out
+
+    def _build_planning_rules_from_current_config(self) -> dict[str, Any]:
+        row = self._get_rules_row()
+        return {
+            "skip_statutory_holidays": bool(row.get("skip_statutory_holidays")),
+            "weekend_rest_mode": self._normalize_weekend_rest_mode(
+                row.get("weekend_rest_mode")
+            ),
+            "date_shift_mode_by_date": self._normalize_date_shift_mode_by_date(
+                loads(row.get("date_shift_mode_by_date_json") or "{}")
+            ),
+        }
+
+    def _best_capacity_row_by_process(
+        self,
+        capacity_rows: list[dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        for row in capacity_rows:
+            process_code = str(row.get("process_code") or "").strip().upper()
+            if not process_code:
+                continue
+            current = out.get(process_code)
+            next_capacity = _to_number(row.get("capacity_qty"), 0)
+            if current is None:
+                out[process_code] = row
+                continue
+            current_capacity = _to_number(current.get("capacity_qty"), 0)
+            if next_capacity > current_capacity:
+                out[process_code] = row
+        return out
+
+    def _enabled_topology_by_process(
+        self,
+        topology_rows: list[dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        for row in topology_rows:
+            if int(_to_number(row.get("enabled_flag"), 0)) != 1:
+                continue
+            process_code = str(row.get("process_code") or "").strip().upper()
+            if not process_code:
+                continue
+            current = out.get(process_code)
+            next_capacity = _to_number(row.get("capacity_per_shift"), 0)
+            if current is None:
+                out[process_code] = row
+                continue
+            current_capacity = _to_number(current.get("capacity_per_shift"), 0)
+            if next_capacity > current_capacity:
+                out[process_code] = row
+        return out
+
+    def _build_base_schedule_hints(self, version_no: str) -> dict[str, dict[str, Any]]:
+        rows = fetch_all(
+            self.connection,
+            """
+            SELECT
+                task_no,
+                production_order_no,
+                process_code,
+                calendar_date,
+                shift_code
+            FROM schedule_tasks
+            WHERE version_no = ?
+            ORDER BY task_no ASC
+            """,
+            (version_no,),
+        )
+        hints: dict[str, dict[str, Any]] = {}
+        for row in rows:
+            order_no = str(row.get("production_order_no") or "").strip()
+            process_code = str(row.get("process_code") or "").strip().upper()
+            calendar_date = _normalize_date_text(row.get("calendar_date"))
+            if not order_no or not process_code or not calendar_date:
+                raise server_error(
+                    code="BASE_SCHEDULE_TASK_INVALID",
+                    message="Base schedule task is invalid.",
+                    details={"version_no": version_no, "task_no": row.get("task_no")},
+                )
+            shift_code = _normalize_shift_code(row.get("shift_code"))
+            slot_index = _slot_index_from_text(calendar_date, shift_code)
+            task_no = int(_to_number(row.get("task_no"), 0))
+            hint = hints.setdefault(
+                order_no,
+                {
+                    "first_task_no": task_no,
+                    "first_slot": slot_index,
+                    "process_first_slot": {},
+                },
+            )
+            if task_no < int(hint["first_task_no"]):
+                hint["first_task_no"] = task_no
+            if slot_index < int(hint["first_slot"]):
+                hint["first_slot"] = slot_index
+            process_first_slot = hint["process_first_slot"]
+            existing_process_slot = process_first_slot.get(process_code)
+            if existing_process_slot is None or slot_index < int(existing_process_slot):
+                process_first_slot[process_code] = slot_index
+        return hints
+
+    def _resolve_day_shift_mode(
+        self,
+        *,
+        date_text: str,
+        planning_rules: dict[str, Any],
+        day_mode_cache: dict[str, str],
+    ) -> str:
+        cached = day_mode_cache.get(date_text)
+        if cached:
+            return cached
+
+        date_shift_mode_by_date = planning_rules["date_shift_mode_by_date"]
+        manual_mode = date_shift_mode_by_date.get(date_text)
+        if manual_mode:
+            day_mode_cache[date_text] = manual_mode
+            return manual_mode
+
+        mode = "DAY"
+        if planning_rules["skip_statutory_holidays"] is True:
+            year_value = int(date_text[:4])
+            if year_value not in SUPPORTED_CN_HOLIDAY_YEARS:
+                raise bad_request(
+                    code="HOLIDAY_YEAR_UNSUPPORTED",
+                    message="Statutory holiday data is unsupported for schedule date.",
+                    details={"year": year_value, "date": date_text},
+                )
+            if self._is_cn_statutory_holiday(date_text):
+                mode = "REST"
+            else:
+                weekday = date.fromisoformat(date_text).weekday()
+                weekend_mode = planning_rules["weekend_rest_mode"]
+                if weekend_mode == "DOUBLE" and weekday in (5, 6):
+                    mode = "REST"
+                elif weekend_mode == "SINGLE" and weekday == 6:
+                    mode = "REST"
+
+        day_mode_cache[date_text] = mode
+        return mode
+
+    def _allowed_shifts_for_day_mode(self, mode: str) -> tuple[str, ...]:
+        if mode == "REST":
+            return ()
+        if mode == "BOTH":
+            return ("DAY", "NIGHT")
+        if mode == "NIGHT":
+            return ("NIGHT",)
+        return ("DAY",)
+
+    def _next_working_slot(
+        self,
+        *,
+        start_slot: int,
+        planning_rules: dict[str, Any],
+        day_mode_cache: dict[str, str],
+    ) -> tuple[int, str, str]:
+        slot_cursor = max(0, int(start_slot))
+        for _ in range(SCHEDULE_SLOT_SEARCH_GUARD):
+            day_value, shift_code = _slot_to_date_shift(slot_cursor)
+            date_text = day_value.isoformat()
+            day_mode = self._resolve_day_shift_mode(
+                date_text=date_text,
+                planning_rules=planning_rules,
+                day_mode_cache=day_mode_cache,
+            )
+            if shift_code in self._allowed_shifts_for_day_mode(day_mode):
+                return slot_cursor, date_text, shift_code
+            slot_cursor += 1
+        raise server_error(
+            code="SCHEDULE_WORKING_SLOT_NOT_FOUND",
+            message="Cannot find working slot under current calendar rules.",
+            details={"start_slot": start_slot},
+        )
+
+    def _allocate_process_tasks(
+        self,
+        *,
+        order_no: str,
+        process_context: dict[str, Any],
+        required_qty: float,
+        first_slot: int,
+        planning_rules: dict[str, Any],
+        day_mode_cache: dict[str, str],
+        used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+    ) -> tuple[list[dict[str, Any]], int]:
+        remaining_qty = max(0.0, _to_number(required_qty, 0))
+        if remaining_qty <= SCHEDULE_NUMBER_EPSILON:
+            return [], int(first_slot)
+
+        process_code = str(process_context.get("process_code") or "").strip().upper()
+        workshop_code = str(process_context.get("workshop_code") or "").strip().upper()
+        line_code = str(process_context.get("line_code") or "").strip().upper()
+        capacity_per_shift = _to_number(process_context.get("capacity_per_shift"), 0)
+        if capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
+            raise server_error(
+                code="SCHEDULE_CAPACITY_PER_SHIFT_INVALID",
+                message="capacity_per_shift must be greater than 0 for all scheduled processes.",
+                details={"order_no": order_no, "process_code": process_code},
+            )
+
+        allocations: list[dict[str, Any]] = []
+        slot_cursor = max(0, int(first_slot))
+        last_slot = slot_cursor
+        loop_guard = 0
+        while remaining_qty > SCHEDULE_NUMBER_EPSILON:
+            if loop_guard >= SCHEDULE_SLOT_SEARCH_GUARD:
+                raise server_error(
+                    code="SCHEDULE_ALLOCATION_GUARD_EXCEEDED",
+                    message="Unable to allocate process workload within slot guard limit.",
+                    details={
+                        "order_no": order_no,
+                        "process_code": process_code,
+                        "remaining_qty": remaining_qty,
+                    },
+                )
+            slot_index, calendar_date, shift_code = self._next_working_slot(
+                start_slot=slot_cursor,
+                planning_rules=planning_rules,
+                day_mode_cache=day_mode_cache,
+            )
+            key = (slot_index, workshop_code, line_code, process_code)
+            used_capacity = _to_number(used_capacity_by_slot.get(key), 0)
+            available_capacity = max(0.0, capacity_per_shift - used_capacity)
+            if available_capacity <= SCHEDULE_NUMBER_EPSILON:
+                slot_cursor = slot_index + 1
+                loop_guard += 1
+                continue
+
+            planned_qty = min(remaining_qty, available_capacity)
+            used_capacity_by_slot[key] = used_capacity + planned_qty
+            allocations.append(
+                {
+                    "calendar_date": calendar_date,
+                    "shift_code": shift_code,
+                    "plan_qty": planned_qty,
+                }
+            )
+            remaining_qty -= planned_qty
+            last_slot = slot_index
+            slot_cursor = slot_index + 1
+            loop_guard += 1
+
+        return allocations, last_slot
+
+    def _sort_schedule_candidates(
+        self,
+        *,
+        strategy_code: str,
+        candidates: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        def updated_rank(text: str) -> float:
+            safe_text = str(text or "").strip()
+            if not safe_text:
+                return 0.0
+            try:
+                return datetime.fromisoformat(safe_text.replace("Z", "+00:00")).timestamp()
+            except ValueError:
+                return 0.0
+
+        if strategy_code == "KEY_ORDER_FIRST":
+            return sorted(
+                candidates,
+                key=lambda item: (
+                    -int(item.get("frozen_flag") or 0),
+                    -int(item.get("lock_flag") or 0),
+                    -int(item.get("urgent_flag") or 0),
+                    int(item.get("base_first_task_no") or 10**9),
+                    item.get("start_date"),
+                    item.get("due_date"),
+                    -updated_rank(str(item.get("updated_at") or "")),
+                    str(item.get("order_no") or ""),
+                ),
+            )
+        if strategy_code == "MAX_CAPACITY_FIRST":
+            return sorted(
+                candidates,
+                key=lambda item: (
+                    -int(item.get("frozen_flag") or 0),
+                    -int(item.get("lock_flag") or 0),
+                    -int(item.get("urgent_flag") or 0),
+                    -_to_number(item.get("total_capacity_per_shift"), 0),
+                    -_to_number(item.get("min_capacity_per_shift"), 0),
+                    int(item.get("base_first_task_no") or 10**9),
+                    item.get("start_date"),
+                    item.get("due_date"),
+                    str(item.get("order_no") or ""),
+                ),
+            )
+        if strategy_code == "MIN_DELAY_FIRST":
+            return sorted(
+                candidates,
+                key=lambda item: (
+                    -int(item.get("frozen_flag") or 0),
+                    -int(item.get("lock_flag") or 0),
+                    -int(item.get("urgent_flag") or 0),
+                    int(_to_number(item.get("slack_days"), 0)),
+                    item.get("due_date"),
+                    item.get("start_date"),
+                    int(item.get("base_first_task_no") or 10**9),
+                    str(item.get("order_no") or ""),
+                ),
+            )
+        raise bad_request(
+            code="SCHEDULE_STRATEGY_INVALID",
+            message="strategy_code is invalid.",
+            details={"strategy_code": strategy_code},
+        )
+
+    def _first_available_slot_for_process(
+        self,
+        *,
+        process_context: dict[str, Any],
+        start_slot: int,
+        planning_rules: dict[str, Any],
+        day_mode_cache: dict[str, str],
+        used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+    ) -> int:
+        process_code = str(process_context.get("process_code") or "").strip().upper()
+        workshop_code = str(process_context.get("workshop_code") or "").strip().upper()
+        line_code = str(process_context.get("line_code") or "").strip().upper()
+        capacity_per_shift = _to_number(process_context.get("capacity_per_shift"), 0)
+        if capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
+            raise server_error(
+                code="SCHEDULE_CAPACITY_PER_SHIFT_INVALID",
+                message="capacity_per_shift must be greater than 0 for all scheduled processes.",
+                details={"process_code": process_code},
+            )
+
+        slot_cursor = max(0, int(start_slot))
+        for _ in range(SCHEDULE_SLOT_SEARCH_GUARD):
+            slot_index, _, shift_code = self._next_working_slot(
+                start_slot=slot_cursor,
+                planning_rules=planning_rules,
+                day_mode_cache=day_mode_cache,
+            )
+            key = (slot_index, workshop_code, line_code, process_code)
+            used_capacity = _to_number(used_capacity_by_slot.get(key), 0)
+            available_capacity = max(0.0, capacity_per_shift - used_capacity)
+            if available_capacity > SCHEDULE_NUMBER_EPSILON:
+                return slot_index
+            slot_cursor = slot_index + 1
+        raise server_error(
+            code="SCHEDULE_WORKING_SLOT_NOT_FOUND",
+            message="Cannot find available slot for process.",
+            details={"process_code": process_code, "start_slot": start_slot},
+        )
+
+    def _candidate_runtime_metrics(
+        self,
+        *,
+        candidate: dict[str, Any],
+        planning_rules: dict[str, Any],
+        day_mode_cache: dict[str, str],
+        used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+    ) -> dict[str, int]:
+        process_contexts = candidate["process_contexts"]
+        if len(process_contexts) == 0:
+            raise server_error(
+                code="SCHEDULE_PROCESS_CONTEXTS_EMPTY",
+                message="No process contexts available for schedule candidate.",
+                details={"order_no": candidate.get("order_no")},
+            )
+
+        first_context = process_contexts[0]
+        first_process_code = str(first_context.get("process_code") or "").strip().upper()
+        first_slot = int(candidate.get("start_slot") or 0)
+        base_process_first_slot = candidate.get("base_process_first_slot", {})
+        first_process_base_slot = base_process_first_slot.get(first_process_code)
+        if (
+            (int(candidate.get("lock_flag") or 0) == 1 or int(candidate.get("frozen_flag") or 0) == 1)
+            and first_process_base_slot is not None
+        ):
+            first_slot = max(first_slot, int(first_process_base_slot))
+
+        first_ready_slot = self._first_available_slot_for_process(
+            process_context=first_context,
+            start_slot=first_slot,
+            planning_rules=planning_rules,
+            day_mode_cache=day_mode_cache,
+            used_capacity_by_slot=used_capacity_by_slot,
+        )
+        required_shifts = max(1, int(_to_number(candidate.get("required_shifts"), 1)))
+        projected_finish_slot = first_ready_slot + required_shifts - 1
+        due_date = candidate.get("due_date")
+        if not isinstance(due_date, date):
+            due_date = _parse_date_or_today(due_date)
+        due_slot = _slot_index_for(due_date, "NIGHT")
+        projected_lateness_slots = projected_finish_slot - due_slot
+        projected_slack_slots = due_slot - projected_finish_slot
+        return {
+            "first_ready_slot": first_ready_slot,
+            "projected_finish_slot": projected_finish_slot,
+            "due_slot": due_slot,
+            "projected_lateness_slots": projected_lateness_slots,
+            "projected_slack_slots": projected_slack_slots,
+        }
+
+    def _select_next_candidate_index(
+        self,
+        *,
+        strategy_code: str,
+        candidates: list[dict[str, Any]],
+        planning_rules: dict[str, Any],
+        day_mode_cache: dict[str, str],
+        used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+    ) -> int:
+        if len(candidates) == 0:
+            raise server_error(
+                code="SCHEDULE_CANDIDATE_EMPTY",
+                message="No schedule candidates available.",
+            )
+
+        best_index = 0
+        best_key: tuple[Any, ...] | None = None
+        for index, candidate in enumerate(candidates):
+            metrics = self._candidate_runtime_metrics(
+                candidate=candidate,
+                planning_rules=planning_rules,
+                day_mode_cache=day_mode_cache,
+                used_capacity_by_slot=used_capacity_by_slot,
+            )
+            late_slots = int(metrics["projected_lateness_slots"])
+            late_rank = 0 if late_slots > 0 else 1
+            late_severity = -max(late_slots, 0)
+            business_head = (
+                -int(candidate.get("frozen_flag") or 0),
+                -int(candidate.get("lock_flag") or 0),
+                -int(candidate.get("urgent_flag") or 0),
+            )
+            base_tail = (
+                int(candidate.get("base_first_task_no") or 10**9),
+                str(candidate.get("order_no") or ""),
+            )
+
+            if strategy_code == "KEY_ORDER_FIRST":
+                key = (
+                    *business_head,
+                    late_rank,
+                    late_severity,
+                    int(metrics["due_slot"]),
+                    int(metrics["first_ready_slot"]),
+                    *base_tail,
+                )
+            elif strategy_code == "MAX_CAPACITY_FIRST":
+                key = (
+                    *business_head,
+                    late_rank,
+                    late_severity,
+                    -_to_number(candidate.get("total_capacity_per_shift"), 0),
+                    int(_to_number(candidate.get("required_shifts"), 0)),
+                    int(metrics["due_slot"]),
+                    int(metrics["first_ready_slot"]),
+                    *base_tail,
+                )
+            elif strategy_code == "MIN_DELAY_FIRST":
+                key = (
+                    *business_head,
+                    late_rank,
+                    late_severity,
+                    int(metrics["projected_slack_slots"]),
+                    int(metrics["due_slot"]),
+                    int(metrics["first_ready_slot"]),
+                    *base_tail,
+                )
+            else:
+                raise bad_request(
+                    code="SCHEDULE_STRATEGY_INVALID",
+                    message="strategy_code is invalid.",
+                    details={"strategy_code": strategy_code},
+                )
+
+            if best_key is None or key < best_key:
+                best_key = key
+                best_index = index
+
+        return best_index
+
+    def _is_cn_statutory_holiday(self, date_text: str) -> bool:
+        return date_text in CN_STATUTORY_HOLIDAY_DATE_SET
 
     def _get_rules_row(self) -> dict[str, Any]:
         row = fetch_one(
@@ -1647,13 +2716,49 @@ class AppService:
             self.connection,
             "SELECT COUNT(1) AS total FROM masterdata_process_routes",
         )
-        topology_rows = self._derive_line_topology_rows() if int(topology_count["total"]) == 0 else []
-        route_rows = self._derive_route_rows() if int(route_count["total"]) == 0 else []
+        need_topology_seed = int(topology_count["total"]) == 0
+        need_route_seed = int(route_count["total"]) == 0
+        if not need_topology_seed and not need_route_seed:
+            return
+
+        upstream_route_rows = (
+            self.masterdata_gateway.fetch_process_routes()
+            if need_topology_seed or need_route_seed
+            else []
+        )
+        upstream_capability_rows = (
+            self.masterdata_gateway.fetch_equipment_process_capabilities()
+            if need_topology_seed
+            else []
+        )
+        topology_rows = (
+            self._build_line_topology_seed_rows(
+                upstream_route_rows,
+                upstream_capability_rows,
+            )
+            if need_topology_seed
+            else []
+        )
+        route_rows = (
+            self._build_route_seed_rows(upstream_route_rows)
+            if need_route_seed
+            else []
+        )
+        if need_topology_seed and len(topology_rows) == 0:
+            raise server_error(
+                code="MASTERDATA_LINE_TOPOLOGY_EMPTY",
+                message="Upstream line topology seed returned no rows.",
+            )
+        if need_route_seed and len(route_rows) == 0:
+            raise server_error(
+                code="MASTERDATA_PROCESS_ROUTES_EMPTY",
+                message="Upstream process route seed returned no rows.",
+            )
         if len(topology_rows) == 0 and len(route_rows) == 0:
             return
         updated_at = utc_now()
         with transaction(self.connection):
-            if len(topology_rows) > 0 and int(topology_count["total"]) == 0:
+            if len(topology_rows) > 0 and need_topology_seed:
                 self.connection.executemany(
                     """
                     INSERT INTO masterdata_line_topology (
@@ -1687,7 +2792,7 @@ class AppService:
                         for row in topology_rows
                     ],
                 )
-            if len(route_rows) > 0 and int(route_count["total"]) == 0:
+            if len(route_rows) > 0 and need_route_seed:
                 self.connection.executemany(
                     """
                     INSERT INTO masterdata_process_routes (
@@ -1717,6 +2822,118 @@ class AppService:
                         for row in route_rows
                     ],
                 )
+
+    def _build_route_seed_rows(
+        self,
+        rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        seen: set[tuple[str, int, str]] = set()
+        for row in rows:
+            product_code = str(row.get("product_code") or "").strip().upper()
+            process_code = str(row.get("process_code") or "").strip().upper()
+            sequence_no = int(_to_number(row.get("sequence_no"), 0))
+            if not product_code or not process_code or sequence_no <= 0:
+                continue
+            key = (product_code, sequence_no, process_code)
+            if key in seen:
+                continue
+            seen.add(key)
+            product_name_cn = str(row.get("product_name_cn") or product_code).strip() or product_code
+            route_no = str(row.get("route_no") or f"ROUTE-{product_code}").strip() or f"ROUTE-{product_code}"
+            route_name_cn = str(row.get("route_name_cn") or product_name_cn).strip() or product_name_cn
+            out.append(
+                {
+                    "product_code": product_code,
+                    "sequence_no": sequence_no,
+                    "process_code": process_code,
+                    "process_name_cn": str(row.get("process_name_cn") or process_code).strip() or process_code,
+                    "dependency_type": str(row.get("dependency_type") or "FS").strip().upper() or "FS",
+                    "route_no": route_no,
+                    "route_name_cn": route_name_cn,
+                    "product_name_cn": product_name_cn,
+                }
+            )
+        out.sort(key=lambda item: (str(item["product_code"]), int(item["sequence_no"])))
+        return out
+
+    def _build_line_topology_seed_rows(
+        self,
+        route_rows: list[dict[str, Any]],
+        capability_rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        route_meta_by_process: dict[str, dict[str, Any]] = {}
+        for row in route_rows:
+            process_code = str(row.get("process_code") or "").strip().upper()
+            if not process_code:
+                continue
+            current = route_meta_by_process.get(process_code)
+            next_meta = {
+                "process_name_cn": str(row.get("process_name_cn") or process_code).strip() or process_code,
+                "capacity_per_shift": _to_number(row.get("capacity_per_shift"), 0),
+                "required_workers": int(_to_number(row.get("required_manpower_per_group"), 0)),
+                "required_machines": int(_to_number(row.get("required_equipment_count"), 0)),
+            }
+            if current is None:
+                route_meta_by_process[process_code] = next_meta
+                continue
+            current["capacity_per_shift"] = max(
+                _to_number(current.get("capacity_per_shift"), 0),
+                next_meta["capacity_per_shift"],
+            )
+            current["required_workers"] = max(
+                int(_to_number(current.get("required_workers"), 0)),
+                next_meta["required_workers"],
+            )
+            current["required_machines"] = max(
+                int(_to_number(current.get("required_machines"), 0)),
+                next_meta["required_machines"],
+            )
+            if not current.get("process_name_cn"):
+                current["process_name_cn"] = next_meta["process_name_cn"]
+
+        out: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, str, str]] = set()
+        for row in capability_rows:
+            company_code = str(row.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
+            workshop_code = str(row.get("workshop_code") or "").strip().upper()
+            line_code = str(row.get("line_code") or "").strip().upper()
+            process_code = str(row.get("process_code") or "").strip().upper()
+            if not workshop_code or not line_code or not process_code:
+                continue
+            meta = route_meta_by_process.get(process_code)
+            if meta is None:
+                raise server_error(
+                    code="MASTERDATA_TOPOLOGY_PROCESS_META_MISSING",
+                    message="Missing route metadata for process in line topology seed.",
+                    details={"process_code": process_code},
+                )
+            key = (company_code, workshop_code, line_code, process_code)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                {
+                    "company_code": company_code,
+                    "workshop_code": workshop_code,
+                    "workshop_name": workshop_code,
+                    "line_code": line_code,
+                    "line_name": str(row.get("line_name") or line_code).strip() or line_code,
+                    "process_code": process_code,
+                    "capacity_per_shift": _to_number(meta.get("capacity_per_shift"), 0),
+                    "required_workers": int(_to_number(meta.get("required_workers"), 0)),
+                    "required_machines": int(_to_number(meta.get("required_machines"), 0)),
+                    "enabled_flag": int(_to_number(row.get("enabled_flag"), 0)),
+                }
+            )
+        out.sort(
+            key=lambda item: (
+                str(item["workshop_code"]),
+                str(item["line_code"]),
+                str(item["process_code"]),
+            )
+        )
+        return out
 
     def _list_line_topology_rows(self) -> list[dict[str, Any]]:
         return fetch_all(
