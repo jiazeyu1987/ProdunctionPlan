@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import math
 import random
 import sqlite3
@@ -29,6 +29,7 @@ SUPPORTED_STRATEGY_CODES = {
     "MAX_CAPACITY_FIRST",
     "MIN_DELAY_FIRST",
 }
+SUPPORTED_CAPACITY_SOURCE_MODES = {"DEFAULT", "PLANNED", "ACTUAL"}
 SUPPORTED_CN_HOLIDAY_YEARS = {2024, 2025, 2026, 2027, 2028}
 PRIORITY_LEVEL_MIN = 1
 PRIORITY_LEVEL_MAX = 5
@@ -457,6 +458,274 @@ class AppService:
             ]
         }
 
+    def list_line_daily_capacity(
+        self,
+        calendar_date: str,
+        *,
+        workshop_code: str | None = None,
+        line_code: str | None = None,
+        process_code: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_date = _normalize_date_text(calendar_date)
+        if normalized_date is None:
+            raise bad_request(
+                code="CALENDAR_DATE_REQUIRED",
+                message="calendar_date must be a valid YYYY-MM-DD date.",
+            )
+        filters: list[str] = []
+        parameters: list[Any] = [normalized_date, normalized_date]
+        if workshop_code:
+            filters.append("lt.workshop_code = ?")
+            parameters.append(str(workshop_code).strip().upper())
+        if line_code:
+            filters.append("lt.line_code = ?")
+            parameters.append(str(line_code).strip().upper())
+        if process_code:
+            filters.append("lt.process_code = ?")
+            parameters.append(str(process_code).strip().upper())
+        where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
+        items = fetch_all(
+            self.connection,
+            f"""
+            SELECT
+                ? AS calendar_date,
+                lt.company_code,
+                lt.workshop_code,
+                COALESCE(lt.workshop_name, lt.workshop_code) AS workshop_name,
+                lt.line_code,
+                COALESCE(lt.line_name, lt.line_code) AS line_name,
+                lt.process_code,
+                lt.capacity_per_shift AS default_capacity_qty,
+                plan.planned_capacity_qty,
+                plan.worker_count,
+                plan.machine_count,
+                plan.source_note,
+                actual.actual_capacity_qty,
+                actual.report_count,
+                actual.last_report_time
+            FROM masterdata_line_topology lt
+            LEFT JOIN daily_line_capacity_plan plan
+              ON plan.calendar_date = ?
+             AND plan.company_code = lt.company_code
+             AND plan.workshop_code = lt.workshop_code
+             AND plan.line_code = lt.line_code
+             AND plan.process_code = lt.process_code
+            LEFT JOIN daily_line_capacity_actual actual
+              ON actual.calendar_date = ?
+             AND actual.company_code = lt.company_code
+             AND actual.workshop_code = lt.workshop_code
+             AND actual.line_code = lt.line_code
+             AND actual.process_code = lt.process_code
+            {where_sql}
+            ORDER BY lt.workshop_code ASC, lt.line_code ASC, lt.process_code ASC
+            """,
+            tuple([normalized_date, normalized_date, normalized_date, *parameters[2:]]),
+        )
+        return {"calendar_date": normalized_date, "items": items}
+
+    def save_line_daily_capacity(self, payload: dict[str, Any]) -> dict[str, Any]:
+        normalized_date = _normalize_date_text(payload.get("calendar_date"))
+        if normalized_date is None:
+            raise bad_request(
+                code="CALENDAR_DATE_REQUIRED",
+                message="calendar_date must be a valid YYYY-MM-DD date.",
+            )
+        items = payload.get("items")
+        if not isinstance(items, list) or len(items) == 0:
+            raise bad_request(
+                code="DAILY_CAPACITY_ITEMS_REQUIRED",
+                message="items must be a non-empty array.",
+            )
+        updated_at = utc_now()
+        rows: list[tuple[Any, ...]] = []
+        for item in items:
+            company_code = str(item.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
+            workshop_code = str(item.get("workshop_code") or "").strip().upper()
+            line_code = str(item.get("line_code") or "").strip().upper()
+            process_code = str(item.get("process_code") or "").strip().upper()
+            planned_capacity_qty = _to_number(item.get("planned_capacity_qty"), -1)
+            if not workshop_code or not line_code or not process_code:
+                raise bad_request(
+                    code="DAILY_CAPACITY_KEY_REQUIRED",
+                    message="workshop_code, line_code and process_code are required.",
+                )
+            if planned_capacity_qty < 0:
+                raise bad_request(
+                    code="DAILY_CAPACITY_INVALID",
+                    message="planned_capacity_qty must be >= 0.",
+                )
+            topology_row = fetch_one(
+                self.connection,
+                """
+                SELECT 1
+                FROM masterdata_line_topology
+                WHERE company_code = ?
+                  AND workshop_code = ?
+                  AND line_code = ?
+                  AND process_code = ?
+                LIMIT 1
+                """,
+                (company_code, workshop_code, line_code, process_code),
+            )
+            if topology_row is None:
+                raise bad_request(
+                    code="DAILY_CAPACITY_TOPOLOGY_MISSING",
+                    message="The target line/process does not exist in masterdata_line_topology.",
+                    details={
+                        "company_code": company_code,
+                        "workshop_code": workshop_code,
+                        "line_code": line_code,
+                        "process_code": process_code,
+                    },
+                )
+            rows.append(
+                (
+                    normalized_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    planned_capacity_qty,
+                    int(_to_number(item.get("worker_count"), 0)) if item.get("worker_count") is not None else None,
+                    int(_to_number(item.get("machine_count"), 0)) if item.get("machine_count") is not None else None,
+                    str(item.get("source_note") or "").strip() or None,
+                    updated_at,
+                )
+            )
+        with transaction(self.connection):
+            self.connection.executemany(
+                """
+                INSERT INTO daily_line_capacity_plan (
+                    calendar_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    planned_capacity_qty,
+                    worker_count,
+                    machine_count,
+                    source_note,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(calendar_date, company_code, workshop_code, line_code, process_code)
+                DO UPDATE SET
+                    planned_capacity_qty = excluded.planned_capacity_qty,
+                    worker_count = excluded.worker_count,
+                    machine_count = excluded.machine_count,
+                    source_note = excluded.source_note,
+                    updated_at = excluded.updated_at
+                """,
+                rows,
+            )
+        return self.list_line_daily_capacity(normalized_date)
+
+    def rebuild_line_daily_actual_capacity(self, payload: dict[str, Any]) -> dict[str, Any]:
+        normalized_date = _normalize_date_text(payload.get("calendar_date"))
+        if normalized_date is None:
+            raise bad_request(
+                code="CALENDAR_DATE_REQUIRED",
+                message="calendar_date must be a valid YYYY-MM-DD date.",
+            )
+        report_rows = fetch_all(
+            self.connection,
+            """
+            SELECT report_id, process_code, workshop_code, line_code, report_qty, report_time
+            FROM work_reports
+            """
+        )
+        local_timezone = timezone(timedelta(hours=8))
+        aggregated: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+        skipped_report_count = 0
+        for row in report_rows:
+            process_code = str(row.get("process_code") or "").strip().upper()
+            workshop_code = str(row.get("workshop_code") or "").strip().upper()
+            line_code = str(row.get("line_code") or "").strip().upper()
+            report_time_text = str(row.get("report_time") or "").strip()
+            if not process_code or not workshop_code or not line_code or not report_time_text:
+                skipped_report_count += 1
+                continue
+            try:
+                local_date = (
+                    datetime.fromisoformat(report_time_text)
+                    .astimezone(local_timezone)
+                    .date()
+                    .isoformat()
+                )
+            except ValueError:
+                skipped_report_count += 1
+                continue
+            if local_date != normalized_date:
+                continue
+            topology_row = fetch_one(
+                self.connection,
+                """
+                SELECT company_code
+                FROM masterdata_line_topology
+                WHERE workshop_code = ?
+                  AND line_code = ?
+                  AND process_code = ?
+                LIMIT 1
+                """,
+                (workshop_code, line_code, process_code),
+            )
+            if topology_row is None:
+                skipped_report_count += 1
+                continue
+            company_code = str(topology_row.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
+            key = (company_code, workshop_code, line_code, process_code)
+            current = aggregated.get(key) or {
+                "actual_capacity_qty": 0.0,
+                "report_count": 0,
+                "last_report_time": report_time_text,
+            }
+            current["actual_capacity_qty"] += _to_number(row.get("report_qty"), 0)
+            current["report_count"] += 1
+            if report_time_text > str(current["last_report_time"] or ""):
+                current["last_report_time"] = report_time_text
+            aggregated[key] = current
+        updated_at = utc_now()
+        with transaction(self.connection):
+            self.connection.execute(
+                "DELETE FROM daily_line_capacity_actual WHERE calendar_date = ?",
+                (normalized_date,),
+            )
+            if aggregated:
+                self.connection.executemany(
+                    """
+                    INSERT INTO daily_line_capacity_actual (
+                        calendar_date,
+                        company_code,
+                        workshop_code,
+                        line_code,
+                        process_code,
+                        actual_capacity_qty,
+                        report_count,
+                        last_report_time,
+                        updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            normalized_date,
+                            company_code,
+                            workshop_code,
+                            line_code,
+                            process_code,
+                            values["actual_capacity_qty"],
+                            values["report_count"],
+                            values["last_report_time"],
+                            updated_at,
+                        )
+                        for (company_code, workshop_code, line_code, process_code), values in aggregated.items()
+                    ],
+                )
+        return {
+            "calendar_date": normalized_date,
+            "updated_row_count": len(aggregated),
+            "skipped_report_count": skipped_report_count,
+            "items": self.list_line_daily_capacity(normalized_date)["items"],
+        }
+
     def create_reporting(self, payload: dict[str, Any]) -> dict[str, Any]:
         order_no = str(payload.get("order_no") or "").strip()
         process_code = str(payload.get("process_code") or "").strip().upper()
@@ -488,6 +757,10 @@ class AppService:
             ).strip()
             or "系统填报"
         )
+        workshop_code = str(payload.get("workshop_code") or "").strip().upper() or None
+        workshop_name = str(payload.get("workshop_name") or workshop_code or "").strip() or workshop_code
+        line_code = str(payload.get("line_code") or "").strip().upper() or None
+        line_name = str(payload.get("line_name") or line_code or "").strip() or line_code
         with transaction(self.connection):
             self.connection.execute(
                 """
@@ -511,16 +784,24 @@ class AppService:
                     order_no,
                     process_code,
                     process_name_by_code.get(process_code, process_code),
-                    None,
-                    None,
-                    None,
-                    None,
+                    workshop_code,
+                    workshop_name,
+                    line_code,
+                    line_name,
                     report_qty,
                     report_time,
                     operator_name,
                     report_time,
                 ),
             )
+        if workshop_code and line_code:
+            local_date = (
+                datetime.fromisoformat(report_time)
+                .astimezone(timezone(timedelta(hours=8)))
+                .date()
+                .isoformat()
+            )
+            self.rebuild_line_daily_actual_capacity({"calendar_date": local_date})
         return {
             "report_id": report_id,
             "order_no": order_no,
@@ -534,7 +815,11 @@ class AppService:
     def delete_reporting(self, report_id: str) -> dict[str, Any]:
         existing = fetch_one(
             self.connection,
-            "SELECT report_id FROM work_reports WHERE report_id = ?",
+            """
+            SELECT report_id, process_code, workshop_code, line_code, report_time
+            FROM work_reports
+            WHERE report_id = ?
+            """,
             (report_id,),
         )
         if existing is None:
@@ -548,6 +833,22 @@ class AppService:
                 "DELETE FROM work_reports WHERE report_id = ?",
                 (report_id,),
             )
+        workshop_code = str(existing.get("workshop_code") or "").strip().upper()
+        line_code = str(existing.get("line_code") or "").strip().upper()
+        process_code = str(existing.get("process_code") or "").strip().upper()
+        report_time_text = str(existing.get("report_time") or "").strip()
+        if workshop_code and line_code and process_code and report_time_text:
+            try:
+                local_date = (
+                    datetime.fromisoformat(report_time_text)
+                    .astimezone(timezone(timedelta(hours=8)))
+                    .date()
+                    .isoformat()
+                )
+            except ValueError:
+                local_date = None
+            if local_date:
+                self.rebuild_line_daily_actual_capacity({"calendar_date": local_date})
         return {"ok": True}
 
     def list_schedule_versions(self) -> dict[str, Any]:
@@ -626,10 +927,480 @@ class AppService:
         version_no: str,
         compare_with: str | None,
     ) -> dict[str, Any]:
-        self.get_schedule_version(version_no)
+        current_version = self.get_schedule_version(version_no)
         if compare_with:
-            self.get_schedule_version(compare_with)
-        return {"items": []}
+            compare_version = self.get_schedule_version(compare_with)
+        else:
+            compare_version = self._pick_schedule_compare_version(version_no)
+        if compare_version is None:
+            raise bad_request(
+                code="SCHEDULE_COMPARE_VERSION_REQUIRED",
+                message="compare_with is required when no other comparable version exists.",
+            )
+
+        current_tasks = self._list_schedule_task_detail_rows(version_no)
+        compare_tasks = self._list_schedule_task_detail_rows(str(compare_version["version_no"]))
+        current_orders = self._build_schedule_order_summary_map(current_tasks)
+        compare_orders = self._build_schedule_order_summary_map(compare_tasks)
+
+        delivery_changes = self._build_schedule_delivery_changes(
+            current_orders=current_orders,
+            compare_orders=compare_orders,
+        )
+        schedule_changes = self._build_schedule_schedule_changes(
+            current_orders=current_orders,
+            compare_orders=compare_orders,
+        )
+        line_changes = self._build_schedule_line_changes(
+            current_tasks=current_tasks,
+            compare_tasks=compare_tasks,
+        )
+        material_changes = self._build_schedule_material_changes(
+            current_orders=current_orders,
+            compare_orders=compare_orders,
+        )
+
+        summary = {
+            "selected_version_no": str(current_version["version_no"]),
+            "compare_version_no": str(compare_version["version_no"]),
+            "changed_order_count": len(schedule_changes["items"]),
+            "added_order_count": sum(1 for item in schedule_changes["items"] if item["change_type"] == "ADDED"),
+            "removed_order_count": sum(1 for item in schedule_changes["items"] if item["change_type"] == "REMOVED"),
+            "earlier_finish_count": sum(
+                1 for item in delivery_changes["items"] if item["change_type"] == "EARLIER_FINISH"
+            ),
+            "later_finish_count": sum(
+                1 for item in delivery_changes["items"] if item["change_type"] == "LATER_FINISH"
+            ),
+            "start_changed_count": sum(
+                1
+                for item in schedule_changes["items"]
+                if item["selected_start_date"] != item["compare_start_date"]
+            ),
+            "material_risk_increase_count": sum(
+                1
+                for item in material_changes["items"]
+                if item["risk_change"] in {"NEW_SHORTAGE", "SHORTAGE_WORSE"}
+            ),
+            "line_change_available": bool(line_changes["available"]),
+            "line_change_count": len(line_changes["items"]),
+        }
+
+        return {
+            "selected_version": current_version,
+            "compare_version": compare_version,
+            "summary": summary,
+            "delivery_changes": delivery_changes,
+            "schedule_changes": schedule_changes,
+            "line_changes": line_changes,
+            "material_changes": material_changes,
+        }
+
+    def _pick_schedule_compare_version(self, version_no: str) -> dict[str, Any] | None:
+        rows = fetch_all(
+            self.connection,
+            """
+            SELECT version_no, status, status_name_cn, strategy_code, created_at, published_at
+            FROM schedule_versions
+            WHERE version_no <> ?
+            ORDER BY created_at ASC, version_no ASC
+            """,
+            (version_no,),
+        )
+        if not rows:
+            return None
+        published = [row for row in rows if str(row.get("status") or "").strip().upper() == "PUBLISHED"]
+        if published:
+            return published[-1]
+        return rows[-1]
+
+    def _list_schedule_task_detail_rows(self, version_no: str) -> list[dict[str, Any]]:
+        return fetch_all(
+            self.connection,
+            """
+            SELECT
+                st.version_no,
+                st.task_no,
+                st.production_order_no,
+                st.process_code,
+                COALESCE(st.process_name_cn, st.process_code) AS process_name_cn,
+                st.calendar_date,
+                st.shift_code,
+                st.plan_qty,
+                st.plan_start_time,
+                po.material_code,
+                COALESCE(po.material_name, po.material_code) AS material_name,
+                po.production_qty,
+                po.planned_end_date
+            FROM schedule_tasks st
+            JOIN production_orders po
+              ON po.production_order_no = st.production_order_no
+            WHERE st.version_no = ?
+            ORDER BY st.task_no ASC
+            """,
+            (version_no,),
+        )
+
+    def _build_schedule_order_summary_map(
+        self,
+        task_rows: list[dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        out: dict[str, dict[str, Any]] = {}
+        for row in task_rows:
+            order_no = str(row.get("production_order_no") or "").strip()
+            if not order_no:
+                continue
+            current = out.get(order_no)
+            if current is None:
+                current = {
+                    "order_no": order_no,
+                    "material_code": str(row.get("material_code") or "").strip(),
+                    "material_name": str(row.get("material_name") or row.get("material_code") or "").strip(),
+                    "order_qty": _to_number(row.get("production_qty"), 0),
+                    "due_date": _normalize_date_text(row.get("planned_end_date")),
+                    "start_date": None,
+                    "finish_date": None,
+                    "task_count": 0,
+                    "planned_qty": 0.0,
+                    "signature_parts": [],
+                    "process_codes": set(),
+                    "date_set": set(),
+                    "shift_set": set(),
+                }
+                out[order_no] = current
+            calendar_date = _normalize_date_text(row.get("calendar_date"))
+            if calendar_date and (current["start_date"] is None or calendar_date < current["start_date"]):
+                current["start_date"] = calendar_date
+            if calendar_date and (current["finish_date"] is None or calendar_date > current["finish_date"]):
+                current["finish_date"] = calendar_date
+            process_code = str(row.get("process_code") or "").strip().upper()
+            shift_code = _normalize_shift_code(row.get("shift_code"))
+            plan_qty = _to_number(row.get("plan_qty"), 0)
+            current["task_count"] += 1
+            current["planned_qty"] += plan_qty
+            if process_code:
+                current["process_codes"].add(process_code)
+            if calendar_date:
+                current["date_set"].add(calendar_date)
+            if shift_code:
+                current["shift_set"].add(shift_code)
+            current["signature_parts"].append(
+                "|".join(
+                    [
+                        calendar_date or "",
+                        process_code,
+                        shift_code,
+                        f"{plan_qty:.6f}",
+                    ]
+                )
+            )
+        for row in out.values():
+            row["signature"] = ";".join(sorted(row["signature_parts"]))
+            row["process_codes"] = sorted(row["process_codes"])
+            row["date_set"] = sorted(row["date_set"])
+            row["shift_set"] = sorted(row["shift_set"])
+            order_qty = _to_number(row.get("order_qty"), 0)
+            if order_qty > 0:
+                row["planned_ratio"] = max(0.0, min(1.0, _to_number(row["planned_qty"], 0) / order_qty))
+            else:
+                row["planned_ratio"] = 0.0
+        return out
+
+    def _build_schedule_delivery_changes(
+        self,
+        *,
+        current_orders: dict[str, dict[str, Any]],
+        compare_orders: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        items: list[dict[str, Any]] = []
+        for order_no in sorted(set(current_orders) | set(compare_orders)):
+            current = current_orders.get(order_no)
+            compare = compare_orders.get(order_no)
+            change_type = "UNCHANGED"
+            if current and not compare:
+                change_type = "ADDED"
+            elif compare and not current:
+                change_type = "REMOVED"
+            elif current and compare:
+                current_finish = current.get("finish_date")
+                compare_finish = compare.get("finish_date")
+                if current_finish and compare_finish and current_finish < compare_finish:
+                    change_type = "EARLIER_FINISH"
+                elif current_finish and compare_finish and current_finish > compare_finish:
+                    change_type = "LATER_FINISH"
+            if change_type == "UNCHANGED":
+                continue
+            selected_finish = current.get("finish_date") if current else None
+            compare_finish = compare.get("finish_date") if compare else None
+            selected_due = current.get("due_date") if current else compare.get("due_date") if compare else None
+            compare_due = compare.get("due_date") if compare else current.get("due_date") if current else None
+            items.append(
+                {
+                    "order_no": order_no,
+                    "material_code": (current or compare or {}).get("material_code"),
+                    "material_name": (current or compare or {}).get("material_name"),
+                    "change_type": change_type,
+                    "selected_finish_date": selected_finish,
+                    "compare_finish_date": compare_finish,
+                    "selected_due_date": selected_due,
+                    "compare_due_date": compare_due,
+                    "selected_overdue_days": _days_between(selected_due, selected_finish),
+                    "compare_overdue_days": _days_between(compare_due, compare_finish),
+                }
+            )
+        return {"items": items}
+
+    def _build_schedule_schedule_changes(
+        self,
+        *,
+        current_orders: dict[str, dict[str, Any]],
+        compare_orders: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        items: list[dict[str, Any]] = []
+        for order_no in sorted(set(current_orders) | set(compare_orders)):
+            current = current_orders.get(order_no)
+            compare = compare_orders.get(order_no)
+            change_type = "UNCHANGED"
+            if current and not compare:
+                change_type = "ADDED"
+            elif compare and not current:
+                change_type = "REMOVED"
+            elif current and compare:
+                if current.get("start_date") != compare.get("start_date"):
+                    change_type = "START_CHANGED"
+                elif current.get("finish_date") != compare.get("finish_date"):
+                    change_type = "FINISH_CHANGED"
+                elif current.get("signature") != compare.get("signature"):
+                    change_type = "TASK_CHANGED"
+            if change_type == "UNCHANGED":
+                continue
+            items.append(
+                {
+                    "order_no": order_no,
+                    "material_code": (current or compare or {}).get("material_code"),
+                    "material_name": (current or compare or {}).get("material_name"),
+                    "change_type": change_type,
+                    "selected_start_date": current.get("start_date") if current else None,
+                    "compare_start_date": compare.get("start_date") if compare else None,
+                    "selected_finish_date": current.get("finish_date") if current else None,
+                    "compare_finish_date": compare.get("finish_date") if compare else None,
+                    "selected_task_count": int(current.get("task_count") or 0) if current else 0,
+                    "compare_task_count": int(compare.get("task_count") or 0) if compare else 0,
+                    "selected_planned_qty": _to_number(current.get("planned_qty"), 0) if current else 0,
+                    "compare_planned_qty": _to_number(compare.get("planned_qty"), 0) if compare else 0,
+                }
+            )
+        return {"items": items}
+
+    def _build_schedule_line_changes(
+        self,
+        *,
+        current_tasks: list[dict[str, Any]],
+        compare_tasks: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        binding_rows = fetch_all(
+            self.connection,
+            """
+            SELECT production_order_no, process_code, workshop_code, line_code
+            FROM capacity_bindings
+            """
+        )
+        if len(binding_rows) == 0:
+            return {
+                "available": False,
+                "reason": "schedule_tasks does not store workshop_code/line_code, and capacity_bindings is empty.",
+                "items": [],
+            }
+
+        binding_map: dict[tuple[str, str], tuple[str, str]] = {}
+        for row in binding_rows:
+            key = (
+                str(row.get("production_order_no") or "").strip(),
+                str(row.get("process_code") or "").strip().upper(),
+            )
+            value = (
+                str(row.get("workshop_code") or "").strip().upper(),
+                str(row.get("line_code") or "").strip().upper(),
+            )
+            if key in binding_map and binding_map[key] != value:
+                return {
+                    "available": False,
+                    "reason": "capacity_bindings contains multiple workshop/line mappings for the same order and process.",
+                    "items": [],
+                }
+            binding_map[key] = value
+
+        def summarize(task_rows: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str, Any]]:
+            out: dict[tuple[str, str], dict[str, Any]] = {}
+            for row in task_rows:
+                order_no = str(row.get("production_order_no") or "").strip()
+                process_code = str(row.get("process_code") or "").strip().upper()
+                if not order_no or not process_code:
+                    continue
+                mapping = binding_map.get((order_no, process_code))
+                if mapping is None:
+                    continue
+                workshop_code, line_code = mapping
+                key = (order_no, process_code)
+                current = out.get(key)
+                if current is None:
+                    current = {
+                        "order_no": order_no,
+                        "process_code": process_code,
+                        "process_name_cn": str(row.get("process_name_cn") or process_code),
+                        "workshop_code": workshop_code,
+                        "line_code": line_code,
+                        "start_date": None,
+                        "finish_date": None,
+                    }
+                    out[key] = current
+                date_text = _normalize_date_text(row.get("calendar_date"))
+                if date_text and (current["start_date"] is None or date_text < current["start_date"]):
+                    current["start_date"] = date_text
+                if date_text and (current["finish_date"] is None or date_text > current["finish_date"]):
+                    current["finish_date"] = date_text
+            return out
+
+        current_map = summarize(current_tasks)
+        compare_map = summarize(compare_tasks)
+        items: list[dict[str, Any]] = []
+        for key in sorted(set(current_map) | set(compare_map)):
+            current = current_map.get(key)
+            compare = compare_map.get(key)
+            if current is None or compare is None:
+                continue
+            if (
+                current["workshop_code"] == compare["workshop_code"]
+                and current["line_code"] == compare["line_code"]
+                and current["start_date"] == compare["start_date"]
+                and current["finish_date"] == compare["finish_date"]
+            ):
+                continue
+            items.append(
+                {
+                    "order_no": key[0],
+                    "process_code": key[1],
+                    "process_name_cn": current.get("process_name_cn") or compare.get("process_name_cn"),
+                    "selected_workshop_code": current.get("workshop_code"),
+                    "selected_line_code": current.get("line_code"),
+                    "compare_workshop_code": compare.get("workshop_code"),
+                    "compare_line_code": compare.get("line_code"),
+                    "selected_start_date": current.get("start_date"),
+                    "selected_finish_date": current.get("finish_date"),
+                    "compare_start_date": compare.get("start_date"),
+                    "compare_finish_date": compare.get("finish_date"),
+                }
+            )
+        return {"available": True, "reason": "", "items": items}
+
+    def _build_schedule_material_changes(
+        self,
+        *,
+        current_orders: dict[str, dict[str, Any]],
+        compare_orders: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        material_rows = fetch_all(
+            self.connection,
+            """
+            SELECT
+                mi.production_order_no,
+                mi.child_material_code,
+                mi.child_material_name,
+                mi.issue_qty,
+                COALESCE(sc.supply_type_name, mi.supply_type_name, '-') AS supply_type_name,
+                COALESCE(ic.inventory_qty, mi.inventory_qty, 0) AS inventory_qty
+            FROM material_issue_items mi
+            LEFT JOIN inventory_cache ic
+              ON ic.material_code = mi.child_material_code
+            LEFT JOIN material_supply_cache sc
+              ON sc.material_code = mi.child_material_code
+            """
+        )
+
+        def aggregate(order_map: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
+            out: dict[str, dict[str, Any]] = {}
+            for row in material_rows:
+                order_no = str(row.get("production_order_no") or "").strip()
+                order_summary = order_map.get(order_no)
+                if order_summary is None:
+                    continue
+                consume_ratio = _to_number(order_summary.get("planned_ratio"), 0)
+                if consume_ratio <= 0:
+                    continue
+                material_code = str(row.get("child_material_code") or "").strip().upper()
+                if not material_code:
+                    continue
+                current = out.get(material_code)
+                if current is None:
+                    current = {
+                        "material_code": material_code,
+                        "material_name": str(row.get("child_material_name") or material_code).strip() or material_code,
+                        "supply_type_name": str(row.get("supply_type_name") or "-").strip() or "-",
+                        "inventory_qty": _to_number(row.get("inventory_qty"), 0),
+                        "planned_consume_qty": 0.0,
+                        "order_nos": set(),
+                    }
+                    out[material_code] = current
+                current["inventory_qty"] = max(current["inventory_qty"], _to_number(row.get("inventory_qty"), 0))
+                current["planned_consume_qty"] += _to_number(row.get("issue_qty"), 0) * consume_ratio
+                current["order_nos"].add(order_no)
+            for current in out.values():
+                current["estimated_inventory_qty"] = current["inventory_qty"] - current["planned_consume_qty"]
+                current["order_nos"] = sorted(current["order_nos"])
+            return out
+
+        current_map = aggregate(current_orders)
+        compare_map = aggregate(compare_orders)
+        items: list[dict[str, Any]] = []
+        for material_code in sorted(set(current_map) | set(compare_map)):
+            current = current_map.get(material_code)
+            compare = compare_map.get(material_code)
+            selected_inventory = _to_number(current.get("inventory_qty"), 0) if current else _to_number(compare.get("inventory_qty"), 0)
+            compare_inventory = _to_number(compare.get("inventory_qty"), 0) if compare else selected_inventory
+            selected_estimated = _to_number(current.get("estimated_inventory_qty"), selected_inventory) if current else selected_inventory
+            compare_estimated = _to_number(compare.get("estimated_inventory_qty"), compare_inventory) if compare else compare_inventory
+            selected_consume = _to_number(current.get("planned_consume_qty"), 0) if current else 0
+            compare_consume = _to_number(compare.get("planned_consume_qty"), 0) if compare else 0
+            if (
+                abs(selected_consume - compare_consume) < SCHEDULE_NUMBER_EPSILON
+                and abs(selected_estimated - compare_estimated) < SCHEDULE_NUMBER_EPSILON
+            ):
+                continue
+            risk_change = "UNCHANGED"
+            if compare_estimated >= 0 > selected_estimated:
+                risk_change = "NEW_SHORTAGE"
+            elif compare_estimated < 0 and selected_estimated < compare_estimated:
+                risk_change = "SHORTAGE_WORSE"
+            elif compare_estimated < 0 <= selected_estimated:
+                risk_change = "SHORTAGE_RESOLVED"
+            elif selected_estimated > compare_estimated:
+                risk_change = "PRESSURE_RELIEVED"
+            elif selected_estimated < compare_estimated:
+                risk_change = "PRESSURE_INCREASED"
+            items.append(
+                {
+                    "material_code": material_code,
+                    "material_name": (current or compare or {}).get("material_name"),
+                    "supply_type_name": (current or compare or {}).get("supply_type_name"),
+                    "selected_inventory_qty": selected_inventory,
+                    "compare_inventory_qty": compare_inventory,
+                    "selected_planned_consume_qty": selected_consume,
+                    "compare_planned_consume_qty": compare_consume,
+                    "selected_estimated_inventory_qty": selected_estimated,
+                    "compare_estimated_inventory_qty": compare_estimated,
+                    "risk_change": risk_change,
+                    "selected_order_nos": current.get("order_nos", []) if current else [],
+                    "compare_order_nos": compare.get("order_nos", []) if compare else [],
+                }
+            )
+        items.sort(
+            key=lambda item: (
+                0 if item["risk_change"] in {"NEW_SHORTAGE", "SHORTAGE_WORSE"} else 1,
+                _to_number(item["selected_estimated_inventory_qty"], 0),
+                str(item["material_code"]),
+            )
+        )
+        return {"items": items}
 
     def get_schedule_daily_process_load(self, version_no: str) -> dict[str, Any]:
         self.get_schedule_version(version_no)
@@ -891,6 +1662,9 @@ class AppService:
         self.factory.build_inventory_refresh_service().refresh_inventory([])
         self._ensure_masterdata_seeded()
         strategy_code = self._normalize_strategy_code(payload.get("strategy_code"))
+        capacity_source_mode = self._normalize_capacity_source_mode(
+            payload.get("capacity_source_mode")
+        )
         base_version_no = str(payload.get("base_version_no") or "").strip()
         base_schedule_hints: dict[str, dict[str, Any]] = {}
         if base_version_no:
@@ -909,8 +1683,12 @@ class AppService:
         topology_by_process = self._enabled_topology_by_process(
             self._list_line_topology_rows()
         )
+        capacity_resolver = self._build_schedule_capacity_resolver(
+            capacity_source_mode=capacity_source_mode
+        )
 
         schedule_candidates: list[dict[str, Any]] = []
+        day_mode_cache: dict[str, str] = {}
         simulation_state = self._get_simulation_state()
         simulation_start = _parse_date_or_today(simulation_state.get("current_date"))
         for order_row in order_rows:
@@ -940,6 +1718,7 @@ class AppService:
                 capacity_rows=capacity_map.get(order_no, []),
                 route_rows=route_rows_by_product.get(str(order_row["material_code"]), []),
                 topology_by_process=topology_by_process,
+                capacity_resolver=capacity_resolver,
             )
             if len(process_contexts) == 0:
                 raise server_error(
@@ -980,9 +1759,21 @@ class AppService:
             required_shifts = 0
             min_capacity = None
             total_capacity = 0.0
+            start_slot = _slot_index_for(start_date, "DAY")
             for context in process_contexts:
-                capacity_per_shift = _to_number(context.get("capacity_per_shift"), 0)
-                required_shifts += int(math.ceil(remaining_qty_value / capacity_per_shift))
+                capacity_per_shift = self._resolve_effective_capacity_per_shift(
+                    process_context=context,
+                    calendar_date=start_date.isoformat(),
+                    capacity_resolver=capacity_resolver,
+                )
+                required_shifts += self._estimate_required_shifts_for_process(
+                    process_context=context,
+                    required_qty=remaining_qty_value,
+                    start_slot=start_slot,
+                    planning_rules=planning_rules,
+                    day_mode_cache=day_mode_cache,
+                    capacity_resolver=capacity_resolver,
+                )
                 min_capacity = (
                     capacity_per_shift
                     if min_capacity is None
@@ -1020,7 +1811,6 @@ class AppService:
 
         tasks: list[tuple[Any, ...]] = []
         used_capacity_by_slot: dict[tuple[int, str, str, str], float] = {}
-        day_mode_cache: dict[str, str] = {}
         task_no = 1
         while pending_candidates:
             selected_index = self._select_next_candidate_index(
@@ -1029,6 +1819,7 @@ class AppService:
                 planning_rules=planning_rules,
                 day_mode_cache=day_mode_cache,
                 used_capacity_by_slot=used_capacity_by_slot,
+                capacity_resolver=capacity_resolver,
             )
             candidate = pending_candidates.pop(selected_index)
             order_no = str(candidate["order_no"])
@@ -1052,6 +1843,7 @@ class AppService:
                     planning_rules=planning_rules,
                     day_mode_cache=day_mode_cache,
                     used_capacity_by_slot=used_capacity_by_slot,
+                    capacity_resolver=capacity_resolver,
                 )
                 for allocation in allocations:
                     calendar_date = allocation["calendar_date"]
@@ -1114,7 +1906,7 @@ class AppService:
                     """,
                     tasks,
                 )
-        return {"version_no": version_no}
+        return {"version_no": version_no, "capacity_source_mode": capacity_source_mode}
 
     def publish_schedule_version(self, version_no: str) -> dict[str, Any]:
         self.get_schedule_version(version_no)
@@ -1931,6 +2723,12 @@ class AppService:
                     {
                         "sequence_no": index + 1,
                         "process_code": process_code,
+                        "company_code": str(
+                            capacity_row.get("company_code")
+                            or topology_row.get("company_code")
+                            or "COMPANY-MAIN"
+                        ).strip().upper()
+                        or "COMPANY-MAIN",
                         "process_name_cn": (
                             str(
                                 row.get("process_name_cn")
@@ -1952,6 +2750,7 @@ class AppService:
                         ).strip()
                         or "-",
                         "dependency_type": str(row.get("dependency_type") or "FS").strip().upper() or "FS",
+                        "default_capacity_per_shift": capacity_per_shift,
                         "capacity_per_shift": capacity_per_shift,
                     }
                 )
@@ -1970,10 +2769,12 @@ class AppService:
                 {
                     "sequence_no": index + 1,
                     "process_code": process_code,
+                    "company_code": str(row.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN",
                     "process_name_cn": str(row.get("process_name") or process_code).strip() or process_code,
                     "workshop_code": str(row.get("workshop_code") or "-").strip() or "-",
                     "line_code": str(row.get("line_code") or "-").strip() or "-",
                     "dependency_type": "FS",
+                    "default_capacity_per_shift": _to_number(row.get("capacity_qty"), 0),
                     "capacity_per_shift": _to_number(row.get("capacity_qty"), 0),
                 }
             )
@@ -1987,6 +2788,7 @@ class AppService:
         capacity_rows: list[dict[str, Any]],
         route_rows: list[dict[str, Any]],
         topology_by_process: dict[str, dict[str, Any]],
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
     ) -> list[dict[str, Any]]:
         if len(route_rows) == 0:
             raise server_error(
@@ -2011,9 +2813,13 @@ class AppService:
 
         for context in contexts:
             process_code = str(context.get("process_code") or "").strip().upper()
+            company_code = str(context.get("company_code") or "").strip().upper() or "COMPANY-MAIN"
             workshop_code = str(context.get("workshop_code") or "").strip().upper()
             line_code = str(context.get("line_code") or "").strip().upper()
-            capacity_per_shift = _to_number(context.get("capacity_per_shift"), 0)
+            default_capacity_per_shift = _to_number(
+                context.get("default_capacity_per_shift"),
+                _to_number(context.get("capacity_per_shift"), 0),
+            )
             if not process_code:
                 raise server_error(
                     code="SCHEDULE_PROCESS_CODE_REQUIRED",
@@ -2040,7 +2846,7 @@ class AppService:
                         "process_code": process_code,
                     },
                 )
-            if capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
+            if default_capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
                 raise server_error(
                     code="SCHEDULE_CAPACITY_PER_SHIFT_INVALID",
                     message="capacity_per_shift must be greater than 0 for all scheduled processes.",
@@ -2048,14 +2854,140 @@ class AppService:
                         "order_no": order_no,
                         "product_code": product_code,
                         "process_code": process_code,
-                        "capacity_per_shift": capacity_per_shift,
+                        "capacity_per_shift": default_capacity_per_shift,
                     },
                 )
+            context["company_code"] = company_code
             context["workshop_code"] = workshop_code
             context["line_code"] = line_code
             context["process_code"] = process_code
-            context["capacity_per_shift"] = capacity_per_shift
+            context["default_capacity_per_shift"] = default_capacity_per_shift
+            context["capacity_per_shift"] = default_capacity_per_shift
         return contexts
+
+    def _build_schedule_capacity_resolver(
+        self,
+        *,
+        capacity_source_mode: str,
+    ) -> dict[str, dict[tuple[str, str, str, str, str], float]]:
+        planned_map: dict[tuple[str, str, str, str, str], float] = {}
+        actual_map: dict[tuple[str, str, str, str, str], float] = {}
+        if capacity_source_mode in {"PLANNED", "ACTUAL"}:
+            for row in fetch_all(
+                self.connection,
+                """
+                SELECT
+                    calendar_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    planned_capacity_qty
+                FROM daily_line_capacity_plan
+                """
+            ):
+                key = (
+                    str(row.get("calendar_date") or "").strip(),
+                    str(row.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN",
+                    str(row.get("workshop_code") or "").strip().upper(),
+                    str(row.get("line_code") or "").strip().upper(),
+                    str(row.get("process_code") or "").strip().upper(),
+                )
+                planned_map[key] = _to_number(row.get("planned_capacity_qty"), 0)
+        if capacity_source_mode == "ACTUAL":
+            for row in fetch_all(
+                self.connection,
+                """
+                SELECT
+                    calendar_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    actual_capacity_qty
+                FROM daily_line_capacity_actual
+                """
+            ):
+                key = (
+                    str(row.get("calendar_date") or "").strip(),
+                    str(row.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN",
+                    str(row.get("workshop_code") or "").strip().upper(),
+                    str(row.get("line_code") or "").strip().upper(),
+                    str(row.get("process_code") or "").strip().upper(),
+                )
+                actual_map[key] = _to_number(row.get("actual_capacity_qty"), 0)
+        return {"planned": planned_map, "actual": actual_map}
+
+    def _resolve_effective_capacity_per_shift(
+        self,
+        *,
+        process_context: dict[str, Any],
+        calendar_date: str,
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
+    ) -> float:
+        company_code = str(process_context.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
+        workshop_code = str(process_context.get("workshop_code") or "").strip().upper()
+        line_code = str(process_context.get("line_code") or "").strip().upper()
+        process_code = str(process_context.get("process_code") or "").strip().upper()
+        lookup_key = (
+            str(calendar_date or "").strip(),
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+        )
+        actual_map = capacity_resolver.get("actual") or {}
+        if lookup_key in actual_map:
+            return _to_number(actual_map[lookup_key], 0)
+        planned_map = capacity_resolver.get("planned") or {}
+        if lookup_key in planned_map:
+            return _to_number(planned_map[lookup_key], 0)
+        return _to_number(process_context.get("default_capacity_per_shift"), 0)
+
+    def _estimate_required_shifts_for_process(
+        self,
+        *,
+        process_context: dict[str, Any],
+        required_qty: float,
+        start_slot: int,
+        planning_rules: dict[str, Any],
+        day_mode_cache: dict[str, str],
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
+    ) -> int:
+        remaining_qty = max(0.0, _to_number(required_qty, 0))
+        if remaining_qty <= SCHEDULE_NUMBER_EPSILON:
+            return 0
+        slot_cursor = max(0, int(start_slot))
+        required_shifts = 0
+        for loop_guard in range(SCHEDULE_SLOT_SEARCH_GUARD):
+            if remaining_qty <= SCHEDULE_NUMBER_EPSILON:
+                break
+            slot_index, calendar_date, _ = self._next_working_slot(
+                start_slot=slot_cursor,
+                planning_rules=planning_rules,
+                day_mode_cache=day_mode_cache,
+            )
+            capacity_per_shift = self._resolve_effective_capacity_per_shift(
+                process_context=process_context,
+                calendar_date=calendar_date,
+                capacity_resolver=capacity_resolver,
+            )
+            slot_cursor = slot_index + 1
+            if capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
+                continue
+            remaining_qty -= capacity_per_shift
+            required_shifts += 1
+        else:
+            raise server_error(
+                code="SCHEDULE_REQUIRED_SHIFTS_ESTIMATION_EXCEEDED",
+                message="Unable to estimate required shifts within slot guard limit.",
+                details={
+                    "order_no": str(process_context.get("order_no") or ""),
+                    "process_code": str(process_context.get("process_code") or ""),
+                    "required_qty": required_qty,
+                },
+            )
+        return required_shifts
 
     def _refresh_bom_children(self, parent_material_code: str) -> None:
         children = self.factory.material_gateway.fetch_bom_children(parent_material_code)
@@ -2139,6 +3071,19 @@ class AppService:
                 details={
                     "strategy_code": normalized,
                     "supported": sorted(SUPPORTED_STRATEGY_CODES),
+                },
+            )
+        return normalized
+
+    def _normalize_capacity_source_mode(self, value: object) -> str:
+        normalized = str(value or "ACTUAL").strip().upper() or "ACTUAL"
+        if normalized not in SUPPORTED_CAPACITY_SOURCE_MODES:
+            raise bad_request(
+                code="SCHEDULE_CAPACITY_SOURCE_MODE_INVALID",
+                message="capacity_source_mode is invalid.",
+                details={
+                    "capacity_source_mode": normalized,
+                    "supported": sorted(SUPPORTED_CAPACITY_SOURCE_MODES),
                 },
             )
         return normalized
@@ -2372,6 +3317,7 @@ class AppService:
         planning_rules: dict[str, Any],
         day_mode_cache: dict[str, str],
         used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
     ) -> tuple[list[dict[str, Any]], int]:
         remaining_qty = max(0.0, _to_number(required_qty, 0))
         if remaining_qty <= SCHEDULE_NUMBER_EPSILON:
@@ -2380,8 +3326,8 @@ class AppService:
         process_code = str(process_context.get("process_code") or "").strip().upper()
         workshop_code = str(process_context.get("workshop_code") or "").strip().upper()
         line_code = str(process_context.get("line_code") or "").strip().upper()
-        capacity_per_shift = _to_number(process_context.get("capacity_per_shift"), 0)
-        if capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
+        default_capacity_per_shift = _to_number(process_context.get("default_capacity_per_shift"), 0)
+        if default_capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
             raise server_error(
                 code="SCHEDULE_CAPACITY_PER_SHIFT_INVALID",
                 message="capacity_per_shift must be greater than 0 for all scheduled processes.",
@@ -2407,6 +3353,11 @@ class AppService:
                 start_slot=slot_cursor,
                 planning_rules=planning_rules,
                 day_mode_cache=day_mode_cache,
+            )
+            capacity_per_shift = self._resolve_effective_capacity_per_shift(
+                process_context=process_context,
+                calendar_date=calendar_date,
+                capacity_resolver=capacity_resolver,
             )
             key = (slot_index, workshop_code, line_code, process_code)
             used_capacity = _to_number(used_capacity_by_slot.get(key), 0)
@@ -2504,12 +3455,13 @@ class AppService:
         planning_rules: dict[str, Any],
         day_mode_cache: dict[str, str],
         used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
     ) -> int:
         process_code = str(process_context.get("process_code") or "").strip().upper()
         workshop_code = str(process_context.get("workshop_code") or "").strip().upper()
         line_code = str(process_context.get("line_code") or "").strip().upper()
-        capacity_per_shift = _to_number(process_context.get("capacity_per_shift"), 0)
-        if capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
+        default_capacity_per_shift = _to_number(process_context.get("default_capacity_per_shift"), 0)
+        if default_capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
             raise server_error(
                 code="SCHEDULE_CAPACITY_PER_SHIFT_INVALID",
                 message="capacity_per_shift must be greater than 0 for all scheduled processes.",
@@ -2518,10 +3470,15 @@ class AppService:
 
         slot_cursor = max(0, int(start_slot))
         for _ in range(SCHEDULE_SLOT_SEARCH_GUARD):
-            slot_index, _, shift_code = self._next_working_slot(
+            slot_index, calendar_date, _ = self._next_working_slot(
                 start_slot=slot_cursor,
                 planning_rules=planning_rules,
                 day_mode_cache=day_mode_cache,
+            )
+            capacity_per_shift = self._resolve_effective_capacity_per_shift(
+                process_context=process_context,
+                calendar_date=calendar_date,
+                capacity_resolver=capacity_resolver,
             )
             key = (slot_index, workshop_code, line_code, process_code)
             used_capacity = _to_number(used_capacity_by_slot.get(key), 0)
@@ -2542,6 +3499,7 @@ class AppService:
         planning_rules: dict[str, Any],
         day_mode_cache: dict[str, str],
         used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
     ) -> dict[str, int]:
         process_contexts = candidate["process_contexts"]
         if len(process_contexts) == 0:
@@ -2568,6 +3526,7 @@ class AppService:
             planning_rules=planning_rules,
             day_mode_cache=day_mode_cache,
             used_capacity_by_slot=used_capacity_by_slot,
+            capacity_resolver=capacity_resolver,
         )
         required_shifts = max(1, int(_to_number(candidate.get("required_shifts"), 1)))
         projected_finish_slot = first_ready_slot + required_shifts - 1
@@ -2593,6 +3552,7 @@ class AppService:
         planning_rules: dict[str, Any],
         day_mode_cache: dict[str, str],
         used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
     ) -> int:
         if len(candidates) == 0:
             raise server_error(
@@ -2608,6 +3568,7 @@ class AppService:
                 planning_rules=planning_rules,
                 day_mode_cache=day_mode_cache,
                 used_capacity_by_slot=used_capacity_by_slot,
+                capacity_resolver=capacity_resolver,
             )
             late_slots = int(metrics["projected_lateness_slots"])
             late_rank = 0 if late_slots > 0 else 1

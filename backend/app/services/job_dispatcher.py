@@ -132,6 +132,10 @@ class JobDispatcher:
             return self._dispatch_app_service("copy_process_routes", payload)
         if job_type == "LEGACY_PROCESS_ROUTE_DELETE":
             return self._dispatch_app_service("delete_process_routes", payload)
+        if job_type == "LEGACY_DAILY_LINE_CAPACITY_SAVE":
+            return self._dispatch_app_service("save_line_daily_capacity", payload)
+        if job_type == "LEGACY_DAILY_LINE_CAPACITY_ACTUAL_REBUILD":
+            return self._dispatch_app_service("rebuild_line_daily_actual_capacity", payload)
         if job_type == "LEGACY_SIMULATION_ADVANCE_DAY":
             return self._dispatch_app_service("advance_simulation_one_day", payload)
         if job_type == "LEGACY_SIMULATION_RESET":

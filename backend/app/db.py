@@ -127,3 +127,36 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
         WHERE priority_level IS NULL OR priority_level < 1 OR priority_level > 5
         """
     )
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS daily_line_capacity_plan (
+            calendar_date TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            planned_capacity_qty REAL NOT NULL,
+            worker_count INTEGER,
+            machine_count INTEGER,
+            source_note TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (calendar_date, company_code, workshop_code, line_code, process_code)
+        );
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_date
+            ON daily_line_capacity_plan (calendar_date, workshop_code, line_code, process_code);
+        CREATE TABLE IF NOT EXISTS daily_line_capacity_actual (
+            calendar_date TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            actual_capacity_qty REAL NOT NULL,
+            report_count INTEGER NOT NULL DEFAULT 0,
+            last_report_time TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (calendar_date, company_code, workshop_code, line_code, process_code)
+        );
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_actual_date
+            ON daily_line_capacity_actual (calendar_date, workshop_code, line_code, process_code);
+        """
+    )

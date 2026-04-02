@@ -121,6 +121,23 @@ def list_process_routes(
     return service.list_process_routes()
 
 
+@router.get("/masterdata/line-capacity/daily")
+def list_line_daily_capacity(
+    calendar_date: str = Query(...),
+    workshop_code: str | None = Query(default=None),
+    line_code: str | None = Query(default=None),
+    process_code: str | None = Query(default=None),
+    service: Annotated[AppService, Depends(get_app_service)] = None,
+) -> dict[str, Any]:
+    assert service is not None
+    return service.list_line_daily_capacity(
+        calendar_date,
+        workshop_code=workshop_code,
+        line_code=line_code,
+        process_code=process_code,
+    )
+
+
 @router.get("/reportings")
 def list_mes_reportings(
     start_time: str | None = Query(default=None),

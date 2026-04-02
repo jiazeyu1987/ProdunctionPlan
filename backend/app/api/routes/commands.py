@@ -201,6 +201,40 @@ def delete_process_routes(
     )
 
 
+@router.post("/masterdata/line-capacity/daily", status_code=202)
+def save_line_daily_capacity(
+    payload: dict[str, Any] = Body(default_factory=dict),
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    calendar_date = str(payload.get("calendar_date") or "").strip() or "UNKNOWN"
+    return enqueue_command_job(
+        connection,
+        job_type="LEGACY_DAILY_LINE_CAPACITY_SAVE",
+        target_type="LINE_CAPACITY_DAILY",
+        target_key=calendar_date,
+        request_id=str(payload.get("request_id") or "").strip() or None,
+        payload=payload,
+    )
+
+
+@router.post("/masterdata/line-capacity/actuals/rebuild", status_code=202)
+def rebuild_line_daily_actual_capacity(
+    payload: dict[str, Any] = Body(default_factory=dict),
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    calendar_date = str(payload.get("calendar_date") or "").strip() or "UNKNOWN"
+    return enqueue_command_job(
+        connection,
+        job_type="LEGACY_DAILY_LINE_CAPACITY_ACTUAL_REBUILD",
+        target_type="LINE_CAPACITY_ACTUAL_DAILY",
+        target_key=calendar_date,
+        request_id=str(payload.get("request_id") or "").strip() or None,
+        payload=payload,
+    )
+
+
 @router.post("/schedules/{version_no}/publish", status_code=202)
 def publish_schedule_version(
     version_no: str,
