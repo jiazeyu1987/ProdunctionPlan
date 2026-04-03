@@ -33,6 +33,20 @@ SUPPORTED_CAPACITY_SOURCE_MODES = {"DEFAULT", "PLANNED", "ACTUAL"}
 SUPPORTED_CN_HOLIDAY_YEARS = {2024, 2025, 2026, 2027, 2028}
 PRIORITY_LEVEL_MIN = 1
 PRIORITY_LEVEL_MAX = 5
+ANGIO_CATHETER_PRODUCT_CODES = frozenset(
+    {
+        "A006.034.10191",
+        "YXN.009.020.1047",
+        "YXN.044.02.1028",
+        "YXN.067.005.1006",
+        "A006.034.6104",
+        "YXN.044.02.1020",
+    }
+)
+DEFAULT_ANGIO_WORKSHOP_CODE = "1车间"
+DEFAULT_ANGIO_WORKSHOP_NAME = "1车间"
+DEFAULT_ANGIO_LINE_CODE = "1产线"
+DEFAULT_ANGIO_LINE_NAME = "1产线"
 CN_STATUTORY_HOLIDAY_DATE_SET = frozenset(
     {
         # 2024
@@ -1644,6 +1658,7 @@ class AppService:
     def get_masterdata_config(self) -> dict[str, Any]:
         self._ensure_masterdata_seeded()
         rules = self.get_schedule_calendar_rules()["data"]
+        line_skeletons = self._list_line_skeleton_rows()
         line_topology = self._list_line_topology_rows()
         route_rows = self._list_route_rows()
         process_seen: dict[str, str] = {}
@@ -1669,6 +1684,7 @@ class AppService:
                 "weekend_rest_mode": rules["weekend_rest_mode"],
                 "date_shift_mode_by_date": rules["date_shift_mode_by_date"],
                 "process_configs": process_configs,
+                "line_skeletons": line_skeletons,
                 "line_topology": line_topology,
                 "resource_pool": [],
                 "material_availability": [],
@@ -1676,13 +1692,63 @@ class AppService:
         }
 
     def save_masterdata_config(self, payload: dict[str, Any]) -> dict[str, Any]:
+        line_skeletons = payload.get("line_skeletons")
+        if not isinstance(line_skeletons, list) or len(line_skeletons) == 0:
+            raise bad_request(
+                code="LINE_SKELETONS_REQUIRED",
+                message="line_skeletons must be a non-empty array.",
+            )
         line_topology = payload.get("line_topology")
-        if not isinstance(line_topology, list) or len(line_topology) == 0:
+        if line_topology is None:
+            line_topology = []
+        if not isinstance(line_topology, list):
             raise bad_request(
                 code="LINE_TOPOLOGY_REQUIRED",
-                message="line_topology must be a non-empty array.",
+                message="line_topology must be an array.",
             )
         updated_at = utc_now()
+        skeleton_rows: list[tuple[Any, ...]] = []
+        skeleton_map: dict[tuple[str, str, str], dict[str, Any]] = {}
+        for item in line_skeletons:
+            company_code = str(item.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
+            workshop_code = str(item.get("workshop_code") or "").strip().upper()
+            line_code = str(item.get("line_code") or "").strip().upper()
+            if not workshop_code or not line_code:
+                raise bad_request(
+                    code="LINE_SKELETON_ROW_INVALID",
+                    message="workshop_code and line_code are required in line_skeletons.",
+                )
+            key = (company_code, workshop_code, line_code)
+            if key in skeleton_map:
+                raise bad_request(
+                    code="LINE_SKELETON_DUPLICATE",
+                    message="line_skeletons contains duplicate workshop/line rows.",
+                    details={
+                        "company_code": company_code,
+                        "workshop_code": workshop_code,
+                        "line_code": line_code,
+                    },
+                )
+            skeleton_row = {
+                "company_code": company_code,
+                "workshop_code": workshop_code,
+                "workshop_name": str(item.get("workshop_name") or workshop_code).strip() or workshop_code,
+                "line_code": line_code,
+                "line_name": str(item.get("line_name") or line_code).strip() or line_code,
+                "enabled_flag": 1 if int(item.get("enabled_flag") or 0) == 1 else 0,
+            }
+            skeleton_map[key] = skeleton_row
+            skeleton_rows.append(
+                (
+                    company_code,
+                    skeleton_row["workshop_code"],
+                    skeleton_row["workshop_name"],
+                    skeleton_row["line_code"],
+                    skeleton_row["line_name"],
+                    skeleton_row["enabled_flag"],
+                    updated_at,
+                )
+            )
         rows = []
         for item in line_topology:
             company_code = str(item.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
@@ -1694,41 +1760,83 @@ class AppService:
                     code="LINE_TOPOLOGY_ROW_INVALID",
                     message="workshop_code, line_code and process_code are required.",
                 )
+            skeleton_row = skeleton_map.get((company_code, workshop_code, line_code))
+            if skeleton_row is None:
+                raise bad_request(
+                    code="LINE_TOPOLOGY_SKELETON_MISSING",
+                    message="line_topology row must reference an existing line_skeleton.",
+                    details={
+                        "company_code": company_code,
+                        "workshop_code": workshop_code,
+                        "line_code": line_code,
+                        "process_code": process_code,
+                    },
+                )
+            capacity_per_shift = _to_number(item.get("capacity_per_shift"), 0)
+            required_workers = int(_to_number(item.get("required_workers"), 0))
+            required_machines = int(_to_number(item.get("required_machines"), 0))
+            if capacity_per_shift <= 0 or required_workers <= 0 or required_machines <= 0:
+                raise bad_request(
+                    code="LINE_TOPOLOGY_CAPACITY_INVALID",
+                    message="capacity_per_shift, required_workers and required_machines must be greater than 0.",
+                    details={
+                        "company_code": company_code,
+                        "workshop_code": workshop_code,
+                        "line_code": line_code,
+                        "process_code": process_code,
+                    },
+                )
             rows.append(
                 (
                     company_code,
                     workshop_code,
-                    str(item.get("workshop_name") or workshop_code).strip() or workshop_code,
+                    skeleton_row["workshop_name"],
                     line_code,
-                    str(item.get("line_name") or line_code).strip() or line_code,
+                    skeleton_row["line_name"],
                     process_code,
-                    _to_number(item.get("capacity_per_shift"), 0),
-                    int(_to_number(item.get("required_workers"), 0)),
-                    int(_to_number(item.get("required_machines"), 0)),
+                    capacity_per_shift,
+                    required_workers,
+                    required_machines,
                     int(item.get("enabled_flag") or 0),
                     updated_at,
                 )
             )
         with transaction(self.connection):
-            self.connection.execute("DELETE FROM masterdata_line_topology")
+            self.connection.execute("DELETE FROM masterdata_line_skeletons")
             self.connection.executemany(
                 """
-                INSERT INTO masterdata_line_topology (
+                INSERT INTO masterdata_line_skeletons (
                     company_code,
                     workshop_code,
                     workshop_name,
                     line_code,
                     line_name,
-                    process_code,
-                    capacity_per_shift,
-                    required_workers,
-                    required_machines,
                     enabled_flag,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                rows,
+                skeleton_rows,
             )
+            self.connection.execute("DELETE FROM masterdata_line_topology")
+            if rows:
+                self.connection.executemany(
+                    """
+                    INSERT INTO masterdata_line_topology (
+                        company_code,
+                        workshop_code,
+                        workshop_name,
+                        line_code,
+                        line_name,
+                        process_code,
+                        capacity_per_shift,
+                        required_workers,
+                        required_machines,
+                        enabled_flag,
+                        updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    rows,
+                )
         return self.get_masterdata_config()
 
     def list_process_routes(self) -> dict[str, Any]:
@@ -3926,9 +4034,14 @@ class AppService:
             self.connection,
             "SELECT COUNT(1) AS total FROM masterdata_process_routes",
         )
+        skeleton_count = fetch_one(
+            self.connection,
+            "SELECT COUNT(1) AS total FROM masterdata_line_skeletons",
+        )
         need_topology_seed = int(topology_count["total"]) == 0
         need_route_seed = int(route_count["total"]) == 0
-        if not need_topology_seed and not need_route_seed:
+        need_skeleton_seed = int(skeleton_count["total"]) == 0
+        if not need_topology_seed and not need_route_seed and not need_skeleton_seed:
             return
 
         upstream_route_rows = (
@@ -3949,26 +4062,89 @@ class AppService:
             if need_topology_seed
             else []
         )
-        route_rows = (
-            self._build_route_seed_rows(upstream_route_rows)
-            if need_route_seed
-            else []
-        )
+        route_rows = self._build_route_seed_rows(upstream_route_rows) if need_route_seed else self._list_route_rows()
+        if len(route_rows) == 0:
+            raise server_error(
+                code="MASTERDATA_PROCESS_ROUTES_EMPTY",
+                message="Upstream process route seed returned no rows.",
+            )
         if need_topology_seed and len(topology_rows) == 0:
             raise server_error(
                 code="MASTERDATA_LINE_TOPOLOGY_EMPTY",
                 message="Upstream line topology seed returned no rows.",
             )
-        if need_route_seed and len(route_rows) == 0:
-            raise server_error(
-                code="MASTERDATA_PROCESS_ROUTES_EMPTY",
-                message="Upstream process route seed returned no rows.",
-            )
-        if len(topology_rows) == 0 and len(route_rows) == 0:
-            return
+        base_topology_rows = topology_rows if need_topology_seed else self._list_line_topology_rows()
+        normalized_topology_rows = (
+            self._build_default_angio_line_topology_rows(route_rows, base_topology_rows)
+            if need_topology_seed or need_skeleton_seed
+            else base_topology_rows
+        )
+        skeleton_rows = (
+            self._build_line_skeleton_seed_rows(base_topology_rows)
+            if need_skeleton_seed
+            else []
+        )
         updated_at = utc_now()
         with transaction(self.connection):
-            if len(topology_rows) > 0 and need_topology_seed:
+            if len(route_rows) > 0 and need_route_seed:
+                self.connection.executemany(
+                    """
+                    INSERT INTO masterdata_process_routes (
+                        product_code,
+                        sequence_no,
+                        process_code,
+                        process_name_cn,
+                        dependency_type,
+                        route_no,
+                        route_name_cn,
+                        product_name_cn,
+                        updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            row["product_code"],
+                            row["sequence_no"],
+                            row["process_code"],
+                            row["process_name_cn"],
+                            row["dependency_type"],
+                            row["route_no"],
+                            row["route_name_cn"],
+                            row["product_name_cn"],
+                            updated_at,
+                        )
+                        for row in route_rows
+                    ],
+                )
+            if need_skeleton_seed:
+                self.connection.execute("DELETE FROM masterdata_line_skeletons")
+                self.connection.executemany(
+                    """
+                    INSERT INTO masterdata_line_skeletons (
+                        company_code,
+                        workshop_code,
+                        workshop_name,
+                        line_code,
+                        line_name,
+                        enabled_flag,
+                        updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            row["company_code"],
+                            row["workshop_code"],
+                            row["workshop_name"],
+                            row["line_code"],
+                            row["line_name"],
+                            row["enabled_flag"],
+                            updated_at,
+                        )
+                        for row in skeleton_rows
+                    ],
+                )
+            if need_topology_seed or need_skeleton_seed:
+                self.connection.execute("DELETE FROM masterdata_line_topology")
                 self.connection.executemany(
                     """
                     INSERT INTO masterdata_line_topology (
@@ -3999,37 +4175,7 @@ class AppService:
                             row["enabled_flag"],
                             updated_at,
                         )
-                        for row in topology_rows
-                    ],
-                )
-            if len(route_rows) > 0 and need_route_seed:
-                self.connection.executemany(
-                    """
-                    INSERT INTO masterdata_process_routes (
-                        product_code,
-                        sequence_no,
-                        process_code,
-                        process_name_cn,
-                        dependency_type,
-                        route_no,
-                        route_name_cn,
-                        product_name_cn,
-                        updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        (
-                            row["product_code"],
-                            row["sequence_no"],
-                            row["process_code"],
-                            row["process_name_cn"],
-                            row["dependency_type"],
-                            row["route_no"],
-                            row["route_name_cn"],
-                            row["product_name_cn"],
-                            updated_at,
-                        )
-                        for row in route_rows
+                        for row in normalized_topology_rows
                     ],
                 )
 
@@ -4144,6 +4290,157 @@ class AppService:
             )
         )
         return out
+
+    def _build_line_skeleton_seed_rows(
+        self,
+        topology_rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        seen: set[tuple[str, str, str]] = set()
+        for row in topology_rows:
+            company_code = str(row.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
+            workshop_code = str(row.get("workshop_code") or "").strip().upper()
+            line_code = str(row.get("line_code") or "").strip().upper()
+            if not workshop_code or not line_code:
+                continue
+            key = (company_code, workshop_code, line_code)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(
+                {
+                    "company_code": company_code,
+                    "workshop_code": workshop_code,
+                    "workshop_name": str(row.get("workshop_name") or workshop_code).strip() or workshop_code,
+                    "line_code": line_code,
+                    "line_name": str(row.get("line_name") or line_code).strip() or line_code,
+                    "enabled_flag": 1,
+                }
+            )
+        default_key = ("COMPANY-MAIN", DEFAULT_ANGIO_WORKSHOP_CODE, DEFAULT_ANGIO_LINE_CODE)
+        if default_key not in seen:
+            out.append(
+                {
+                    "company_code": "COMPANY-MAIN",
+                    "workshop_code": DEFAULT_ANGIO_WORKSHOP_CODE,
+                    "workshop_name": DEFAULT_ANGIO_WORKSHOP_NAME,
+                    "line_code": DEFAULT_ANGIO_LINE_CODE,
+                    "line_name": DEFAULT_ANGIO_LINE_NAME,
+                    "enabled_flag": 1,
+                }
+            )
+        out.sort(
+            key=lambda item: (
+                str(item["workshop_code"]),
+                str(item["line_code"]),
+            )
+        )
+        return out
+
+    def _build_default_angio_line_topology_rows(
+        self,
+        route_rows: list[dict[str, Any]],
+        topology_rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        angio_route_rows = [
+            row
+            for row in route_rows
+            if str(row.get("product_code") or "").strip().upper() in ANGIO_CATHETER_PRODUCT_CODES
+        ]
+        if len(angio_route_rows) == 0:
+            raise server_error(
+                code="ANGIO_ROUTE_ROWS_EMPTY",
+                message="No angio catheter process routes are available for default topology generation.",
+            )
+        ordered_process_codes: list[str] = []
+        meta_by_process: dict[str, dict[str, Any]] = {}
+        for row in angio_route_rows:
+            process_code = str(row.get("process_code") or "").strip().upper()
+            if not process_code:
+                continue
+            if process_code not in meta_by_process:
+                ordered_process_codes.append(process_code)
+                meta_by_process[process_code] = {
+                    "process_name_cn": str(row.get("process_name_cn") or process_code).strip() or process_code,
+                    "capacity_per_shift": _to_number(row.get("capacity_per_shift"), 0),
+                    "required_workers": int(_to_number(row.get("required_manpower_per_group"), 0)),
+                    "required_machines": int(_to_number(row.get("required_equipment_count"), 0)),
+                    "enabled_flag": 1 if int(_to_number(row.get("enabled_flag"), 1)) == 1 else 0,
+                }
+                continue
+            current = meta_by_process[process_code]
+            current["capacity_per_shift"] = max(
+                _to_number(current.get("capacity_per_shift"), 0),
+                _to_number(row.get("capacity_per_shift"), 0),
+            )
+            current["required_workers"] = max(
+                int(_to_number(current.get("required_workers"), 0)),
+                int(_to_number(row.get("required_manpower_per_group"), 0)),
+            )
+            current["required_machines"] = max(
+                int(_to_number(current.get("required_machines"), 0)),
+                int(_to_number(row.get("required_equipment_count"), 0)),
+            )
+            if not current.get("process_name_cn"):
+                current["process_name_cn"] = (
+                    str(row.get("process_name_cn") or process_code).strip() or process_code
+                )
+            if int(_to_number(row.get("enabled_flag"), 1)) == 1:
+                current["enabled_flag"] = 1
+        for row in topology_rows:
+            process_code = str(row.get("process_code") or "").strip().upper()
+            if process_code not in meta_by_process:
+                continue
+            current = meta_by_process[process_code]
+            current["capacity_per_shift"] = max(
+                _to_number(current.get("capacity_per_shift"), 0),
+                _to_number(row.get("capacity_per_shift"), 0),
+            )
+            current["required_workers"] = max(
+                int(_to_number(current.get("required_workers"), 0)),
+                int(_to_number(row.get("required_workers"), 0)),
+            )
+            current["required_machines"] = max(
+                int(_to_number(current.get("required_machines"), 0)),
+                int(_to_number(row.get("required_machines"), 0)),
+            )
+            if not current.get("process_name_cn"):
+                current["process_name_cn"] = (
+                    str(row.get("process_name_cn") or process_code).strip() or process_code
+                )
+            if int(_to_number(row.get("enabled_flag"), 0)) == 1:
+                current["enabled_flag"] = 1
+        return [
+            {
+                "company_code": "COMPANY-MAIN",
+                "workshop_code": DEFAULT_ANGIO_WORKSHOP_CODE,
+                "workshop_name": DEFAULT_ANGIO_WORKSHOP_NAME,
+                "line_code": DEFAULT_ANGIO_LINE_CODE,
+                "line_name": DEFAULT_ANGIO_LINE_NAME,
+                "process_code": process_code,
+                "capacity_per_shift": _to_number(meta_by_process[process_code].get("capacity_per_shift"), 0),
+                "required_workers": int(_to_number(meta_by_process[process_code].get("required_workers"), 0)),
+                "required_machines": int(_to_number(meta_by_process[process_code].get("required_machines"), 0)),
+                "enabled_flag": 1 if int(_to_number(meta_by_process[process_code].get("enabled_flag"), 0)) == 1 else 0,
+            }
+            for process_code in ordered_process_codes
+        ]
+
+    def _list_line_skeleton_rows(self) -> list[dict[str, Any]]:
+        return fetch_all(
+            self.connection,
+            """
+            SELECT
+                company_code,
+                workshop_code,
+                workshop_name,
+                line_code,
+                line_name,
+                enabled_flag
+            FROM masterdata_line_skeletons
+            ORDER BY workshop_code ASC, line_code ASC
+            """,
+        )
 
     def _list_line_topology_rows(self) -> list[dict[str, Any]]:
         return fetch_all(

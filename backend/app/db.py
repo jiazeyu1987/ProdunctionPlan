@@ -208,6 +208,16 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
             ON daily_line_capacity_plan_audit (calendar_date, changed_at DESC);
         CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_audit_line
             ON daily_line_capacity_plan_audit (workshop_code, line_code, process_code, changed_at DESC);
+        CREATE TABLE IF NOT EXISTS masterdata_line_skeletons (
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            workshop_name TEXT,
+            line_code TEXT NOT NULL,
+            line_name TEXT,
+            enabled_flag INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (company_code, workshop_code, line_code)
+        );
         """
     )
     _ensure_work_reports_schema(connection)

@@ -261,6 +261,17 @@ CREATE TABLE IF NOT EXISTS masterdata_process_routes (
 CREATE INDEX IF NOT EXISTS idx_masterdata_process_routes_product
     ON masterdata_process_routes (product_code, sequence_no);
 
+CREATE TABLE IF NOT EXISTS masterdata_line_skeletons (
+    company_code TEXT NOT NULL,
+    workshop_code TEXT NOT NULL,
+    workshop_name TEXT,
+    line_code TEXT NOT NULL,
+    line_name TEXT,
+    enabled_flag INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (company_code, workshop_code, line_code)
+);
+
 CREATE TABLE IF NOT EXISTS masterdata_line_topology (
     company_code TEXT NOT NULL,
     workshop_code TEXT NOT NULL,
