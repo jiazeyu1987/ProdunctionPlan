@@ -102,6 +102,15 @@ def get_schedule_diff(
     return service.get_schedule_diff(version_no, compare_with)
 
 
+@router.get("/schedules/{version_no}/material-shortages")
+def get_schedule_material_shortages(
+    version_no: str,
+    service: Annotated[AppService, Depends(get_app_service)],
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> dict[str, Any]:
+    return service.get_schedule_material_shortages(version_no)
+
+
 @router.get("/schedules/{version_no}/process-load/daily")
 def get_schedule_daily_process_load(
     version_no: str,

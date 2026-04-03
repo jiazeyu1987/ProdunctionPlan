@@ -103,8 +103,12 @@ def initialize_database(database_path: Path | None = None) -> Path:
     return target_path
 
 
+def _table_info(connection: sqlite3.Connection, table_name: str) -> list[sqlite3.Row]:
+    return connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+
+
 def _table_columns(connection: sqlite3.Connection, table_name: str) -> set[str]:
-    rows = connection.execute(f"PRAGMA table_info({table_name})").fetchall()
+    rows = _table_info(connection, table_name)
     return {str(row[1]) for row in rows}
 
 
@@ -204,5 +208,98 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
             ON daily_line_capacity_plan_audit (calendar_date, changed_at DESC);
         CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_audit_line
             ON daily_line_capacity_plan_audit (workshop_code, line_code, process_code, changed_at DESC);
+        """
+    )
+    _ensure_work_reports_schema(connection)
+
+
+def _ensure_work_reports_schema(connection: sqlite3.Connection) -> None:
+    table_info = _table_info(connection, "work_reports")
+    if not table_info:
+        connection.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS work_reports (
+                report_id TEXT PRIMARY KEY,
+                production_order_no TEXT,
+                process_code TEXT,
+                process_name TEXT,
+                workshop_code TEXT,
+                workshop_name TEXT,
+                line_code TEXT,
+                line_name TEXT,
+                report_qty REAL NOT NULL,
+                report_time TEXT NOT NULL,
+                operator_name TEXT,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY (production_order_no) REFERENCES production_orders (production_order_no) ON DELETE CASCADE
+            );
+            CREATE INDEX IF NOT EXISTS idx_work_reports_order_no
+                ON work_reports (production_order_no, report_time DESC);
+            """
+        )
+        return
+
+    production_order_column = next(
+        (row for row in table_info if str(row[1]) == "production_order_no"),
+        None,
+    )
+    if production_order_column is None:
+        raise server_error(
+            code="WORK_REPORTS_ORDER_COLUMN_MISSING",
+            message="work_reports.production_order_no column is missing.",
+        )
+    is_not_null = int(production_order_column[3] or 0) == 1
+    if not is_not_null:
+        return
+
+    connection.executescript(
+        """
+        ALTER TABLE work_reports RENAME TO work_reports__legacy_order_required;
+        CREATE TABLE work_reports (
+            report_id TEXT PRIMARY KEY,
+            production_order_no TEXT,
+            process_code TEXT,
+            process_name TEXT,
+            workshop_code TEXT,
+            workshop_name TEXT,
+            line_code TEXT,
+            line_name TEXT,
+            report_qty REAL NOT NULL,
+            report_time TEXT NOT NULL,
+            operator_name TEXT,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (production_order_no) REFERENCES production_orders (production_order_no) ON DELETE CASCADE
+        );
+        INSERT INTO work_reports (
+            report_id,
+            production_order_no,
+            process_code,
+            process_name,
+            workshop_code,
+            workshop_name,
+            line_code,
+            line_name,
+            report_qty,
+            report_time,
+            operator_name,
+            updated_at
+        )
+        SELECT
+            report_id,
+            production_order_no,
+            process_code,
+            process_name,
+            workshop_code,
+            workshop_name,
+            line_code,
+            line_name,
+            report_qty,
+            report_time,
+            operator_name,
+            updated_at
+        FROM work_reports__legacy_order_required;
+        DROP TABLE work_reports__legacy_order_required;
+        CREATE INDEX IF NOT EXISTS idx_work_reports_order_no
+            ON work_reports (production_order_no, report_time DESC);
         """
     )

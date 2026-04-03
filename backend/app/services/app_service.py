@@ -885,14 +885,9 @@ class AppService:
         }
 
     def create_reporting(self, payload: dict[str, Any]) -> dict[str, Any]:
-        order_no = str(payload.get("order_no") or "").strip()
+        order_no = str(payload.get("order_no") or "").strip() or None
         process_code = str(payload.get("process_code") or "").strip().upper()
         report_qty = _to_number(payload.get("report_qty"), -1)
-        if not order_no:
-            raise bad_request(
-                code="ORDER_NO_REQUIRED",
-                message="order_no is required.",
-            )
         if not process_code:
             raise bad_request(
                 code="PROCESS_CODE_REQUIRED",
@@ -903,7 +898,8 @@ class AppService:
                 code="REPORT_QTY_INVALID",
                 message="report_qty must be greater than 0.",
             )
-        self._require_order(order_no)
+        if order_no:
+            self._require_order(order_no)
         process_name_by_code = self._process_name_by_code()
         report_id = f"RPT-{uuid4().hex[:10].upper()}"
         report_time = utc_now()
@@ -1152,6 +1148,57 @@ class AppService:
             "schedule_changes": schedule_changes,
             "line_changes": line_changes,
             "material_changes": material_changes,
+        }
+
+    def get_schedule_material_shortages(self, version_no: str) -> dict[str, Any]:
+        current_version = self.get_schedule_version(version_no)
+        task_rows = self._list_schedule_task_detail_rows(version_no)
+        current_orders = self._build_schedule_order_summary_map(task_rows)
+        material_rows = self._list_schedule_material_rows()
+        material_map = self._build_schedule_material_usage_map(
+            current_orders,
+            material_rows=material_rows,
+        )
+        impacted_order_nos: set[str] = set()
+        items: list[dict[str, Any]] = []
+        for material_code in sorted(material_map):
+            current = material_map[material_code]
+            estimated_inventory_qty = _to_number(current.get("estimated_inventory_qty"), 0)
+            if estimated_inventory_qty >= 0:
+                continue
+            order_nos = sorted(
+                {
+                    str(order_no).strip()
+                    for order_no in current.get("order_nos", [])
+                    if str(order_no).strip()
+                }
+            )
+            impacted_order_nos.update(order_nos)
+            items.append(
+                {
+                    "material_code": material_code,
+                    "material_name": current.get("material_name"),
+                    "supply_type_name": current.get("supply_type_name"),
+                    "inventory_qty": _to_number(current.get("inventory_qty"), 0),
+                    "planned_consume_qty": _to_number(current.get("planned_consume_qty"), 0),
+                    "estimated_inventory_qty": estimated_inventory_qty,
+                    "shortage_qty": abs(estimated_inventory_qty),
+                    "order_nos": order_nos,
+                }
+            )
+        items.sort(
+            key=lambda item: (
+                -_to_number(item.get("shortage_qty"), 0),
+                str(item.get("material_code") or ""),
+            )
+        )
+        return {
+            "summary": {
+                "version_no": str(current_version["version_no"]),
+                "shortage_material_count": len(items),
+                "impacted_order_count": len(impacted_order_nos),
+            },
+            "items": items,
         }
 
     def _pick_schedule_compare_version(self, version_no: str) -> dict[str, Any] | None:
@@ -1451,13 +1498,8 @@ class AppService:
             )
         return {"available": True, "reason": "", "items": items}
 
-    def _build_schedule_material_changes(
-        self,
-        *,
-        current_orders: dict[str, dict[str, Any]],
-        compare_orders: dict[str, dict[str, Any]],
-    ) -> dict[str, Any]:
-        material_rows = fetch_all(
+    def _list_schedule_material_rows(self) -> list[dict[str, Any]]:
+        return fetch_all(
             self.connection,
             """
             SELECT
@@ -1475,40 +1517,59 @@ class AppService:
             """
         )
 
-        def aggregate(order_map: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
-            out: dict[str, dict[str, Any]] = {}
-            for row in material_rows:
-                order_no = str(row.get("production_order_no") or "").strip()
-                order_summary = order_map.get(order_no)
-                if order_summary is None:
-                    continue
-                consume_ratio = _to_number(order_summary.get("planned_ratio"), 0)
-                if consume_ratio <= 0:
-                    continue
-                material_code = str(row.get("child_material_code") or "").strip().upper()
-                if not material_code:
-                    continue
-                current = out.get(material_code)
-                if current is None:
-                    current = {
-                        "material_code": material_code,
-                        "material_name": str(row.get("child_material_name") or material_code).strip() or material_code,
-                        "supply_type_name": str(row.get("supply_type_name") or "-").strip() or "-",
-                        "inventory_qty": _to_number(row.get("inventory_qty"), 0),
-                        "planned_consume_qty": 0.0,
-                        "order_nos": set(),
-                    }
-                    out[material_code] = current
-                current["inventory_qty"] = max(current["inventory_qty"], _to_number(row.get("inventory_qty"), 0))
-                current["planned_consume_qty"] += _to_number(row.get("issue_qty"), 0) * consume_ratio
-                current["order_nos"].add(order_no)
-            for current in out.values():
-                current["estimated_inventory_qty"] = current["inventory_qty"] - current["planned_consume_qty"]
-                current["order_nos"] = sorted(current["order_nos"])
-            return out
+    def _build_schedule_material_usage_map(
+        self,
+        order_map: dict[str, dict[str, Any]],
+        *,
+        material_rows: list[dict[str, Any]] | None = None,
+    ) -> dict[str, dict[str, Any]]:
+        source_rows = material_rows if material_rows is not None else self._list_schedule_material_rows()
+        out: dict[str, dict[str, Any]] = {}
+        for row in source_rows:
+            order_no = str(row.get("production_order_no") or "").strip()
+            order_summary = order_map.get(order_no)
+            if order_summary is None:
+                continue
+            consume_ratio = _to_number(order_summary.get("planned_ratio"), 0)
+            if consume_ratio <= 0:
+                continue
+            material_code = str(row.get("child_material_code") or "").strip().upper()
+            if not material_code:
+                continue
+            current = out.get(material_code)
+            if current is None:
+                current = {
+                    "material_code": material_code,
+                    "material_name": str(row.get("child_material_name") or material_code).strip() or material_code,
+                    "supply_type_name": str(row.get("supply_type_name") or "-").strip() or "-",
+                    "inventory_qty": _to_number(row.get("inventory_qty"), 0),
+                    "planned_consume_qty": 0.0,
+                    "order_nos": set(),
+                }
+                out[material_code] = current
+            current["inventory_qty"] = max(current["inventory_qty"], _to_number(row.get("inventory_qty"), 0))
+            current["planned_consume_qty"] += _to_number(row.get("issue_qty"), 0) * consume_ratio
+            current["order_nos"].add(order_no)
+        for current in out.values():
+            current["estimated_inventory_qty"] = current["inventory_qty"] - current["planned_consume_qty"]
+            current["order_nos"] = sorted(current["order_nos"])
+        return out
 
-        current_map = aggregate(current_orders)
-        compare_map = aggregate(compare_orders)
+    def _build_schedule_material_changes(
+        self,
+        *,
+        current_orders: dict[str, dict[str, Any]],
+        compare_orders: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        material_rows = self._list_schedule_material_rows()
+        current_map = self._build_schedule_material_usage_map(
+            current_orders,
+            material_rows=material_rows,
+        )
+        compare_map = self._build_schedule_material_usage_map(
+            compare_orders,
+            material_rows=material_rows,
+        )
         items: list[dict[str, Any]] = []
         for material_code in sorted(set(current_map) | set(compare_map)):
             current = current_map.get(material_code)
