@@ -115,7 +115,11 @@ class JobDispatcher:
         if job_type == "LEGACY_REPORT_CREATE":
             return self._dispatch_app_service("create_reporting", payload)
         if job_type == "LEGACY_REPORT_DELETE":
-            return self._dispatch_app_service("delete_reporting", str(payload["report_id"]))
+            return self._dispatch_app_service(
+                "delete_reporting",
+                str(payload["report_id"]),
+                payload.get("actor"),
+            )
         if job_type == "LEGACY_SCHEDULE_GENERATE":
             return self._dispatch_app_service("generate_schedule", payload)
         if job_type == "LEGACY_SCHEDULE_PUBLISH":

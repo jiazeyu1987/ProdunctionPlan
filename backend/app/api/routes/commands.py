@@ -313,19 +313,25 @@ def reset_manual_simulation(
 def create_reporting(
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
-    _: Annotated[
+    current_user: Annotated[
         dict[str, Any],
         Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
     ] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
+    actor = {
+        "user_id": str(current_user.get("user_id") or "").strip(),
+        "username": str(current_user.get("username") or "").strip(),
+        "display_name": str(current_user.get("display_name") or "").strip(),
+        "role_code": str(current_user.get("role_code") or "").strip(),
+    }
     return enqueue_command_job(
         connection,
         job_type="LEGACY_REPORT_CREATE",
         target_type="ORDER",
         target_key=str(payload.get("order_no") or "").strip() or "UNKNOWN",
         request_id=str(payload.get("request_id") or "").strip() or None,
-        payload=payload,
+        payload={**payload, "actor": actor},
     )
 
 
@@ -334,19 +340,25 @@ def delete_reporting(
     report_id: str,
     payload: dict[str, Any] = Body(default_factory=dict),
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
-    _: Annotated[
+    current_user: Annotated[
         dict[str, Any],
         Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
     ] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
+    actor = {
+        "user_id": str(current_user.get("user_id") or "").strip(),
+        "username": str(current_user.get("username") or "").strip(),
+        "display_name": str(current_user.get("display_name") or "").strip(),
+        "role_code": str(current_user.get("role_code") or "").strip(),
+    }
     return enqueue_command_job(
         connection,
         job_type="LEGACY_REPORT_DELETE",
         target_type="REPORT",
         target_key=report_id,
         request_id=str(payload.get("request_id") or "").strip() or None,
-        payload={"report_id": report_id},
+        payload={"report_id": report_id, "actor": actor},
     )
 
 

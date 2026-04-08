@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 from ..db import fetch_all, fetch_one, transaction, utc_now
-from ..errors import bad_request, not_found, server_error
+from ..errors import bad_request, forbidden, not_found, server_error
 from ..gateway.inventory import ERPInventoryGateway
 from ..gateway.masterdata import UpstreamMasterdataGateway
 from ..gateway.orders import ERPOrderGateway
@@ -34,6 +34,9 @@ SUPPORTED_CAPACITY_SOURCE_MODES = {"DEFAULT", "PLANNED", "ACTUAL"}
 SUPPORTED_CN_HOLIDAY_YEARS = {2024, 2025, 2026, 2027, 2028}
 PRIORITY_LEVEL_MIN = 1
 PRIORITY_LEVEL_MAX = 5
+ROLE_SCHEDULER = "SCHEDULER"
+ROLE_WORKSHOP_MANAGER = "WORKSHOP_MANAGER"
+DEFAULT_COMPANY_CODE = "COMPANY-MAIN"
 ANGIO_CATHETER_PRODUCT_CODES = frozenset(
     {
         "A006.034.10191",
@@ -451,6 +454,7 @@ class AppService:
         *,
         start_time: str | None = None,
         end_time: str | None = None,
+        current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         where_clauses: list[str] = []
         parameters: list[Any] = []
@@ -460,6 +464,20 @@ class AppService:
         if end_time:
             where_clauses.append("report_time <= ?")
             parameters.append(end_time)
+        manager_user_id = self._resolve_manager_user_id(current_user)
+        if manager_user_id is not None:
+            where_clauses.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM app_user_line_scopes scope
+                    WHERE scope.user_id = ?
+                      AND scope.workshop_code = work_reports.workshop_code
+                      AND scope.line_code = work_reports.line_code
+                )
+                """
+            )
+            parameters.append(manager_user_id)
         where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
         rows = fetch_all(
             self.connection,
@@ -469,6 +487,10 @@ class AppService:
                 production_order_no,
                 process_code,
                 process_name,
+                workshop_code,
+                workshop_name,
+                line_code,
+                line_name,
                 report_qty,
                 report_time,
                 operator_name
@@ -485,12 +507,277 @@ class AppService:
                     "order_no": row["production_order_no"],
                     "process_code": row.get("process_code"),
                     "process_name_cn": row.get("process_name") or row.get("process_code"),
+                    "workshop_code": row.get("workshop_code"),
+                    "workshop_name": row.get("workshop_name") or row.get("workshop_code"),
+                    "line_code": row.get("line_code"),
+                    "line_name": row.get("line_name") or row.get("line_code"),
                     "report_qty": row.get("report_qty"),
                     "report_time": row.get("report_time"),
                     "operator_name_cn": row.get("operator_name") or "系统填报",
                 }
                 for row in rows
             ]
+        }
+
+    def get_order_summary(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        current_user: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        normalized_start_date = _normalize_date_text(start_date)
+        if normalized_start_date is None:
+            raise bad_request(
+                code="ORDER_SUMMARY_START_DATE_REQUIRED",
+                message="start_date must be a valid YYYY-MM-DD date.",
+            )
+        normalized_end_date = _normalize_date_text(end_date)
+        if normalized_end_date is None:
+            raise bad_request(
+                code="ORDER_SUMMARY_END_DATE_REQUIRED",
+                message="end_date must be a valid YYYY-MM-DD date.",
+            )
+        if normalized_end_date < normalized_start_date:
+            raise bad_request(
+                code="ORDER_SUMMARY_DATE_RANGE_INVALID",
+                message="end_date must be greater than or equal to start_date.",
+                details={
+                    "start_date": normalized_start_date,
+                    "end_date": normalized_end_date,
+                },
+            )
+
+        filters: list[str] = [
+            "date(work_reports.report_time, '+8 hours') >= ?",
+            "date(work_reports.report_time, '+8 hours') <= ?",
+        ]
+        parameters: list[Any] = [normalized_start_date, normalized_end_date]
+        manager_user_id = self._resolve_manager_user_id(current_user)
+        if manager_user_id is not None:
+            filters.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM app_user_line_scopes scope
+                    WHERE scope.user_id = ?
+                      AND scope.workshop_code = work_reports.workshop_code
+                      AND scope.line_code = work_reports.line_code
+                )
+                """
+            )
+            parameters.append(manager_user_id)
+
+        where_sql = " AND ".join(filters)
+        grouped_report_rows = fetch_all(
+            self.connection,
+            f"""
+            SELECT
+                production_order_no,
+                process_code,
+                process_name,
+                SUM(report_qty) AS report_qty,
+                MAX(date(report_time, '+8 hours')) AS last_report_local_date
+            FROM work_reports
+            WHERE {where_sql}
+            GROUP BY production_order_no, process_code
+            ORDER BY production_order_no ASC, process_code ASC
+            """,
+            tuple(parameters),
+        )
+
+        process_name_by_code = self._process_name_by_code()
+        order_process_qty_map: dict[str, dict[str, float]] = defaultdict(dict)
+        order_process_last_date_map: dict[str, dict[str, str | None]] = defaultdict(dict)
+        process_agg_map: dict[str, dict[str, Any]] = {}
+        order_nos: set[str] = set()
+        for row in grouped_report_rows:
+            process_code = str(row.get("process_code") or "").strip().upper()
+            if not process_code:
+                continue
+            process_name = (
+                str(row.get("process_name") or process_name_by_code.get(process_code) or process_code).strip()
+                or process_code
+            )
+            report_qty = _to_number(row.get("report_qty"), 0)
+            last_report_local_date = _normalize_date_text(row.get("last_report_local_date"))
+            order_no = str(row.get("production_order_no") or "").strip()
+
+            process_agg = process_agg_map.get(process_code)
+            if process_agg is None:
+                process_agg = {
+                    "process_code": process_code,
+                    "process_name_cn": process_name,
+                    "report_qty_total": 0.0,
+                    "order_nos": set(),
+                    "last_report_date": None,
+                }
+                process_agg_map[process_code] = process_agg
+            process_agg["report_qty_total"] = _to_number(process_agg.get("report_qty_total"), 0) + report_qty
+            if last_report_local_date and (
+                process_agg["last_report_date"] is None or last_report_local_date > process_agg["last_report_date"]
+            ):
+                process_agg["last_report_date"] = last_report_local_date
+
+            if not order_no:
+                continue
+            order_nos.add(order_no)
+            process_agg["order_nos"].add(order_no)
+            order_process_qty_map[order_no][process_code] = report_qty
+            order_process_last_date_map[order_no][process_code] = last_report_local_date
+
+        if not order_nos and not process_agg_map:
+            return {
+                "range": {
+                    "start_date": normalized_start_date,
+                    "end_date": normalized_end_date,
+                },
+                "summary": {
+                    "order_count": 0,
+                    "completed_order_count": 0,
+                    "completion_rate": 0,
+                    "order_qty_total": 0,
+                    "final_process_completed_qty_total": 0,
+                    "process_count": 0,
+                    "process_report_qty_total": 0,
+                },
+                "order_items": [],
+                "process_items": [],
+            }
+
+        order_meta_by_no: dict[str, dict[str, Any]] = {}
+        if order_nos:
+            placeholders = ",".join("?" for _ in order_nos)
+            order_rows = fetch_all(
+                self.connection,
+                f"""
+                SELECT
+                    production_order_no,
+                    material_code,
+                    material_name,
+                    production_qty
+                FROM production_orders
+                WHERE production_order_no IN ({placeholders})
+                """,
+                tuple(sorted(order_nos)),
+            )
+            for row in order_rows:
+                order_no = str(row.get("production_order_no") or "").strip()
+                if not order_no:
+                    continue
+                order_meta_by_no[order_no] = row
+
+        product_codes = {
+            str((order_meta_by_no.get(order_no) or {}).get("material_code") or "").strip().upper()
+            for order_no in order_nos
+        }
+        product_codes.discard("")
+        final_process_by_product = self._resolve_final_process_meta_by_product(product_codes)
+
+        order_items: list[dict[str, Any]] = []
+        for order_no in sorted(order_nos):
+            order_meta = order_meta_by_no.get(order_no) or {}
+            product_code = str(order_meta.get("material_code") or "").strip().upper()
+            product_name = str(order_meta.get("material_name") or product_code or "-").strip() or "-"
+            order_qty = _to_number(order_meta.get("production_qty"), 0)
+            final_meta = final_process_by_product.get(product_code) or {}
+            final_process_code = str(final_meta.get("process_code") or "").strip().upper() or None
+            final_process_name_cn = str(final_meta.get("process_name_cn") or final_process_code or "-").strip() or "-"
+            process_qty_by_code = order_process_qty_map.get(order_no) or {}
+            process_last_date_by_code = order_process_last_date_map.get(order_no) or {}
+            final_process_completed_qty = (
+                _to_number(process_qty_by_code.get(final_process_code), 0) if final_process_code else 0.0
+            )
+            final_process_last_report_date = (
+                _normalize_date_text(process_last_date_by_code.get(final_process_code))
+                if final_process_code
+                else None
+            )
+            completed_flag = (
+                bool(final_process_code)
+                and order_qty > 0
+                and (final_process_completed_qty + SCHEDULE_NUMBER_EPSILON) >= order_qty
+            )
+            order_items.append(
+                {
+                    "order_no": order_no,
+                    "product_code": product_code or "-",
+                    "product_name_cn": product_name,
+                    "order_qty": order_qty,
+                    "reported_process_count": len(process_qty_by_code),
+                    "final_process_code": final_process_code,
+                    "final_process_name_cn": final_process_name_cn,
+                    "final_process_completed_qty": final_process_completed_qty,
+                    "final_process_last_report_date": final_process_last_report_date,
+                    "completed_flag": 1 if completed_flag else 0,
+                }
+            )
+
+        process_items: list[dict[str, Any]] = []
+        for process_code in sorted(process_agg_map):
+            process_agg = process_agg_map[process_code]
+            order_no_set = set(process_agg.get("order_nos") or set())
+            involved_order_count = len(order_no_set)
+            completed_order_count = 0
+            if involved_order_count > 0:
+                for order_no in order_no_set:
+                    order_meta = order_meta_by_no.get(order_no) or {}
+                    order_qty = _to_number(order_meta.get("production_qty"), 0)
+                    process_report_qty = _to_number(
+                        (order_process_qty_map.get(order_no) or {}).get(process_code),
+                        0,
+                    )
+                    if order_qty > 0 and (process_report_qty + SCHEDULE_NUMBER_EPSILON) >= order_qty:
+                        completed_order_count += 1
+            completion_rate = (
+                round(completed_order_count / involved_order_count * 100, 2)
+                if involved_order_count > 0
+                else 0
+            )
+            process_items.append(
+                {
+                    "process_code": process_code,
+                    "process_name_cn": str(process_agg.get("process_name_cn") or process_code).strip()
+                    or process_code,
+                    "report_qty_total": _to_number(process_agg.get("report_qty_total"), 0),
+                    "involved_order_count": involved_order_count,
+                    "completed_order_count": completed_order_count,
+                    "completion_rate": completion_rate,
+                    "last_report_date": _normalize_date_text(process_agg.get("last_report_date")),
+                }
+            )
+
+        order_count = len(order_items)
+        completed_order_count = sum(1 for item in order_items if int(item.get("completed_flag") or 0) == 1)
+        order_completion_rate = (
+            round(completed_order_count / order_count * 100, 2) if order_count > 0 else 0
+        )
+        order_qty_total = round(sum(_to_number(item.get("order_qty"), 0) for item in order_items), 4)
+        final_process_completed_qty_total = round(
+            sum(_to_number(item.get("final_process_completed_qty"), 0) for item in order_items),
+            4,
+        )
+        process_report_qty_total = round(
+            sum(_to_number(item.get("report_qty_total"), 0) for item in process_items),
+            4,
+        )
+
+        return {
+            "range": {
+                "start_date": normalized_start_date,
+                "end_date": normalized_end_date,
+            },
+            "summary": {
+                "order_count": order_count,
+                "completed_order_count": completed_order_count,
+                "completion_rate": order_completion_rate,
+                "order_qty_total": order_qty_total,
+                "final_process_completed_qty_total": final_process_completed_qty_total,
+                "process_count": len(process_items),
+                "process_report_qty_total": process_report_qty_total,
+            },
+            "order_items": order_items,
+            "process_items": process_items,
         }
 
     def list_line_daily_capacity(
@@ -500,6 +787,7 @@ class AppService:
         workshop_code: str | None = None,
         line_code: str | None = None,
         process_code: str | None = None,
+        current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         normalized_date = _normalize_date_text(calendar_date)
         if normalized_date is None:
@@ -518,6 +806,21 @@ class AppService:
         if process_code:
             filters.append("lt.process_code = ?")
             parameters.append(str(process_code).strip().upper())
+        manager_user_id = self._resolve_manager_user_id(current_user)
+        if manager_user_id is not None:
+            filters.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM app_user_line_scopes scope
+                    WHERE scope.user_id = ?
+                      AND scope.company_code = lt.company_code
+                      AND scope.workshop_code = lt.workshop_code
+                      AND scope.line_code = lt.line_code
+                )
+                """
+            )
+            parameters.append(manager_user_id)
         where_sql = f"WHERE {' AND '.join(filters)}" if filters else ""
         items = fetch_all(
             self.connection,
@@ -588,6 +891,15 @@ class AppService:
                     code="DAILY_CAPACITY_KEY_REQUIRED",
                     message="workshop_code, line_code and process_code are required.",
                 )
+            self._assert_actor_can_access_line(
+                actor,
+                company_code=company_code,
+                workshop_code=workshop_code,
+                line_code=line_code,
+                missing_user_error_code="DAILY_CAPACITY_ACTOR_USER_REQUIRED",
+                forbidden_error_code="DAILY_CAPACITY_LINE_SCOPE_FORBIDDEN",
+                forbidden_message="Current workshop manager is not allowed to modify this line capacity row.",
+            )
             if planned_capacity_qty < 0:
                 raise bad_request(
                     code="DAILY_CAPACITY_INVALID",
@@ -732,7 +1044,7 @@ class AppService:
                     """,
                     audit_rows,
                 )
-        return self.list_line_daily_capacity(normalized_date)
+        return self.list_line_daily_capacity(normalized_date, current_user=actor)
 
     def list_line_daily_capacity_audits(
         self,
@@ -741,6 +1053,7 @@ class AppService:
         workshop_code: str | None = None,
         line_code: str | None = None,
         process_code: str | None = None,
+        current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         normalized_date = _normalize_date_text(calendar_date)
         if normalized_date is None:
@@ -759,6 +1072,21 @@ class AppService:
         if process_code:
             filters.append("process_code = ?")
             parameters.append(str(process_code).strip().upper())
+        manager_user_id = self._resolve_manager_user_id(current_user)
+        if manager_user_id is not None:
+            filters.append(
+                """
+                EXISTS (
+                    SELECT 1
+                    FROM app_user_line_scopes scope
+                    WHERE scope.user_id = ?
+                      AND scope.company_code = daily_line_capacity_plan_audit.company_code
+                      AND scope.workshop_code = daily_line_capacity_plan_audit.workshop_code
+                      AND scope.line_code = daily_line_capacity_plan_audit.line_code
+                )
+                """
+            )
+            parameters.append(manager_user_id)
         where_sql = " AND ".join(filters)
         rows = fetch_all(
             self.connection,
@@ -950,6 +1278,23 @@ class AppService:
         workshop_name = str(payload.get("workshop_name") or workshop_code or "").strip() or workshop_code
         line_code = str(payload.get("line_code") or "").strip().upper() or None
         line_name = str(payload.get("line_name") or line_code or "").strip() or line_code
+        company_code = str(payload.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper() or DEFAULT_COMPANY_CODE
+        actor = payload.get("actor") if isinstance(payload.get("actor"), dict) else {}
+        if self._is_workshop_manager(actor):
+            if not workshop_code or not line_code:
+                raise bad_request(
+                    code="REPORT_LINE_REQUIRED",
+                    message="workshop_code and line_code are required for workshop manager reporting.",
+                )
+            self._assert_actor_can_access_line(
+                actor,
+                company_code=company_code,
+                workshop_code=workshop_code,
+                line_code=line_code,
+                missing_user_error_code="REPORT_ACTOR_USER_REQUIRED",
+                forbidden_error_code="REPORT_LINE_SCOPE_FORBIDDEN",
+                forbidden_message="Current workshop manager is not allowed to report on this line.",
+            )
         with transaction(self.connection):
             self.connection.execute(
                 """
@@ -1001,7 +1346,11 @@ class AppService:
             "operator_name_cn": operator_name,
         }
 
-    def delete_reporting(self, report_id: str) -> dict[str, Any]:
+    def delete_reporting(
+        self,
+        report_id: str,
+        actor: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         existing = fetch_one(
             self.connection,
             """
@@ -1017,13 +1366,30 @@ class AppService:
                 message="Report does not exist.",
                 details={"report_id": report_id},
             )
+        normalized_actor = actor if isinstance(actor, dict) else {}
+        workshop_code = str(existing.get("workshop_code") or "").strip().upper()
+        line_code = str(existing.get("line_code") or "").strip().upper()
+        if self._is_workshop_manager(normalized_actor):
+            if not workshop_code or not line_code:
+                raise forbidden(
+                    code="REPORT_LINE_SCOPE_FORBIDDEN",
+                    message="Current workshop manager is not allowed to delete this reporting record.",
+                    details={"report_id": report_id},
+                )
+            self._assert_actor_can_access_line(
+                normalized_actor,
+                company_code=DEFAULT_COMPANY_CODE,
+                workshop_code=workshop_code,
+                line_code=line_code,
+                missing_user_error_code="REPORT_ACTOR_USER_REQUIRED",
+                forbidden_error_code="REPORT_LINE_SCOPE_FORBIDDEN",
+                forbidden_message="Current workshop manager is not allowed to delete this reporting record.",
+            )
         with transaction(self.connection):
             self.connection.execute(
                 "DELETE FROM work_reports WHERE report_id = ?",
                 (report_id,),
             )
-        workshop_code = str(existing.get("workshop_code") or "").strip().upper()
-        line_code = str(existing.get("line_code") or "").strip().upper()
         process_code = str(existing.get("process_code") or "").strip().upper()
         report_time_text = str(existing.get("report_time") or "").strip()
         if workshop_code and line_code and process_code and report_time_text:
@@ -1681,6 +2047,8 @@ class AppService:
         rules = self.get_schedule_calendar_rules()["data"]
         line_skeletons = self._list_line_skeleton_rows()
         line_topology = self._list_line_topology_rows()
+        workshop_manager_users = self._list_enabled_workshop_manager_users()
+        workshop_manager_line_scopes = self._list_workshop_manager_line_scope_rows()
         route_rows = self._list_route_rows()
         process_seen: dict[str, str] = {}
         for row in route_rows:
@@ -1707,6 +2075,8 @@ class AppService:
                 "process_configs": process_configs,
                 "line_skeletons": line_skeletons,
                 "line_topology": line_topology,
+                "workshop_manager_users": workshop_manager_users,
+                "workshop_manager_line_scopes": workshop_manager_line_scopes,
                 "resource_pool": [],
                 "material_availability": [],
             }
@@ -1727,6 +2097,18 @@ class AppService:
                 code="LINE_TOPOLOGY_REQUIRED",
                 message="line_topology must be an array.",
             )
+        workshop_manager_line_scopes = payload.get("workshop_manager_line_scopes")
+        if not isinstance(workshop_manager_line_scopes, list):
+            raise bad_request(
+                code="WORKSHOP_MANAGER_LINE_SCOPES_REQUIRED",
+                message="workshop_manager_line_scopes must be an array.",
+            )
+        workshop_manager_users = self._list_enabled_workshop_manager_users()
+        workshop_manager_user_ids = {
+            str(row.get("user_id") or "").strip()
+            for row in workshop_manager_users
+            if str(row.get("user_id") or "").strip()
+        }
         updated_at = utc_now()
         skeleton_rows: list[tuple[Any, ...]] = []
         skeleton_map: dict[tuple[str, str, str], dict[str, Any]] = {}
@@ -1822,6 +2204,57 @@ class AppService:
                     updated_at,
                 )
             )
+        scope_rows: list[tuple[Any, ...]] = []
+        scope_seen: set[tuple[str, str, str, str]] = set()
+        for item in workshop_manager_line_scopes:
+            user_id = str(item.get("user_id") or "").strip()
+            company_code = str(item.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper() or DEFAULT_COMPANY_CODE
+            workshop_code = str(item.get("workshop_code") or "").strip().upper()
+            line_code = str(item.get("line_code") or "").strip().upper()
+            if not user_id or not workshop_code or not line_code:
+                raise bad_request(
+                    code="WORKSHOP_MANAGER_LINE_SCOPE_ROW_INVALID",
+                    message="user_id, workshop_code and line_code are required in workshop_manager_line_scopes.",
+                )
+            if user_id not in workshop_manager_user_ids:
+                raise bad_request(
+                    code="WORKSHOP_MANAGER_USER_INVALID",
+                    message="workshop_manager_line_scopes contains unknown or disabled workshop manager user.",
+                    details={"user_id": user_id},
+                )
+            scope_key = (user_id, company_code, workshop_code, line_code)
+            if scope_key in scope_seen:
+                raise bad_request(
+                    code="WORKSHOP_MANAGER_LINE_SCOPE_DUPLICATE",
+                    message="workshop_manager_line_scopes contains duplicate rows.",
+                    details={
+                        "user_id": user_id,
+                        "company_code": company_code,
+                        "workshop_code": workshop_code,
+                        "line_code": line_code,
+                    },
+                )
+            scope_seen.add(scope_key)
+            if (company_code, workshop_code, line_code) not in skeleton_map:
+                raise bad_request(
+                    code="WORKSHOP_MANAGER_LINE_SCOPE_SKELETON_MISSING",
+                    message="workshop_manager_line_scopes row must reference an existing line_skeleton.",
+                    details={
+                        "user_id": user_id,
+                        "company_code": company_code,
+                        "workshop_code": workshop_code,
+                        "line_code": line_code,
+                    },
+                )
+            scope_rows.append(
+                (
+                    user_id,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    updated_at,
+                )
+            )
         with transaction(self.connection):
             self.connection.execute("DELETE FROM masterdata_line_skeletons")
             self.connection.executemany(
@@ -1857,6 +2290,20 @@ class AppService:
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     rows,
+                )
+            self.connection.execute("DELETE FROM app_user_line_scopes")
+            if scope_rows:
+                self.connection.executemany(
+                    """
+                    INSERT INTO app_user_line_scopes (
+                        user_id,
+                        company_code,
+                        workshop_code,
+                        line_code,
+                        updated_at
+                    ) VALUES (?, ?, ?, ?, ?)
+                    """,
+                    scope_rows,
                 )
         return self.get_masterdata_config()
 
@@ -4510,6 +4957,200 @@ class AppService:
             }
             for process_code in ordered_process_codes
         ]
+
+    def _resolve_final_process_meta_by_product(
+        self,
+        product_codes: set[str],
+    ) -> dict[str, dict[str, str]]:
+        normalized_product_codes = {
+            str(product_code or "").strip().upper()
+            for product_code in product_codes
+            if str(product_code or "").strip()
+        }
+        if not normalized_product_codes:
+            return {}
+        placeholders = ",".join("?" for _ in normalized_product_codes)
+        rows = fetch_all(
+            self.connection,
+            f"""
+            SELECT
+                product_code,
+                sequence_no,
+                process_code,
+                process_name_cn,
+                COALESCE(is_final_process, 0) AS is_final_process
+            FROM masterdata_process_routes
+            WHERE product_code IN ({placeholders})
+            ORDER BY product_code ASC, sequence_no ASC
+            """,
+            tuple(sorted(normalized_product_codes)),
+        )
+        rows_by_product: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in rows:
+            product_code = str(row.get("product_code") or "").strip().upper()
+            process_code = str(row.get("process_code") or "").strip().upper()
+            sequence_no = int(_to_number(row.get("sequence_no"), 0))
+            if not product_code or not process_code or sequence_no <= 0:
+                continue
+            rows_by_product[product_code].append(
+                {
+                    "sequence_no": sequence_no,
+                    "process_code": process_code,
+                    "process_name_cn": str(row.get("process_name_cn") or process_code).strip() or process_code,
+                    "is_final_process": 1 if int(_to_number(row.get("is_final_process"), 0)) == 1 else 0,
+                }
+            )
+
+        out: dict[str, dict[str, str]] = {}
+        for product_code, route_rows in rows_by_product.items():
+            ordered_rows = sorted(route_rows, key=lambda item: int(item["sequence_no"]))
+            marked_rows = [row for row in ordered_rows if int(row.get("is_final_process") or 0) == 1]
+            if len(marked_rows) > 1:
+                raise server_error(
+                    code="ROUTE_FINAL_PROCESS_DUPLICATED",
+                    message="Route has more than one final process step.",
+                    details={"product_code": product_code},
+                )
+            target_row = marked_rows[0] if marked_rows else ordered_rows[-1]
+            process_code = str(target_row.get("process_code") or "").strip().upper()
+            if not process_code:
+                continue
+            out[product_code] = {
+                "process_code": process_code,
+                "process_name_cn": str(target_row.get("process_name_cn") or process_code).strip() or process_code,
+            }
+        return out
+
+    def _is_workshop_manager(self, user: dict[str, Any] | None) -> bool:
+        role_code = str((user or {}).get("role_code") or "").strip().upper()
+        return role_code == ROLE_WORKSHOP_MANAGER
+
+    def _resolve_manager_user_id(self, user: dict[str, Any] | None) -> str | None:
+        if not self._is_workshop_manager(user):
+            return None
+        user_id = str((user or {}).get("user_id") or "").strip()
+        if not user_id:
+            raise forbidden(
+                code="WORKSHOP_MANAGER_USER_ID_REQUIRED",
+                message="Current workshop manager user_id is missing.",
+            )
+        return user_id
+
+    def _list_user_line_scope_rows(self, user_id: str) -> list[dict[str, Any]]:
+        normalized_user_id = str(user_id or "").strip()
+        if not normalized_user_id:
+            return []
+        return fetch_all(
+            self.connection,
+            """
+            SELECT
+                user_id,
+                company_code,
+                workshop_code,
+                line_code
+            FROM app_user_line_scopes
+            WHERE user_id = ?
+            """,
+            (normalized_user_id,),
+        )
+
+    def _build_line_scope_key(
+        self,
+        *,
+        company_code: str | None,
+        workshop_code: str | None,
+        line_code: str | None,
+    ) -> tuple[str, str, str]:
+        return (
+            str(company_code or DEFAULT_COMPANY_CODE).strip().upper() or DEFAULT_COMPANY_CODE,
+            str(workshop_code or "").strip().upper(),
+            str(line_code or "").strip().upper(),
+        )
+
+    def _user_line_scope_key_set(self, user_id: str) -> set[tuple[str, str, str]]:
+        rows = self._list_user_line_scope_rows(user_id)
+        return {
+            self._build_line_scope_key(
+                company_code=row.get("company_code"),
+                workshop_code=row.get("workshop_code"),
+                line_code=row.get("line_code"),
+            )
+            for row in rows
+        }
+
+    def _assert_actor_can_access_line(
+        self,
+        actor: dict[str, Any] | None,
+        *,
+        company_code: str,
+        workshop_code: str,
+        line_code: str,
+        missing_user_error_code: str,
+        forbidden_error_code: str,
+        forbidden_message: str,
+    ) -> None:
+        if not self._is_workshop_manager(actor):
+            return
+        actor_user_id = str((actor or {}).get("user_id") or "").strip()
+        if not actor_user_id:
+            raise bad_request(
+                code=missing_user_error_code,
+                message="workshop manager actor.user_id is required.",
+            )
+        scope_key = self._build_line_scope_key(
+            company_code=company_code,
+            workshop_code=workshop_code,
+            line_code=line_code,
+        )
+        allowed_scope_keys = self._user_line_scope_key_set(actor_user_id)
+        if scope_key not in allowed_scope_keys:
+            raise forbidden(
+                code=forbidden_error_code,
+                message=forbidden_message,
+                details={
+                    "user_id": actor_user_id,
+                    "company_code": scope_key[0],
+                    "workshop_code": scope_key[1],
+                    "line_code": scope_key[2],
+                },
+            )
+
+    def _list_enabled_workshop_manager_users(self) -> list[dict[str, Any]]:
+        return fetch_all(
+            self.connection,
+            """
+            SELECT
+                user_id,
+                username,
+                display_name,
+                role_code,
+                enabled_flag
+            FROM app_users
+            WHERE role_code = ?
+              AND enabled_flag = 1
+            ORDER BY username ASC, user_id ASC
+            """,
+            (ROLE_WORKSHOP_MANAGER,),
+        )
+
+    def _list_workshop_manager_line_scope_rows(self) -> list[dict[str, Any]]:
+        return fetch_all(
+            self.connection,
+            """
+            SELECT
+                scope.user_id,
+                scope.company_code,
+                scope.workshop_code,
+                scope.line_code
+            FROM app_user_line_scopes scope
+            JOIN app_users users
+              ON users.user_id = scope.user_id
+            WHERE users.role_code = ?
+              AND users.enabled_flag = 1
+            ORDER BY scope.user_id ASC, scope.company_code ASC, scope.workshop_code ASC, scope.line_code ASC
+            """,
+            (ROLE_WORKSHOP_MANAGER,),
+        )
 
     def _list_line_skeleton_rows(self) -> list[dict[str, Any]]:
         return fetch_all(

@@ -151,7 +151,7 @@ def list_line_daily_capacity(
     line_code: str | None = Query(default=None),
     process_code: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)] = None,
-    _: Annotated[
+    current_user: Annotated[
         dict[str, Any],
         Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
     ] = None,
@@ -162,6 +162,7 @@ def list_line_daily_capacity(
         workshop_code=workshop_code,
         line_code=line_code,
         process_code=process_code,
+        current_user=current_user,
     )
 
 
@@ -172,7 +173,7 @@ def list_line_daily_capacity_audits(
     line_code: str | None = Query(default=None),
     process_code: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)] = None,
-    _: Annotated[
+    current_user: Annotated[
         dict[str, Any],
         Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
     ] = None,
@@ -183,6 +184,7 @@ def list_line_daily_capacity_audits(
         workshop_code=workshop_code,
         line_code=line_code,
         process_code=process_code,
+        current_user=current_user,
     )
 
 
@@ -191,10 +193,32 @@ def list_mes_reportings(
     start_time: str | None = Query(default=None),
     end_time: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)] = None,
-    _: Annotated[
+    current_user: Annotated[
         dict[str, Any],
         Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
     ] = None,
 ) -> dict[str, Any]:
     assert service is not None
-    return service.list_mes_reportings(start_time=start_time, end_time=end_time)
+    return service.list_mes_reportings(
+        start_time=start_time,
+        end_time=end_time,
+        current_user=current_user,
+    )
+
+
+@router.get("/order-summary")
+def get_order_summary(
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    service: Annotated[AppService, Depends(get_app_service)] = None,
+    current_user: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
+    ] = None,
+) -> dict[str, Any]:
+    assert service is not None
+    return service.get_order_summary(
+        start_date=start_date,
+        end_date=end_date,
+        current_user=current_user,
+    )

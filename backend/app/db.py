@@ -218,6 +218,19 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
             updated_at TEXT NOT NULL,
             PRIMARY KEY (company_code, workshop_code, line_code)
         );
+        CREATE TABLE IF NOT EXISTS app_user_line_scopes (
+            user_id TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (user_id, company_code, workshop_code, line_code),
+            FOREIGN KEY (user_id) REFERENCES app_users(user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_user_line_scopes_user
+            ON app_user_line_scopes (user_id);
+        CREATE INDEX IF NOT EXISTS idx_app_user_line_scopes_line
+            ON app_user_line_scopes (company_code, workshop_code, line_code);
         """
     )
     _ensure_masterdata_process_routes_schema(connection)
