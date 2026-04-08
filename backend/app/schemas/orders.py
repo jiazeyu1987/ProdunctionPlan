@@ -14,3 +14,7 @@ class OrderSummary(BaseModel):
     planned_start_date: str | None = None
     planned_end_date: str | None = None
     source_bill_no: str | None = None
+    final_process_code: str | None = None
+    final_process_name_cn: str | None = None
+    final_process_completed_qty: float | None = None
+    final_process_eta_date: str | None = None

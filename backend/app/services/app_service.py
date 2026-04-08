@@ -15,6 +15,7 @@ from ..gateway.masterdata import UpstreamMasterdataGateway
 from ..gateway.orders import ERPOrderGateway
 from ..gateway.supply import ERPSupplyGateway
 from ..json_utils import dumps, loads
+from .final_process_metrics import build_order_final_process_metrics
 from .job_dispatcher import ServiceFactory
 
 
@@ -284,25 +285,37 @@ class AppService:
         states = self._get_order_state_map(order_nos)
         capacity_map = self._get_capacity_map(order_nos)
         self._ensure_masterdata_seeded()
+        final_process_metrics_by_order = build_order_final_process_metrics(
+            self.connection,
+            rows,
+        )
         route_rows = self._list_route_rows()
         route_map = self._group_routes_by_product(route_rows)
         topology_by_process = self._first_topology_by_process(self._list_line_topology_rows())
-        items = [
-            self._build_order_pool_row(
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            order_no = str(row["production_order_no"])
+            items.append(
+                self._build_order_pool_row(
                 base_row=row,
-                state_row=states.get(str(row["production_order_no"])),
-                capacity_rows=capacity_map.get(str(row["production_order_no"]), []),
+                state_row=states.get(order_no),
+                capacity_rows=capacity_map.get(order_no, []),
                 route_rows=route_map.get(str(row["material_code"]), []),
                 topology_by_process=topology_by_process,
+                final_process_metrics=final_process_metrics_by_order.get(order_no),
             )
-            for row in rows
-        ]
+            )
         return {"items": items}
 
     def get_order_pool_item(self, order_no: str) -> dict[str, Any]:
         base_row = self._require_order(order_no)
         state_row = self._get_order_state(order_no)
         self._ensure_masterdata_seeded()
+        normalized_order_no = str(base_row["production_order_no"])
+        final_process_metrics = build_order_final_process_metrics(
+            self.connection,
+            [base_row],
+        ).get(normalized_order_no)
         route_rows = self._group_routes_by_product(self._list_route_rows()).get(
             str(base_row["material_code"]),
             [],
@@ -315,6 +328,7 @@ class AppService:
             capacity_rows=capacity_rows,
             route_rows=route_rows,
             topology_by_process=topology_by_process,
+            final_process_metrics=final_process_metrics,
         )
 
     def list_order_pool_materials(
@@ -399,10 +413,17 @@ class AppService:
             next_row["order_status"] = order_status_value
 
         production_qty = _to_number(base_row.get("production_qty"), 0)
+        revoke_done_flag = int(_to_number(payload.get("revoke_done_flag"), 0)) == 1
         normalized_status = str(
             next_row.get("order_status") or next_row.get("status") or ""
         ).strip().upper()
-        if normalized_status == "DONE":
+        if revoke_done_flag:
+            next_row["status"] = "OPEN"
+            next_row["order_status"] = "OPEN"
+            next_row["completed_qty"] = 0
+            next_row["remaining_qty"] = production_qty
+            next_row["progress_rate"] = 0
+        elif normalized_status == "DONE":
             next_row["status"] = "DONE"
             next_row["order_status"] = "DONE"
             next_row["completed_qty"] = production_qty
@@ -2956,6 +2977,7 @@ class AppService:
         capacity_rows: list[dict[str, Any]],
         route_rows: list[dict[str, Any]],
         topology_by_process: dict[str, dict[str, Any]],
+        final_process_metrics: dict[str, Any] | None,
     ) -> dict[str, Any]:
         production_qty = _to_number(base_row.get("production_qty"), 0)
         completed_qty = (
@@ -2993,6 +3015,21 @@ class AppService:
             (state_row or {}).get("order_status") or status
         ).strip().upper()
         source_bill_no = str(base_row.get("source_bill_no") or "").strip()
+        final_process_code = str(
+            (final_process_metrics or {}).get("final_process_code") or ""
+        ).strip().upper() or None
+        final_process_name_cn = str(
+            (final_process_metrics or {}).get("final_process_name_cn")
+            or final_process_code
+            or ""
+        ).strip() or None
+        final_process_completed_qty = _to_number(
+            (final_process_metrics or {}).get("final_process_completed_qty"),
+            0,
+        )
+        final_process_eta_date = _normalize_date_text(
+            (final_process_metrics or {}).get("final_process_eta_date")
+        )
         return {
             "order_no": base_row["production_order_no"],
             "product_code": base_row["material_code"],
@@ -3014,6 +3051,10 @@ class AppService:
             "order_status": order_status,
             "production_batch_no": (state_row or {}).get("production_batch_no")
             or (f"{source_bill_no}-B1" if source_bill_no else "-"),
+            "final_process_code": final_process_code,
+            "final_process_name_cn": final_process_name_cn,
+            "final_process_completed_qty": final_process_completed_qty,
+            "final_process_eta_date": final_process_eta_date,
             "process_contexts": self._build_process_contexts(
                 order_no=str(base_row["production_order_no"]),
                 product_code=str(base_row["material_code"]),
@@ -4098,8 +4139,9 @@ class AppService:
                         route_no,
                         route_name_cn,
                         product_name_cn,
+                        is_final_process,
                         updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -4111,6 +4153,7 @@ class AppService:
                             row["route_no"],
                             row["route_name_cn"],
                             row["product_name_cn"],
+                            int(_to_number(row.get("is_final_process"), 0)),
                             updated_at,
                         )
                         for row in route_rows
@@ -4211,7 +4254,49 @@ class AppService:
                 }
             )
         out.sort(key=lambda item: (str(item["product_code"]), int(item["sequence_no"])))
-        return out
+        return self._apply_default_final_process_flags(out)
+
+    def _apply_default_final_process_flags(
+        self,
+        rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        if not rows:
+            return []
+        max_sequence_by_product: dict[str, int] = {}
+        marked_count_by_product: dict[str, int] = defaultdict(int)
+        for row in rows:
+            product_code = str(row.get("product_code") or "").strip().upper()
+            sequence_no = int(_to_number(row.get("sequence_no"), 0))
+            if not product_code or sequence_no <= 0:
+                continue
+            max_sequence_by_product[product_code] = max(
+                max_sequence_by_product.get(product_code, 0),
+                sequence_no,
+            )
+            if int(_to_number(row.get("is_final_process"), 0)) == 1:
+                marked_count_by_product[product_code] += 1
+
+        normalized_rows: list[dict[str, Any]] = []
+        for row in rows:
+            product_code = str(row.get("product_code") or "").strip().upper()
+            sequence_no = int(_to_number(row.get("sequence_no"), 0))
+            has_marked = marked_count_by_product.get(product_code, 0) > 0
+            is_final_process = (
+                int(_to_number(row.get("is_final_process"), 0)) == 1
+                if has_marked
+                else (
+                    bool(product_code)
+                    and sequence_no > 0
+                    and sequence_no == max_sequence_by_product.get(product_code, -1)
+                )
+            )
+            normalized_rows.append(
+                {
+                    **row,
+                    "is_final_process": 1 if is_final_process else 0,
+                }
+            )
+        return normalized_rows
 
     def _build_line_topology_seed_rows(
         self,
@@ -4522,7 +4607,8 @@ class AppService:
                 dependency_type,
                 route_no,
                 route_name_cn,
-                product_name_cn
+                product_name_cn,
+                COALESCE(is_final_process, 0) AS is_final_process
             FROM masterdata_process_routes
             ORDER BY product_code ASC, sequence_no ASC
             """,
@@ -4580,7 +4666,7 @@ class AppService:
                     "product_name_cn": product_name,
                 }
             )
-        return out
+        return self._apply_default_final_process_flags(out)
 
     def _group_routes_by_product(
         self,
@@ -4613,7 +4699,8 @@ class AppService:
         )
         process_name_by_code = self._process_name_by_code()
         updated_at = utc_now()
-        rows_to_insert: list[tuple[Any, ...]] = []
+        rows_to_insert: list[dict[str, Any]] = []
+        marked_final_count = 0
         for index, step in enumerate(normalized_steps):
             process_code = str(step.get("process_code") or "").strip().upper()
             if not process_code:
@@ -4622,19 +4709,50 @@ class AppService:
                     message="Each route step requires process_code.",
                 )
             dependency_type = str(step.get("dependency_type") or "FS").strip().upper() or "FS"
-            rows_to_insert.append(
-                (
-                    product_code,
-                    index + 1,
-                    process_code,
-                    process_name_by_code.get(process_code, process_code),
-                    dependency_type,
-                    f"ROUTE-{product_code}",
-                    product_name,
-                    product_name,
-                    updated_at,
+            raw_final_process_flag = step.get("is_final_process")
+            if raw_final_process_flag is None:
+                is_final_process = 0
+            elif isinstance(raw_final_process_flag, bool):
+                is_final_process = 1 if raw_final_process_flag else 0
+            else:
+                normalized_final_process_flag = (
+                    str(raw_final_process_flag).strip().lower()
                 )
+                if normalized_final_process_flag in {"1", "true"}:
+                    is_final_process = 1
+                elif normalized_final_process_flag in {"0", "false", ""}:
+                    is_final_process = 0
+                else:
+                    raise bad_request(
+                        code="ROUTE_STEP_INVALID",
+                        message="is_final_process must be 0 or 1.",
+                    )
+            if is_final_process == 1:
+                marked_final_count += 1
+            rows_to_insert.append(
+                {
+                    "product_code": product_code,
+                    "sequence_no": index + 1,
+                    "process_code": process_code,
+                    "process_name_cn": process_name_by_code.get(
+                        process_code,
+                        process_code,
+                    ),
+                    "dependency_type": dependency_type,
+                    "route_no": f"ROUTE-{product_code}",
+                    "route_name_cn": product_name,
+                    "product_name_cn": product_name,
+                    "is_final_process": is_final_process,
+                    "updated_at": updated_at,
+                }
             )
+        if marked_final_count > 1:
+            raise bad_request(
+                code="ROUTE_FINAL_PROCESS_INVALID",
+                message="Only one step can be marked as final process.",
+            )
+        if marked_final_count == 0 and rows_to_insert:
+            rows_to_insert[-1]["is_final_process"] = 1
         with transaction(self.connection):
             self.connection.execute(
                 "DELETE FROM masterdata_process_routes WHERE product_code = ?",
@@ -4651,10 +4769,25 @@ class AppService:
                     route_no,
                     route_name_cn,
                     product_name_cn,
+                    is_final_process,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                rows_to_insert,
+                [
+                    (
+                        row["product_code"],
+                        row["sequence_no"],
+                        row["process_code"],
+                        row["process_name_cn"],
+                        row["dependency_type"],
+                        row["route_no"],
+                        row["route_name_cn"],
+                        row["product_name_cn"],
+                        row["is_final_process"],
+                        row["updated_at"],
+                    )
+                    for row in rows_to_insert
+                ],
             )
 
     def _lookup_product_name(self, product_code: str | None) -> str | None:

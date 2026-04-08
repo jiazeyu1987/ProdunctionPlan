@@ -220,7 +220,47 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
         );
         """
     )
+    _ensure_masterdata_process_routes_schema(connection)
     _ensure_work_reports_schema(connection)
+
+
+def _ensure_masterdata_process_routes_schema(connection: sqlite3.Connection) -> None:
+    columns = _table_columns(connection, "masterdata_process_routes")
+    if "is_final_process" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE masterdata_process_routes
+            ADD COLUMN is_final_process INTEGER NOT NULL DEFAULT 0
+            """
+        )
+    connection.execute(
+        """
+        UPDATE masterdata_process_routes
+        SET is_final_process = CASE
+            WHEN COALESCE(is_final_process, 0) <> 0 THEN 1
+            ELSE 0
+        END
+        """
+    )
+    connection.execute(
+        """
+        UPDATE masterdata_process_routes
+        SET is_final_process = CASE
+            WHEN sequence_no = (
+                SELECT MAX(inner_route.sequence_no)
+                FROM masterdata_process_routes AS inner_route
+                WHERE inner_route.product_code = masterdata_process_routes.product_code
+            ) THEN 1
+            ELSE 0
+        END
+        WHERE product_code IN (
+            SELECT product_code
+            FROM masterdata_process_routes
+            GROUP BY product_code
+            HAVING SUM(CASE WHEN COALESCE(is_final_process, 0) = 1 THEN 1 ELSE 0 END) = 0
+        )
+        """
+    )
 
 
 def _ensure_work_reports_schema(connection: sqlite3.Connection) -> None:

@@ -254,6 +254,7 @@ CREATE TABLE IF NOT EXISTS masterdata_process_routes (
     route_no TEXT NOT NULL,
     route_name_cn TEXT NOT NULL,
     product_name_cn TEXT NOT NULL,
+    is_final_process INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL,
     PRIMARY KEY (product_code, sequence_no)
 );
