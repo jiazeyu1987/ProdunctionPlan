@@ -334,6 +334,100 @@ class AppService:
             final_process_metrics=final_process_metrics,
         )
 
+    def get_order_pool_process_timeline(
+        self,
+        order_no: str,
+        *,
+        process_code: str | None = None,
+    ) -> dict[str, Any]:
+        base_row = self._require_order(order_no)
+        normalized_order_no = str(base_row["production_order_no"]).strip()
+        normalized_product_code = str(base_row.get("material_code") or "").strip().upper()
+        normalized_process_code = str(process_code or "").strip().upper() or None
+        if process_code is not None and not normalized_process_code:
+            raise bad_request(
+                code="PROCESS_CODE_REQUIRED",
+                message="process_code must be non-empty when provided.",
+            )
+
+        reference_version_no = self._pick_reference_schedule_version_no()
+        if reference_version_no is None:
+            return {
+                "summary": {
+                    "reference_version_no": None,
+                    "bottleneck_process_code": None,
+                    "bottleneck_process_name_cn": None,
+                    "message": "暂无排产任务数据",
+                },
+                "process_items": [],
+                "selected_process_detail": self._build_empty_selected_process_detail(
+                    process_code=normalized_process_code,
+                ),
+            }
+
+        order_task_rows = self._list_schedule_task_rows_by_version_order(
+            version_no=reference_version_no,
+            order_no=normalized_order_no,
+        )
+        if len(order_task_rows) == 0:
+            return {
+                "summary": {
+                    "reference_version_no": reference_version_no,
+                    "bottleneck_process_code": None,
+                    "bottleneck_process_name_cn": None,
+                    "message": "暂无排产任务数据",
+                },
+                "process_items": [],
+                "selected_process_detail": self._build_empty_selected_process_detail(
+                    process_code=normalized_process_code,
+                ),
+            }
+
+        route_rows = self._group_routes_by_product(self._list_route_rows()).get(
+            normalized_product_code,
+            [],
+        )
+        process_items = self._build_order_process_timeline_items(
+            task_rows=order_task_rows,
+            route_rows=route_rows,
+        )
+        bottleneck_item = next(
+            (item for item in process_items if int(item.get("is_bottleneck") or 0) == 1),
+            None,
+        )
+        selected_process_detail = self._build_empty_selected_process_detail(
+            process_code=normalized_process_code,
+        )
+        if normalized_process_code:
+            selected_process_detail = self._build_selected_process_timeline_detail(
+                version_no=reference_version_no,
+                order_no=normalized_order_no,
+                process_code=normalized_process_code,
+                process_items=process_items,
+            )
+
+        return {
+            "summary": {
+                "reference_version_no": reference_version_no,
+                "bottleneck_process_code": (
+                    str(bottleneck_item.get("process_code") or "").strip().upper()
+                    if bottleneck_item
+                    else None
+                ),
+                "bottleneck_process_name_cn": (
+                    str(
+                        bottleneck_item.get("process_name_cn")
+                        or bottleneck_item.get("process_code")
+                        or ""
+                    ).strip()
+                    if bottleneck_item
+                    else None
+                ),
+            },
+            "process_items": process_items,
+            "selected_process_detail": selected_process_detail,
+        }
+
     def list_order_pool_materials(
         self,
         order_no: str,
@@ -524,6 +618,7 @@ class AppService:
         *,
         start_date: str,
         end_date: str,
+        workshop_manager_user_id: str | None = None,
         current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         normalized_start_date = _normalize_date_text(start_date)
@@ -553,7 +648,10 @@ class AppService:
             "date(work_reports.report_time, '+8 hours') <= ?",
         ]
         parameters: list[Any] = [normalized_start_date, normalized_end_date]
-        manager_user_id = self._resolve_manager_user_id(current_user)
+        manager_user_id = self._resolve_order_summary_scope_manager_user_id(
+            current_user=current_user,
+            workshop_manager_user_id=workshop_manager_user_id,
+        )
         if manager_user_id is not None:
             filters.append(
                 """
@@ -780,6 +878,53 @@ class AppService:
             "process_items": process_items,
         }
 
+    def list_order_summary_workshop_managers(
+        self,
+        *,
+        current_user: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        if self._current_user_role_code(current_user) != ROLE_SCHEDULER:
+            raise forbidden(
+                code="ORDER_SUMMARY_WORKSHOP_MANAGER_FILTER_FORBIDDEN",
+                message="Only scheduler can list order summary workshop manager filters.",
+            )
+        rows = fetch_all(
+            self.connection,
+            """
+            SELECT
+                users.user_id,
+                users.username,
+                users.display_name,
+                COUNT(scope.line_code) AS line_scope_count
+            FROM app_users users
+            LEFT JOIN masterdata_workshop_manager_visibility visibility
+              ON visibility.user_id = users.user_id
+            JOIN app_user_line_scopes scope
+              ON scope.user_id = users.user_id
+            WHERE users.role_code = ?
+              AND users.enabled_flag = 1
+              AND COALESCE(visibility.visible_flag, 1) = 1
+            GROUP BY users.user_id, users.username, users.display_name
+            HAVING COUNT(scope.line_code) > 0
+            ORDER BY
+                LOWER(COALESCE(NULLIF(TRIM(users.display_name), ''), NULLIF(TRIM(users.username), ''), users.user_id)) ASC,
+                LOWER(COALESCE(users.username, '')) ASC,
+                users.user_id ASC
+            """,
+            (ROLE_WORKSHOP_MANAGER,),
+        )
+        return {
+            "items": [
+                {
+                    "user_id": str(row.get("user_id") or "").strip(),
+                    "username": str(row.get("username") or "").strip(),
+                    "display_name": str(row.get("display_name") or "").strip(),
+                    "line_scope_count": int(_to_number(row.get("line_scope_count"), 0)),
+                }
+                for row in rows
+            ]
+        }
+
     def list_line_daily_capacity(
         self,
         calendar_date: str,
@@ -795,8 +940,9 @@ class AppService:
                 code="CALENDAR_DATE_REQUIRED",
                 message="calendar_date must be a valid YYYY-MM-DD date.",
             )
+        previous_date = (date.fromisoformat(normalized_date) - timedelta(days=1)).isoformat()
         filters: list[str] = []
-        parameters: list[Any] = [normalized_date, normalized_date]
+        parameters: list[Any] = [normalized_date, previous_date, normalized_date]
         if workshop_code:
             filters.append("lt.workshop_code = ?")
             parameters.append(str(workshop_code).strip().upper())
@@ -834,13 +980,19 @@ class AppService:
                 COALESCE(lt.line_name, lt.line_code) AS line_name,
                 lt.process_code,
                 lt.capacity_per_shift AS default_capacity_qty,
-                plan.planned_capacity_qty,
-                plan.worker_count,
-                plan.machine_count,
-                plan.source_note,
+                lt.required_workers,
+                lt.required_machines,
+                plan.planned_capacity_qty AS today_planned_capacity_qty,
+                plan.worker_count AS today_worker_count,
+                plan.machine_count AS today_machine_count,
+                plan.source_note AS today_source_note,
+                prev_plan.planned_capacity_qty AS prev_planned_capacity_qty,
+                prev_plan.worker_count AS prev_worker_count,
+                prev_plan.machine_count AS prev_machine_count,
                 actual.actual_capacity_qty,
                 actual.report_count,
-                actual.last_report_time
+                actual.last_report_time,
+                COALESCE(prev_report.previous_day_report_qty, 0) AS previous_day_report_qty
             FROM masterdata_line_topology lt
             LEFT JOIN daily_line_capacity_plan plan
               ON plan.calendar_date = ?
@@ -848,18 +1000,142 @@ class AppService:
              AND plan.workshop_code = lt.workshop_code
              AND plan.line_code = lt.line_code
              AND plan.process_code = lt.process_code
+            LEFT JOIN daily_line_capacity_plan prev_plan
+              ON prev_plan.calendar_date = ?
+             AND prev_plan.company_code = lt.company_code
+             AND prev_plan.workshop_code = lt.workshop_code
+             AND prev_plan.line_code = lt.line_code
+             AND prev_plan.process_code = lt.process_code
             LEFT JOIN daily_line_capacity_actual actual
               ON actual.calendar_date = ?
              AND actual.company_code = lt.company_code
              AND actual.workshop_code = lt.workshop_code
              AND actual.line_code = lt.line_code
              AND actual.process_code = lt.process_code
+            LEFT JOIN (
+                SELECT
+                    COALESCE(top.company_code, ?) AS company_code,
+                    UPPER(TRIM(COALESCE(reports.workshop_code, ''))) AS workshop_code,
+                    UPPER(TRIM(COALESCE(reports.line_code, ''))) AS line_code,
+                    UPPER(TRIM(COALESCE(reports.process_code, ''))) AS process_code,
+                    SUM(COALESCE(reports.report_qty, 0)) AS previous_day_report_qty
+                FROM work_reports reports
+                LEFT JOIN masterdata_line_topology top
+                  ON top.workshop_code = UPPER(TRIM(COALESCE(reports.workshop_code, '')))
+                 AND top.line_code = UPPER(TRIM(COALESCE(reports.line_code, '')))
+                 AND top.process_code = UPPER(TRIM(COALESCE(reports.process_code, '')))
+                WHERE date(reports.report_time, '+8 hours') = ?
+                GROUP BY
+                    COALESCE(top.company_code, ?),
+                    UPPER(TRIM(COALESCE(reports.workshop_code, ''))),
+                    UPPER(TRIM(COALESCE(reports.line_code, ''))),
+                    UPPER(TRIM(COALESCE(reports.process_code, '')))
+            ) prev_report
+              ON prev_report.company_code = lt.company_code
+             AND prev_report.workshop_code = lt.workshop_code
+             AND prev_report.line_code = lt.line_code
+             AND prev_report.process_code = lt.process_code
             {where_sql}
             ORDER BY lt.workshop_code ASC, lt.line_code ASC, lt.process_code ASC
             """,
-            tuple([normalized_date, normalized_date, normalized_date, *parameters[2:]]),
+            tuple(
+                [
+                    normalized_date,
+                    normalized_date,
+                    previous_date,
+                    normalized_date,
+                    DEFAULT_COMPANY_CODE,
+                    previous_date,
+                    DEFAULT_COMPANY_CODE,
+                    *parameters[3:],
+                ]
+            ),
         )
-        return {"calendar_date": normalized_date, "items": items}
+        rendered_items: list[dict[str, Any]] = []
+        for row in items:
+            default_capacity_qty = _to_number(row.get("default_capacity_qty"), 0)
+            required_workers = int(_to_number(row.get("required_workers"), 0))
+            required_machines = int(_to_number(row.get("required_machines"), 0))
+            has_today_plan = row.get("today_planned_capacity_qty") is not None
+            if has_today_plan:
+                worker_count = int(_to_number(row.get("today_worker_count"), 0))
+                machine_count = int(_to_number(row.get("today_machine_count"), 0))
+                seeded_from_date = None
+            elif row.get("prev_planned_capacity_qty") is not None:
+                worker_count = int(_to_number(row.get("prev_worker_count"), 0))
+                machine_count = int(_to_number(row.get("prev_machine_count"), 0))
+                seeded_from_date = previous_date
+            else:
+                worker_count = required_workers
+                machine_count = required_machines
+                seeded_from_date = None
+
+            if worker_count < 0 or machine_count < 0:
+                raise server_error(
+                    code="DAILY_CAPACITY_COUNT_INVALID",
+                    message="worker_count and machine_count must be >= 0.",
+                    details={
+                        "workshop_code": row.get("workshop_code"),
+                        "line_code": row.get("line_code"),
+                        "process_code": row.get("process_code"),
+                        "worker_count": worker_count,
+                        "machine_count": machine_count,
+                    },
+                )
+
+            capacity_driver = "MACHINE" if required_machines > 0 else "WORKER"
+            if capacity_driver == "MACHINE":
+                if required_machines <= 0:
+                    raise server_error(
+                        code="DAILY_CAPACITY_REQUIRED_MACHINES_INVALID",
+                        message="required_machines must be > 0 for machine-driven process.",
+                        details={
+                            "workshop_code": row.get("workshop_code"),
+                            "line_code": row.get("line_code"),
+                            "process_code": row.get("process_code"),
+                            "required_machines": required_machines,
+                        },
+                    )
+                planned_capacity_qty = round(default_capacity_qty * machine_count / required_machines)
+            else:
+                if required_workers <= 0:
+                    raise server_error(
+                        code="DAILY_CAPACITY_REQUIRED_WORKERS_INVALID",
+                        message="required_workers must be > 0 for worker-driven process.",
+                        details={
+                            "workshop_code": row.get("workshop_code"),
+                            "line_code": row.get("line_code"),
+                            "process_code": row.get("process_code"),
+                            "required_workers": required_workers,
+                        },
+                    )
+                planned_capacity_qty = round(default_capacity_qty * worker_count / required_workers)
+
+            rendered_items.append(
+                {
+                    "calendar_date": normalized_date,
+                    "company_code": row.get("company_code"),
+                    "workshop_code": row.get("workshop_code"),
+                    "workshop_name": row.get("workshop_name"),
+                    "line_code": row.get("line_code"),
+                    "line_name": row.get("line_name"),
+                    "process_code": row.get("process_code"),
+                    "default_capacity_qty": default_capacity_qty,
+                    "planned_capacity_qty": planned_capacity_qty,
+                    "worker_count": worker_count,
+                    "machine_count": machine_count,
+                    "required_workers": required_workers,
+                    "required_machines": required_machines,
+                    "capacity_driver": capacity_driver,
+                    "seeded_from_date": seeded_from_date,
+                    "source_note": row.get("today_source_note"),
+                    "actual_capacity_qty": _to_number(row.get("actual_capacity_qty"), 0),
+                    "report_count": int(_to_number(row.get("report_count"), 0)),
+                    "last_report_time": row.get("last_report_time"),
+                    "previous_day_report_qty": round(_to_number(row.get("previous_day_report_qty"), 0)),
+                }
+            )
+        return {"calendar_date": normalized_date, "items": rendered_items}
 
     def save_line_daily_capacity(self, payload: dict[str, Any]) -> dict[str, Any]:
         normalized_date = _normalize_date_text(payload.get("calendar_date"))
@@ -883,13 +1159,17 @@ class AppService:
             workshop_code = str(item.get("workshop_code") or "").strip().upper()
             line_code = str(item.get("line_code") or "").strip().upper()
             process_code = str(item.get("process_code") or "").strip().upper()
-            planned_capacity_qty = _to_number(item.get("planned_capacity_qty"), -1)
-            worker_count = int(_to_number(item.get("worker_count"), 0)) if item.get("worker_count") is not None else None
-            machine_count = int(_to_number(item.get("machine_count"), 0)) if item.get("machine_count") is not None else None
+            worker_count = int(_to_number(item.get("worker_count"), -1))
+            machine_count = int(_to_number(item.get("machine_count"), -1))
             if not workshop_code or not line_code or not process_code:
                 raise bad_request(
                     code="DAILY_CAPACITY_KEY_REQUIRED",
                     message="workshop_code, line_code and process_code are required.",
+                )
+            if worker_count < 0 or machine_count < 0:
+                raise bad_request(
+                    code="DAILY_CAPACITY_COUNT_INVALID",
+                    message="worker_count and machine_count must be >= 0.",
                 )
             self._assert_actor_can_access_line(
                 actor,
@@ -900,15 +1180,10 @@ class AppService:
                 forbidden_error_code="DAILY_CAPACITY_LINE_SCOPE_FORBIDDEN",
                 forbidden_message="Current workshop manager is not allowed to modify this line capacity row.",
             )
-            if planned_capacity_qty < 0:
-                raise bad_request(
-                    code="DAILY_CAPACITY_INVALID",
-                    message="planned_capacity_qty must be >= 0.",
-                )
             topology_row = fetch_one(
                 self.connection,
                 """
-                SELECT 1
+                SELECT capacity_per_shift, required_workers, required_machines
                 FROM masterdata_line_topology
                 WHERE company_code = ?
                   AND workshop_code = ?
@@ -929,6 +1204,38 @@ class AppService:
                         "process_code": process_code,
                     },
                 )
+            default_capacity_qty = _to_number(topology_row.get("capacity_per_shift"), 0)
+            required_workers = int(_to_number(topology_row.get("required_workers"), 0))
+            required_machines = int(_to_number(topology_row.get("required_machines"), 0))
+            capacity_driver = "MACHINE" if required_machines > 0 else "WORKER"
+            if capacity_driver == "MACHINE":
+                if required_machines <= 0:
+                    raise bad_request(
+                        code="DAILY_CAPACITY_REQUIRED_MACHINES_INVALID",
+                        message="required_machines must be > 0 for machine-driven process.",
+                        details={
+                            "company_code": company_code,
+                            "workshop_code": workshop_code,
+                            "line_code": line_code,
+                            "process_code": process_code,
+                            "required_machines": required_machines,
+                        },
+                    )
+                planned_capacity_qty = round(default_capacity_qty * machine_count / required_machines)
+            else:
+                if required_workers <= 0:
+                    raise bad_request(
+                        code="DAILY_CAPACITY_REQUIRED_WORKERS_INVALID",
+                        message="required_workers must be > 0 for worker-driven process.",
+                        details={
+                            "company_code": company_code,
+                            "workshop_code": workshop_code,
+                            "line_code": line_code,
+                            "process_code": process_code,
+                            "required_workers": required_workers,
+                        },
+                    )
+                planned_capacity_qty = round(default_capacity_qty * worker_count / required_workers)
             existing_row = fetch_one(
                 self.connection,
                 """
@@ -952,8 +1259,8 @@ class AppService:
             old_planned_capacity_qty = (
                 _to_number(existing_row.get("planned_capacity_qty"), 0) if existing_row is not None else None
             )
-            old_worker_count = int(_to_number(existing_row.get("worker_count"), 0)) if existing_row is not None and existing_row.get("worker_count") is not None else None
-            old_machine_count = int(_to_number(existing_row.get("machine_count"), 0)) if existing_row is not None and existing_row.get("machine_count") is not None else None
+            old_worker_count = int(_to_number(existing_row.get("worker_count"), 0)) if existing_row is not None else None
+            old_machine_count = int(_to_number(existing_row.get("machine_count"), 0)) if existing_row is not None else None
             values_changed = (
                 existing_row is None
                 or old_planned_capacity_qty != planned_capacity_qty
@@ -1412,7 +1719,15 @@ class AppService:
             """
             SELECT version_no, status, status_name_cn, strategy_code, created_at, published_at
             FROM schedule_versions
-            ORDER BY created_at ASC, version_no ASC
+            ORDER BY
+                created_at ASC,
+                CAST(
+                    CASE
+                        WHEN INSTR(version_no, '-D') > 0 THEN SUBSTR(version_no, INSTR(version_no, '-D') + 2)
+                        ELSE '0'
+                    END AS INTEGER
+                ) ASC,
+                version_no ASC
             """,
         )
         return {"items": rows}
@@ -1601,6 +1916,494 @@ class AppService:
             },
             "items": items,
         }
+
+    def _pick_reference_schedule_version_no(self) -> str | None:
+        row = fetch_one(
+            self.connection,
+            """
+            SELECT version_no
+            FROM schedule_versions
+            WHERE UPPER(TRIM(COALESCE(status, ''))) = 'PUBLISHED'
+            ORDER BY
+                COALESCE(NULLIF(TRIM(COALESCE(published_at, '')), ''), created_at) DESC,
+                created_at DESC,
+                CAST(
+                    CASE
+                        WHEN INSTR(version_no, '-D') > 0 THEN SUBSTR(version_no, INSTR(version_no, '-D') + 2)
+                        ELSE '0'
+                    END AS INTEGER
+                ) DESC,
+                version_no DESC
+            LIMIT 1
+            """,
+        )
+        if row is not None:
+            version_no = str(row.get("version_no") or "").strip()
+            if version_no:
+                return version_no
+
+        row = fetch_one(
+            self.connection,
+            """
+            SELECT version_no
+            FROM schedule_versions
+            ORDER BY
+                created_at DESC,
+                CAST(
+                    CASE
+                        WHEN INSTR(version_no, '-D') > 0 THEN SUBSTR(version_no, INSTR(version_no, '-D') + 2)
+                        ELSE '0'
+                    END AS INTEGER
+                ) DESC,
+                version_no DESC
+            LIMIT 1
+            """,
+        )
+        if row is None:
+            return None
+        version_no = str(row.get("version_no") or "").strip()
+        return version_no or None
+
+    def _list_schedule_task_rows_by_version_order(
+        self,
+        *,
+        version_no: str,
+        order_no: str,
+    ) -> list[dict[str, Any]]:
+        return fetch_all(
+            self.connection,
+            """
+            SELECT
+                st.task_no,
+                st.version_no,
+                st.production_order_no,
+                st.process_code,
+                COALESCE(st.process_name_cn, st.process_code) AS process_name_cn,
+                st.calendar_date,
+                st.shift_code,
+                st.plan_qty,
+                st.plan_start_time,
+                po.material_code,
+                COALESCE(po.material_name, po.material_code) AS material_name,
+                po.production_qty
+            FROM schedule_tasks st
+            JOIN production_orders po
+              ON po.production_order_no = st.production_order_no
+            WHERE st.version_no = ?
+              AND st.production_order_no = ?
+            ORDER BY st.task_no ASC
+            """,
+            (version_no, order_no),
+        )
+
+    def _list_schedule_task_rows_by_version_process(
+        self,
+        *,
+        version_no: str,
+        process_code: str,
+    ) -> list[dict[str, Any]]:
+        return fetch_all(
+            self.connection,
+            """
+            SELECT
+                st.task_no,
+                st.version_no,
+                st.production_order_no,
+                st.process_code,
+                COALESCE(st.process_name_cn, st.process_code) AS process_name_cn,
+                st.calendar_date,
+                st.shift_code,
+                st.plan_qty,
+                st.plan_start_time,
+                po.material_code,
+                COALESCE(po.material_name, po.material_code) AS material_name,
+                po.production_qty
+            FROM schedule_tasks st
+            JOIN production_orders po
+              ON po.production_order_no = st.production_order_no
+            WHERE st.version_no = ?
+              AND UPPER(TRIM(COALESCE(st.process_code, ''))) = ?
+            ORDER BY st.task_no ASC
+            """,
+            (version_no, process_code),
+        )
+
+    def _parse_iso_datetime_strict(
+        self,
+        value: object,
+        *,
+        error_code: str,
+        message: str,
+        details: dict[str, Any] | None = None,
+    ) -> datetime:
+        text = str(value or "").strip()
+        if not text:
+            raise server_error(
+                code=error_code,
+                message=message,
+                details=details or {},
+            )
+        try:
+            return datetime.fromisoformat(text)
+        except ValueError as exc:
+            raise server_error(
+                code=error_code,
+                message=message,
+                details={
+                    **(details or {}),
+                    "value": text,
+                },
+            ) from exc
+
+    def _task_start_time_from_schedule_row(self, row: dict[str, Any]) -> str:
+        plan_start_time = str(row.get("plan_start_time") or "").strip()
+        if plan_start_time:
+            return plan_start_time
+
+        calendar_date = _normalize_date_text(row.get("calendar_date"))
+        if not calendar_date:
+            raise server_error(
+                code="SCHEDULE_TASK_CALENDAR_DATE_INVALID",
+                message="schedule task calendar_date is required.",
+                details={
+                    "version_no": row.get("version_no"),
+                    "task_no": row.get("task_no"),
+                    "order_no": row.get("production_order_no"),
+                },
+            )
+        shift_code = _normalize_shift_code(row.get("shift_code"))
+        return str(
+            _iso_at(
+                calendar_date,
+                "08:00:00" if shift_code == "DAY" else "20:00:00",
+            )
+            or ""
+        )
+
+    def _task_finish_time_from_schedule_row(self, row: dict[str, Any]) -> str:
+        calendar_date = _normalize_date_text(row.get("calendar_date"))
+        if not calendar_date:
+            raise server_error(
+                code="SCHEDULE_TASK_CALENDAR_DATE_INVALID",
+                message="schedule task calendar_date is required.",
+                details={
+                    "version_no": row.get("version_no"),
+                    "task_no": row.get("task_no"),
+                    "order_no": row.get("production_order_no"),
+                },
+            )
+        calendar_day = date.fromisoformat(calendar_date)
+        shift_code = _normalize_shift_code(row.get("shift_code"))
+        if shift_code == "NIGHT":
+            return str(
+                _iso_at(
+                    (calendar_day + timedelta(days=1)).isoformat(),
+                    "08:00:00",
+                )
+                or ""
+            )
+        return str(_iso_at(calendar_day.isoformat(), "20:00:00") or "")
+
+    def _build_order_process_timeline_items(
+        self,
+        *,
+        task_rows: list[dict[str, Any]],
+        route_rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        route_by_process: dict[str, dict[str, Any]] = {}
+        for route_row in route_rows:
+            process_code = str(route_row.get("process_code") or "").strip().upper()
+            if process_code and process_code not in route_by_process:
+                route_by_process[process_code] = route_row
+
+        grouped: dict[str, dict[str, Any]] = {}
+        for task_row in task_rows:
+            process_code = str(task_row.get("process_code") or "").strip().upper()
+            if not process_code:
+                raise server_error(
+                    code="SCHEDULE_TASK_PROCESS_CODE_MISSING",
+                    message="schedule task process_code is required.",
+                    details={
+                        "version_no": task_row.get("version_no"),
+                        "task_no": task_row.get("task_no"),
+                        "order_no": task_row.get("production_order_no"),
+                    },
+                )
+            route_row = route_by_process.get(process_code, {})
+            process_name_cn = str(
+                task_row.get("process_name_cn")
+                or route_row.get("process_name_cn")
+                or process_code
+            ).strip() or process_code
+            start_time = self._task_start_time_from_schedule_row(task_row)
+            finish_time = self._task_finish_time_from_schedule_row(task_row)
+            start_dt = self._parse_iso_datetime_strict(
+                start_time,
+                error_code="SCHEDULE_TASK_START_TIME_INVALID",
+                message="schedule task start_time is invalid.",
+                details={
+                    "version_no": task_row.get("version_no"),
+                    "task_no": task_row.get("task_no"),
+                    "order_no": task_row.get("production_order_no"),
+                    "process_code": process_code,
+                },
+            )
+            finish_dt = self._parse_iso_datetime_strict(
+                finish_time,
+                error_code="SCHEDULE_TASK_FINISH_TIME_INVALID",
+                message="schedule task finish_time is invalid.",
+                details={
+                    "version_no": task_row.get("version_no"),
+                    "task_no": task_row.get("task_no"),
+                    "order_no": task_row.get("production_order_no"),
+                    "process_code": process_code,
+                },
+            )
+            if finish_dt < start_dt:
+                raise server_error(
+                    code="SCHEDULE_TASK_TIME_RANGE_INVALID",
+                    message="schedule task finish_time must be >= start_time.",
+                    details={
+                        "version_no": task_row.get("version_no"),
+                        "task_no": task_row.get("task_no"),
+                        "order_no": task_row.get("production_order_no"),
+                        "process_code": process_code,
+                        "start_time": start_time,
+                        "finish_time": finish_time,
+                    },
+                )
+            current = grouped.get(process_code)
+            if current is None:
+                grouped[process_code] = {
+                    "process_code": process_code,
+                    "process_name_cn": process_name_cn,
+                    "sequence_no": int(_to_number(route_row.get("sequence_no"), 10**9)),
+                    "start_time": start_time,
+                    "finish_time": finish_time,
+                    "start_dt": start_dt,
+                    "finish_dt": finish_dt,
+                    "plan_qty_total": _to_number(task_row.get("plan_qty"), 0),
+                }
+                continue
+            if start_dt < current["start_dt"]:
+                current["start_dt"] = start_dt
+                current["start_time"] = start_time
+            if finish_dt > current["finish_dt"]:
+                current["finish_dt"] = finish_dt
+                current["finish_time"] = finish_time
+            current["plan_qty_total"] = _to_number(current.get("plan_qty_total"), 0) + _to_number(
+                task_row.get("plan_qty"),
+                0,
+            )
+
+        items: list[dict[str, Any]] = []
+        for current in grouped.values():
+            duration_hours = (
+                (current["finish_dt"] - current["start_dt"]).total_seconds() / 3600
+            )
+            items.append(
+                {
+                    "process_code": current["process_code"],
+                    "process_name_cn": current["process_name_cn"],
+                    "start_time": current["start_time"],
+                    "finish_time": current["finish_time"],
+                    "duration_hours": round(duration_hours, 4),
+                    "is_bottleneck": 0,
+                    "sequence_no": int(_to_number(current.get("sequence_no"), 10**9)),
+                }
+            )
+
+        items.sort(
+            key=lambda item: (
+                int(_to_number(item.get("sequence_no"), 10**9)),
+                str(item.get("process_code") or ""),
+            )
+        )
+        if items:
+            max_duration_hours = max(
+                _to_number(item.get("duration_hours"), 0)
+                for item in items
+            )
+            bottleneck_candidates = [
+                item
+                for item in items
+                if _to_number(item.get("duration_hours"), 0) == max_duration_hours
+            ]
+            bottleneck = min(
+                bottleneck_candidates,
+                key=lambda item: (
+                    int(_to_number(item.get("sequence_no"), 10**9)),
+                    str(item.get("process_code") or ""),
+                ),
+            )
+            bottleneck_code = str(bottleneck.get("process_code") or "").strip().upper()
+            for item in items:
+                item["is_bottleneck"] = (
+                    1
+                    if str(item.get("process_code") or "").strip().upper()
+                    == bottleneck_code
+                    else 0
+                )
+        for item in items:
+            item.pop("sequence_no", None)
+        return items
+
+    def _build_empty_selected_process_detail(
+        self,
+        *,
+        process_code: str | None,
+    ) -> dict[str, Any] | None:
+        if not process_code:
+            return None
+        return {
+            "process_code": process_code,
+            "process_name_cn": process_code,
+            "current_order_finish_time": None,
+            "order_timeline_items": [],
+            "message": "暂无排产任务数据",
+        }
+
+    def _build_selected_process_timeline_detail(
+        self,
+        *,
+        version_no: str,
+        order_no: str,
+        process_code: str,
+        process_items: list[dict[str, Any]],
+    ) -> dict[str, Any]:
+        normalized_process_code = str(process_code or "").strip().upper()
+        selected_process_row = next(
+            (
+                item
+                for item in process_items
+                if str(item.get("process_code") or "").strip().upper() == normalized_process_code
+            ),
+            None,
+        )
+        process_name_cn = str(
+            (selected_process_row or {}).get("process_name_cn") or normalized_process_code
+        ).strip() or normalized_process_code
+
+        task_rows = self._list_schedule_task_rows_by_version_process(
+            version_no=version_no,
+            process_code=normalized_process_code,
+        )
+        grouped: dict[str, dict[str, Any]] = {}
+        for task_row in task_rows:
+            current_order_no = str(task_row.get("production_order_no") or "").strip()
+            if not current_order_no:
+                continue
+            start_time = self._task_start_time_from_schedule_row(task_row)
+            finish_time = self._task_finish_time_from_schedule_row(task_row)
+            start_dt = self._parse_iso_datetime_strict(
+                start_time,
+                error_code="SCHEDULE_TASK_START_TIME_INVALID",
+                message="schedule task start_time is invalid.",
+                details={
+                    "version_no": task_row.get("version_no"),
+                    "task_no": task_row.get("task_no"),
+                    "order_no": current_order_no,
+                    "process_code": normalized_process_code,
+                },
+            )
+            finish_dt = self._parse_iso_datetime_strict(
+                finish_time,
+                error_code="SCHEDULE_TASK_FINISH_TIME_INVALID",
+                message="schedule task finish_time is invalid.",
+                details={
+                    "version_no": task_row.get("version_no"),
+                    "task_no": task_row.get("task_no"),
+                    "order_no": current_order_no,
+                    "process_code": normalized_process_code,
+                },
+            )
+            if finish_dt < start_dt:
+                raise server_error(
+                    code="SCHEDULE_TASK_TIME_RANGE_INVALID",
+                    message="schedule task finish_time must be >= start_time.",
+                    details={
+                        "version_no": task_row.get("version_no"),
+                        "task_no": task_row.get("task_no"),
+                        "order_no": current_order_no,
+                        "process_code": normalized_process_code,
+                        "start_time": start_time,
+                        "finish_time": finish_time,
+                    },
+                )
+
+            current = grouped.get(current_order_no)
+            if current is None:
+                grouped[current_order_no] = {
+                    "order_no": current_order_no,
+                    "product_code": str(task_row.get("material_code") or "").strip().upper() or None,
+                    "product_name_cn": str(
+                        task_row.get("material_name") or task_row.get("material_code") or ""
+                    ).strip() or None,
+                    "start_time": start_time,
+                    "finish_time": finish_time,
+                    "start_dt": start_dt,
+                    "finish_dt": finish_dt,
+                    "plan_qty_total": _to_number(task_row.get("plan_qty"), 0),
+                }
+                continue
+            if start_dt < current["start_dt"]:
+                current["start_dt"] = start_dt
+                current["start_time"] = start_time
+            if finish_dt > current["finish_dt"]:
+                current["finish_dt"] = finish_dt
+                current["finish_time"] = finish_time
+            current["plan_qty_total"] = _to_number(current.get("plan_qty_total"), 0) + _to_number(
+                task_row.get("plan_qty"),
+                0,
+            )
+
+        order_timeline_items: list[dict[str, Any]] = []
+        for row in grouped.values():
+            duration_hours = (row["finish_dt"] - row["start_dt"]).total_seconds() / 3600
+            order_timeline_items.append(
+                {
+                    "order_no": row["order_no"],
+                    "product_code": row["product_code"],
+                    "product_name_cn": row["product_name_cn"],
+                    "start_time": row["start_time"],
+                    "finish_time": row["finish_time"],
+                    "duration_hours": round(duration_hours, 4),
+                    "plan_qty_total": _to_number(row.get("plan_qty_total"), 0),
+                }
+            )
+        order_timeline_items.sort(
+            key=lambda item: (
+                str(item.get("start_time") or ""),
+                str(item.get("order_no") or ""),
+            )
+        )
+
+        current_order_item = next(
+            (
+                item
+                for item in order_timeline_items
+                if str(item.get("order_no") or "").strip() == order_no
+            ),
+            None,
+        )
+        current_order_finish_time = (
+            str(current_order_item.get("finish_time") or "").strip()
+            if current_order_item
+            else (
+                str((selected_process_row or {}).get("finish_time") or "").strip()
+                or None
+            )
+        )
+
+        detail: dict[str, Any] = {
+            "process_code": normalized_process_code,
+            "process_name_cn": process_name_cn,
+            "current_order_finish_time": current_order_finish_time,
+            "order_timeline_items": order_timeline_items,
+        }
+        if len(order_timeline_items) == 0:
+            detail["message"] = "暂无排产任务数据"
+        return detail
 
     def _pick_schedule_compare_version(self, version_no: str) -> dict[str, Any] | None:
         rows = fetch_all(
@@ -2048,6 +2851,23 @@ class AppService:
         line_skeletons = self._list_line_skeleton_rows()
         line_topology = self._list_line_topology_rows()
         workshop_manager_users = self._list_enabled_workshop_manager_users()
+        workshop_manager_visible_by_user_id = {
+            str(row.get("user_id") or "").strip(): (
+                1 if int(row.get("visible_flag") or 0) == 1 else 0
+            )
+            for row in self._list_workshop_manager_visibility_rows()
+            if str(row.get("user_id") or "").strip()
+        }
+        workshop_manager_users = [
+            {
+                **row,
+                "visible_flag": workshop_manager_visible_by_user_id.get(
+                    str(row.get("user_id") or "").strip(),
+                    1,
+                ),
+            }
+            for row in workshop_manager_users
+        ]
         workshop_manager_line_scopes = self._list_workshop_manager_line_scope_rows()
         route_rows = self._list_route_rows()
         process_seen: dict[str, str] = {}
@@ -2103,6 +2923,12 @@ class AppService:
                 code="WORKSHOP_MANAGER_LINE_SCOPES_REQUIRED",
                 message="workshop_manager_line_scopes must be an array.",
             )
+        workshop_manager_users_payload = payload.get("workshop_manager_users")
+        if not isinstance(workshop_manager_users_payload, list):
+            raise bad_request(
+                code="WORKSHOP_MANAGER_USERS_REQUIRED",
+                message="workshop_manager_users must be an array.",
+            )
         workshop_manager_users = self._list_enabled_workshop_manager_users()
         workshop_manager_user_ids = {
             str(row.get("user_id") or "").strip()
@@ -2110,6 +2936,44 @@ class AppService:
             if str(row.get("user_id") or "").strip()
         }
         updated_at = utc_now()
+        payload_workshop_manager_user_ids: set[str] = set()
+        workshop_manager_visibility_rows: list[tuple[Any, ...]] = []
+        for item in workshop_manager_users_payload:
+            user_id = str(item.get("user_id") or "").strip()
+            if not user_id:
+                raise bad_request(
+                    code="WORKSHOP_MANAGER_USER_ROW_INVALID",
+                    message="workshop_manager_users row must include user_id.",
+                )
+            if user_id not in workshop_manager_user_ids:
+                raise bad_request(
+                    code="WORKSHOP_MANAGER_USER_INVALID",
+                    message="workshop_manager_users contains unknown or disabled workshop manager user.",
+                    details={"user_id": user_id},
+                )
+            if user_id in payload_workshop_manager_user_ids:
+                raise bad_request(
+                    code="WORKSHOP_MANAGER_USER_DUPLICATE",
+                    message="workshop_manager_users contains duplicate rows.",
+                    details={"user_id": user_id},
+                )
+            payload_workshop_manager_user_ids.add(user_id)
+            workshop_manager_visibility_rows.append(
+                (
+                    user_id,
+                    1 if int(item.get("visible_flag") or 0) == 1 else 0,
+                    updated_at,
+                )
+            )
+        if payload_workshop_manager_user_ids != workshop_manager_user_ids:
+            raise bad_request(
+                code="WORKSHOP_MANAGER_USERS_MISMATCH",
+                message="workshop_manager_users must include every enabled workshop manager exactly once.",
+                details={
+                    "missing_user_ids": sorted(workshop_manager_user_ids - payload_workshop_manager_user_ids),
+                    "extra_user_ids": sorted(payload_workshop_manager_user_ids - workshop_manager_user_ids),
+                },
+            )
         skeleton_rows: list[tuple[Any, ...]] = []
         skeleton_map: dict[tuple[str, str, str], dict[str, Any]] = {}
         for item in line_skeletons:
@@ -2178,10 +3042,10 @@ class AppService:
             capacity_per_shift = _to_number(item.get("capacity_per_shift"), 0)
             required_workers = int(_to_number(item.get("required_workers"), 0))
             required_machines = int(_to_number(item.get("required_machines"), 0))
-            if capacity_per_shift <= 0 or required_workers <= 0 or required_machines <= 0:
+            if capacity_per_shift <= 0 or required_workers <= 0 or required_machines < 0:
                 raise bad_request(
                     code="LINE_TOPOLOGY_CAPACITY_INVALID",
-                    message="capacity_per_shift, required_workers and required_machines must be greater than 0.",
+                    message="capacity_per_shift and required_workers must be greater than 0, required_machines must be >= 0.",
                     details={
                         "company_code": company_code,
                         "workshop_code": workshop_code,
@@ -2304,6 +3168,18 @@ class AppService:
                     ) VALUES (?, ?, ?, ?, ?)
                     """,
                     scope_rows,
+                )
+            self.connection.execute("DELETE FROM masterdata_workshop_manager_visibility")
+            if workshop_manager_visibility_rows:
+                self.connection.executemany(
+                    """
+                    INSERT INTO masterdata_workshop_manager_visibility (
+                        user_id,
+                        visible_flag,
+                        updated_at
+                    ) VALUES (?, ?, ?)
+                    """,
+                    workshop_manager_visibility_rows,
                 )
         return self.get_masterdata_config()
 
@@ -2460,6 +3336,9 @@ class AppService:
         capacity_source_mode = self._normalize_capacity_source_mode(
             payload.get("capacity_source_mode")
         )
+        use_order_state_window = self._normalize_use_order_state_window(
+            payload.get("use_order_state_window")
+        )
         base_version_no = str(payload.get("base_version_no") or "").strip()
         base_schedule_hints: dict[str, dict[str, Any]] = {}
         if base_version_no:
@@ -2522,16 +3401,24 @@ class AppService:
                     details={"order_no": order_no},
                 )
 
-            start_date = _parse_date_or_today(
-                state_row.get("expected_start_date")
-                or order_row.get("planned_start_date")
-                or simulation_start.isoformat()
-            )
-            due_date = _parse_date_or_today(
-                state_row.get("promised_due_date")
-                or order_row.get("planned_end_date")
-                or start_date.isoformat()
-            )
+            if use_order_state_window:
+                start_date_source = (
+                    state_row.get("expected_start_date")
+                    or order_row.get("planned_start_date")
+                    or simulation_start.isoformat()
+                )
+                due_date_source = (
+                    state_row.get("promised_due_date")
+                    or order_row.get("planned_end_date")
+                    or start_date_source
+                )
+            else:
+                start_date_source = (
+                    order_row.get("planned_start_date") or simulation_start.isoformat()
+                )
+                due_date_source = order_row.get("planned_end_date") or start_date_source
+            start_date = _parse_date_or_today(start_date_source)
+            due_date = _parse_date_or_today(due_date_source)
             if due_date < start_date:
                 due_date = start_date
 
@@ -2700,6 +3587,11 @@ class AppService:
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     tasks,
+                )
+                self._sync_order_pool_state_schedule_window_from_tasks(
+                    tasks=tasks,
+                    order_rows=order_rows,
+                    states=states,
                 )
         return {"version_no": version_no, "capacity_source_mode": capacity_source_mode}
 
@@ -3370,6 +4262,103 @@ class AppService:
             ),
         )
 
+    def _sync_order_pool_state_schedule_window_from_tasks(
+        self,
+        *,
+        tasks: list[tuple[Any, ...]],
+        order_rows: list[dict[str, Any]],
+        states: dict[str, dict[str, Any]],
+    ) -> None:
+        windows_by_order_no: dict[str, dict[str, str]] = {}
+        for task in tasks:
+            if len(task) < 7:
+                continue
+            order_no = str(task[2] or "").strip()
+            calendar_date = _normalize_date_text(task[5])
+            if not order_no or not calendar_date:
+                continue
+            finish_date = date.fromisoformat(calendar_date)
+            if _normalize_shift_code(task[6]) == "NIGHT":
+                finish_date = finish_date + timedelta(days=1)
+            finish_date_text = finish_date.isoformat()
+            current = windows_by_order_no.get(order_no)
+            if current is None:
+                windows_by_order_no[order_no] = {
+                    "start_date": calendar_date,
+                    "finish_date": finish_date_text,
+                }
+                continue
+            if calendar_date < current["start_date"]:
+                current["start_date"] = calendar_date
+            if finish_date_text > current["finish_date"]:
+                current["finish_date"] = finish_date_text
+
+        if len(windows_by_order_no) == 0:
+            return
+
+        order_row_by_no = {
+            str(row.get("production_order_no") or "").strip(): row
+            for row in order_rows
+        }
+        for order_no, window in windows_by_order_no.items():
+            state_row = states.get(order_no) or {}
+            base_row = order_row_by_no.get(order_no) or {}
+            status = str(
+                state_row.get("status")
+                or state_row.get("order_status")
+                or base_row.get("status")
+                or "OPEN"
+            ).strip().upper() or "OPEN"
+            order_status = str(
+                state_row.get("order_status")
+                or state_row.get("status")
+                or status
+            ).strip().upper() or status
+            production_qty = _to_number(base_row.get("production_qty"), 0)
+            completed_qty = (
+                _to_number(state_row.get("completed_qty"), 0)
+                if state_row.get("completed_qty") is not None
+                else (production_qty if order_status == "DONE" else 0)
+            )
+            remaining_qty = (
+                _to_number(state_row.get("remaining_qty"), 0)
+                if state_row.get("remaining_qty") is not None
+                else max(0.0, production_qty - completed_qty)
+            )
+            progress_rate = (
+                _to_number(state_row.get("progress_rate"), 0)
+                if state_row.get("progress_rate") is not None
+                else ((completed_qty / production_qty * 100) if production_qty > 0 else 0)
+            )
+            source_bill_no = str(base_row.get("source_bill_no") or "").strip()
+            production_batch_no = state_row.get("production_batch_no")
+            if production_batch_no is None and source_bill_no:
+                production_batch_no = f"{source_bill_no}-B1"
+
+            next_row = {
+                "production_order_no": order_no,
+                "promised_due_date": window["finish_date"],
+                "expected_start_date": window["start_date"],
+                "expected_start_time": _iso_at(window["start_date"], "08:00:00"),
+                "expected_finish_time": _iso_at(window["finish_date"], "18:00:00"),
+                "priority_level": _normalize_priority_level(
+                    state_row.get("priority_level"),
+                    PRIORITY_LEVEL_MAX,
+                ),
+                "urgent_flag": _urgent_flag_from_priority_level(
+                    state_row.get("priority_level")
+                ),
+                "lock_flag": int(_to_number(state_row.get("lock_flag"), 0)),
+                "frozen_flag": int(_to_number(state_row.get("frozen_flag"), 0)),
+                "status": status,
+                "order_status": order_status,
+                "completed_qty": completed_qty,
+                "remaining_qty": remaining_qty,
+                "progress_rate": progress_rate,
+                "production_batch_no": production_batch_no,
+            }
+            self._upsert_order_state(next_row)
+
     def _get_capacity_rows(self, order_no: str) -> list[dict[str, Any]]:
         return fetch_all(
             self.connection,
@@ -3902,6 +4891,27 @@ class AppService:
                 },
             )
         return normalized
+
+    def _normalize_use_order_state_window(self, value: object) -> bool:
+        if value is None:
+            return False
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            if value == 1:
+                return True
+            if value == 0:
+                return False
+        normalized = str(value).strip().lower()
+        if normalized in {"1", "true", "yes", "y", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "n", "off", ""}:
+            return False
+        raise bad_request(
+            code="SCHEDULE_USE_ORDER_STATE_WINDOW_INVALID",
+            message="use_order_state_window is invalid.",
+            details={"use_order_state_window": value},
+        )
 
     def _normalize_weekend_rest_mode(self, value: object) -> str:
         normalized = str(value or "DOUBLE").strip().upper() or "DOUBLE"
@@ -5025,6 +6035,9 @@ class AppService:
         role_code = str((user or {}).get("role_code") or "").strip().upper()
         return role_code == ROLE_WORKSHOP_MANAGER
 
+    def _current_user_role_code(self, user: dict[str, Any] | None) -> str:
+        return str((user or {}).get("role_code") or "").strip().upper()
+
     def _resolve_manager_user_id(self, user: dict[str, Any] | None) -> str | None:
         if not self._is_workshop_manager(user):
             return None
@@ -5035,6 +6048,105 @@ class AppService:
                 message="Current workshop manager user_id is missing.",
             )
         return user_id
+
+    def _resolve_order_summary_scope_manager_user_id(
+        self,
+        *,
+        current_user: dict[str, Any] | None,
+        workshop_manager_user_id: str | None,
+    ) -> str | None:
+        role_code = self._current_user_role_code(current_user)
+        requested_user_id = str(workshop_manager_user_id or "").strip()
+        if workshop_manager_user_id is not None and not requested_user_id:
+            raise bad_request(
+                code="ORDER_SUMMARY_WORKSHOP_MANAGER_USER_ID_REQUIRED",
+                message="workshop_manager_user_id must be non-empty when provided.",
+            )
+        if role_code == ROLE_WORKSHOP_MANAGER:
+            actor_user_id = self._resolve_manager_user_id(current_user)
+            assert actor_user_id is not None
+            if requested_user_id and requested_user_id != actor_user_id:
+                raise forbidden(
+                    code="ORDER_SUMMARY_WORKSHOP_MANAGER_FILTER_FORBIDDEN",
+                    message="Current workshop manager is not allowed to access another workshop manager scope.",
+                    details={
+                        "requested_user_id": requested_user_id,
+                        "allowed_user_id": actor_user_id,
+                    },
+                )
+            return actor_user_id
+        if role_code == ROLE_SCHEDULER:
+            if not requested_user_id:
+                return None
+            return self._validate_order_summary_scheduler_filter_target(requested_user_id)
+        raise forbidden(
+            code="ORDER_SUMMARY_ROLE_FORBIDDEN",
+            message="Current role is not allowed to access order summary.",
+            details={"role_code": role_code},
+        )
+
+    def _validate_order_summary_scheduler_filter_target(
+        self,
+        workshop_manager_user_id: str,
+    ) -> str:
+        normalized_user_id = str(workshop_manager_user_id or "").strip()
+        if not normalized_user_id:
+            raise bad_request(
+                code="ORDER_SUMMARY_WORKSHOP_MANAGER_USER_ID_REQUIRED",
+                message="workshop_manager_user_id must be non-empty when provided.",
+            )
+        row = fetch_one(
+            self.connection,
+            """
+            SELECT
+                users.user_id,
+                users.role_code,
+                users.enabled_flag,
+                COALESCE(visibility.visible_flag, 1) AS visible_flag,
+                COUNT(scope.line_code) AS line_scope_count
+            FROM app_users users
+            LEFT JOIN masterdata_workshop_manager_visibility visibility
+              ON visibility.user_id = users.user_id
+            LEFT JOIN app_user_line_scopes scope
+              ON scope.user_id = users.user_id
+            WHERE users.user_id = ?
+            GROUP BY users.user_id, users.role_code, users.enabled_flag, COALESCE(visibility.visible_flag, 1)
+            LIMIT 1
+            """,
+            (normalized_user_id,),
+        )
+        if row is None:
+            raise bad_request(
+                code="ORDER_SUMMARY_WORKSHOP_MANAGER_NOT_FOUND",
+                message="workshop_manager_user_id does not exist.",
+                details={"workshop_manager_user_id": normalized_user_id},
+            )
+        role_code = str(row.get("role_code") or "").strip().upper()
+        if role_code != ROLE_WORKSHOP_MANAGER:
+            raise bad_request(
+                code="ORDER_SUMMARY_WORKSHOP_MANAGER_ROLE_INVALID",
+                message="workshop_manager_user_id must reference an enabled workshop manager user.",
+                details={"workshop_manager_user_id": normalized_user_id},
+            )
+        if int(row.get("enabled_flag") or 0) != 1:
+            raise bad_request(
+                code="ORDER_SUMMARY_WORKSHOP_MANAGER_DISABLED",
+                message="workshop_manager_user_id references a disabled workshop manager user.",
+                details={"workshop_manager_user_id": normalized_user_id},
+            )
+        if int(row.get("visible_flag") or 0) != 1:
+            raise bad_request(
+                code="ORDER_SUMMARY_WORKSHOP_MANAGER_HIDDEN",
+                message="workshop_manager_user_id references a hidden workshop manager user.",
+                details={"workshop_manager_user_id": normalized_user_id},
+            )
+        if int(_to_number(row.get("line_scope_count"), 0)) <= 0:
+            raise bad_request(
+                code="ORDER_SUMMARY_WORKSHOP_MANAGER_LINE_SCOPE_EMPTY",
+                message="workshop_manager_user_id must have at least one assigned line scope.",
+                details={"workshop_manager_user_id": normalized_user_id},
+            )
+        return normalized_user_id
 
     def _list_user_line_scope_rows(self, user_id: str) -> list[dict[str, Any]]:
         normalized_user_id = str(user_id or "").strip()
@@ -5131,6 +6243,18 @@ class AppService:
             ORDER BY username ASC, user_id ASC
             """,
             (ROLE_WORKSHOP_MANAGER,),
+        )
+
+    def _list_workshop_manager_visibility_rows(self) -> list[dict[str, Any]]:
+        return fetch_all(
+            self.connection,
+            """
+            SELECT
+                user_id,
+                visible_flag
+            FROM masterdata_workshop_manager_visibility
+            ORDER BY user_id ASC
+            """,
         )
 
     def _list_workshop_manager_line_scope_rows(self) -> list[dict[str, Any]]:

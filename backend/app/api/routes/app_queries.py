@@ -36,6 +36,17 @@ def get_order_pool_item(
     return service.get_order_pool_item(order_no)
 
 
+@router.get("/order-pool/{order_no}/process-timeline")
+def get_order_pool_process_timeline(
+    order_no: str,
+    process_code: str | None = Query(default=None),
+    service: Annotated[AppService, Depends(get_app_service)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> dict[str, Any]:
+    assert service is not None
+    return service.get_order_pool_process_timeline(order_no, process_code=process_code)
+
+
 @router.get("/order-pool/{order_no}/materials")
 def list_order_pool_materials(
     order_no: str,
@@ -210,6 +221,7 @@ def list_mes_reportings(
 def get_order_summary(
     start_date: str = Query(...),
     end_date: str = Query(...),
+    workshop_manager_user_id: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)] = None,
     current_user: Annotated[
         dict[str, Any],
@@ -220,5 +232,18 @@ def get_order_summary(
     return service.get_order_summary(
         start_date=start_date,
         end_date=end_date,
+        workshop_manager_user_id=workshop_manager_user_id,
         current_user=current_user,
     )
+
+
+@router.get("/order-summary/workshop-managers")
+def list_order_summary_workshop_managers(
+    service: Annotated[AppService, Depends(get_app_service)] = None,
+    current_user: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER)),
+    ] = None,
+) -> dict[str, Any]:
+    assert service is not None
+    return service.list_order_summary_workshop_managers(current_user=current_user)
