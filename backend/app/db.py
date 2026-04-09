@@ -146,6 +146,14 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_app_users_role
             ON app_users (role_code, enabled_flag);
+        CREATE TABLE IF NOT EXISTS masterdata_workshop_manager_visibility (
+            user_id TEXT PRIMARY KEY,
+            visible_flag INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES app_users(user_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_masterdata_workshop_manager_visibility_flag
+            ON masterdata_workshop_manager_visibility (visible_flag);
         CREATE TABLE IF NOT EXISTS app_sessions (
             session_token TEXT PRIMARY KEY,
             user_id TEXT NOT NULL,
@@ -208,6 +216,70 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
             ON daily_line_capacity_plan_audit (calendar_date, changed_at DESC);
         CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_audit_line
             ON daily_line_capacity_plan_audit (workshop_code, line_code, process_code, changed_at DESC);
+        CREATE TABLE IF NOT EXISTS simulation_restore_snapshot_meta (
+            singleton_key TEXT PRIMARY KEY,
+            snapshot_current_date TEXT NOT NULL,
+            snapshot_created_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS simulation_restore_snapshot_daily_line_capacity_plan (
+            calendar_date TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            planned_capacity_qty REAL NOT NULL,
+            worker_count INTEGER,
+            machine_count INTEGER,
+            source_note TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (calendar_date, company_code, workshop_code, line_code, process_code)
+        );
+        CREATE TABLE IF NOT EXISTS simulation_restore_snapshot_daily_line_capacity_actual (
+            calendar_date TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            actual_capacity_qty REAL NOT NULL,
+            report_count INTEGER NOT NULL DEFAULT 0,
+            last_report_time TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (calendar_date, company_code, workshop_code, line_code, process_code)
+        );
+        CREATE TABLE IF NOT EXISTS simulation_restore_snapshot_daily_line_capacity_plan_audit (
+            audit_id TEXT PRIMARY KEY,
+            calendar_date TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            old_planned_capacity_qty REAL,
+            new_planned_capacity_qty REAL,
+            old_worker_count INTEGER,
+            new_worker_count INTEGER,
+            old_machine_count INTEGER,
+            new_machine_count INTEGER,
+            operator_user_id TEXT,
+            operator_username TEXT,
+            operator_display_name TEXT,
+            changed_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS simulation_restore_snapshot_work_reports (
+            report_id TEXT PRIMARY KEY,
+            production_order_no TEXT,
+            process_code TEXT,
+            process_name TEXT,
+            workshop_code TEXT,
+            workshop_name TEXT,
+            line_code TEXT,
+            line_name TEXT,
+            report_qty REAL NOT NULL,
+            report_time TEXT NOT NULL,
+            operator_name TEXT,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_sim_snapshot_work_reports_time
+            ON simulation_restore_snapshot_work_reports (report_time DESC);
         CREATE TABLE IF NOT EXISTS masterdata_line_skeletons (
             company_code TEXT NOT NULL,
             workshop_code TEXT NOT NULL,

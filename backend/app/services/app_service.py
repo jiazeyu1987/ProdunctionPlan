@@ -1454,6 +1454,21 @@ class AppService:
                 code="CALENDAR_DATE_REQUIRED",
                 message="calendar_date must be a valid YYYY-MM-DD date.",
             )
+        with transaction(self.connection):
+            updated_row_count, skipped_report_count = self._rebuild_line_daily_actual_capacity_rows(
+                normalized_date
+            )
+        return {
+            "calendar_date": normalized_date,
+            "updated_row_count": updated_row_count,
+            "skipped_report_count": skipped_report_count,
+            "items": self.list_line_daily_capacity(normalized_date)["items"],
+        }
+
+    def _rebuild_line_daily_actual_capacity_rows(
+        self,
+        normalized_date: str,
+    ) -> tuple[int, int]:
         report_rows = fetch_all(
             self.connection,
             """
@@ -1499,7 +1514,9 @@ class AppService:
             if topology_row is None:
                 skipped_report_count += 1
                 continue
-            company_code = str(topology_row.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
+            company_code = str(
+                topology_row.get("company_code") or "COMPANY-MAIN"
+            ).strip().upper() or "COMPANY-MAIN"
             key = (company_code, workshop_code, line_code, process_code)
             current = aggregated.get(key) or {
                 "actual_capacity_qty": 0.0,
@@ -1512,47 +1529,41 @@ class AppService:
                 current["last_report_time"] = report_time_text
             aggregated[key] = current
         updated_at = utc_now()
-        with transaction(self.connection):
-            self.connection.execute(
-                "DELETE FROM daily_line_capacity_actual WHERE calendar_date = ?",
-                (normalized_date,),
-            )
-            if aggregated:
-                self.connection.executemany(
-                    """
-                    INSERT INTO daily_line_capacity_actual (
-                        calendar_date,
+        self.connection.execute(
+            "DELETE FROM daily_line_capacity_actual WHERE calendar_date = ?",
+            (normalized_date,),
+        )
+        if aggregated:
+            self.connection.executemany(
+                """
+                INSERT INTO daily_line_capacity_actual (
+                    calendar_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    actual_capacity_qty,
+                    report_count,
+                    last_report_time,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        normalized_date,
                         company_code,
                         workshop_code,
                         line_code,
                         process_code,
-                        actual_capacity_qty,
-                        report_count,
-                        last_report_time,
-                        updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    [
-                        (
-                            normalized_date,
-                            company_code,
-                            workshop_code,
-                            line_code,
-                            process_code,
-                            values["actual_capacity_qty"],
-                            values["report_count"],
-                            values["last_report_time"],
-                            updated_at,
-                        )
-                        for (company_code, workshop_code, line_code, process_code), values in aggregated.items()
-                    ],
-                )
-        return {
-            "calendar_date": normalized_date,
-            "updated_row_count": len(aggregated),
-            "skipped_report_count": skipped_report_count,
-            "items": self.list_line_daily_capacity(normalized_date)["items"],
-        }
+                        values["actual_capacity_qty"],
+                        values["report_count"],
+                        values["last_report_time"],
+                        updated_at,
+                    )
+                    for (company_code, workshop_code, line_code, process_code), values in aggregated.items()
+                ],
+            )
+        return len(aggregated), skipped_report_count
 
     def create_reporting(self, payload: dict[str, Any]) -> dict[str, Any]:
         order_no = str(payload.get("order_no") or "").strip() or None
@@ -3723,12 +3734,27 @@ class AppService:
 
     def advance_simulation_one_day(self, payload: dict[str, Any]) -> dict[str, Any]:
         current = self._get_simulation_state()
-        baseline = current["current_date"] or payload.get("client_date") or _today_text()
-        next_date = (
-            date.fromisoformat(_normalize_date_text(baseline) or _today_text())
-            + timedelta(days=1)
-        ).isoformat()
+        baseline_date = _normalize_date_text(
+            current.get("current_date") or payload.get("client_date") or _today_text()
+        )
+        if baseline_date is None:
+            raise server_error(
+                code="SIMULATION_CURRENT_DATE_INVALID",
+                message="Current simulation date is invalid.",
+                details={"current_date": current.get("current_date")},
+            )
+        next_date = (date.fromisoformat(baseline_date) + timedelta(days=1)).isoformat()
         with transaction(self.connection):
+            snapshot_created = self._ensure_simulation_restore_snapshot(
+                baseline_date=baseline_date
+            )
+            seeded_capacity_count = self._seed_simulated_morning_capacity(
+                baseline_date
+            )
+            reporting_stats = self._simulate_same_day_reportings(baseline_date)
+            rebuilt_actual_row_count, skipped_rebuild_report_count = (
+                self._rebuild_line_daily_actual_capacity_rows(baseline_date)
+            )
             self.connection.execute(
                 """
                 INSERT INTO simulation_state (
@@ -3745,11 +3771,224 @@ class AppService:
         return {
             "current_date": next_date,
             "message": f"Simulation advanced to {next_date}.",
+            "simulated_date": baseline_date,
+            "snapshot_created": snapshot_created,
+            "seeded_morning_capacity_count": seeded_capacity_count,
+            "simulated_reporting_count": reporting_stats["inserted_report_count"],
+            "skipped_existing_reporting_count": reporting_stats[
+                "skipped_existing_report_count"
+            ],
+            "skipped_zero_capacity_reporting_count": reporting_stats[
+                "skipped_zero_capacity_report_count"
+            ],
+            "rebuild_actual_row_count": rebuilt_actual_row_count,
+            "rebuild_skipped_report_count": skipped_rebuild_report_count,
         }
 
     def reset_manual_simulation(self) -> dict[str, Any]:
-        current_date = _today_text()
+        snapshot = fetch_one(
+            self.connection,
+            """
+            SELECT snapshot_current_date
+            FROM simulation_restore_snapshot_meta
+            WHERE singleton_key = ?
+            """,
+            (RULES_SINGLETON_KEY,),
+        )
+        if snapshot is None:
+            raise bad_request(
+                code="SIMULATION_SNAPSHOT_NOT_FOUND",
+                message=(
+                    "No simulation snapshot is available to restore. "
+                    "Advance simulation first."
+                ),
+            )
+        restored_date = _normalize_date_text(snapshot.get("snapshot_current_date"))
+        if restored_date is None:
+            raise server_error(
+                code="SIMULATION_SNAPSHOT_DATE_INVALID",
+                message="Snapshot simulation date is invalid.",
+                details={"snapshot_current_date": snapshot.get("snapshot_current_date")},
+            )
+        restored_plan_count = int(
+            _to_number(
+                fetch_one(
+                    self.connection,
+                    """
+                    SELECT COUNT(1) AS total
+                    FROM simulation_restore_snapshot_daily_line_capacity_plan
+                    """,
+                )["total"],
+                0,
+            )
+        )
+        restored_actual_count = int(
+            _to_number(
+                fetch_one(
+                    self.connection,
+                    """
+                    SELECT COUNT(1) AS total
+                    FROM simulation_restore_snapshot_daily_line_capacity_actual
+                    """,
+                )["total"],
+                0,
+            )
+        )
+        restored_report_count = int(
+            _to_number(
+                fetch_one(
+                    self.connection,
+                    """
+                    SELECT COUNT(1) AS total
+                    FROM simulation_restore_snapshot_work_reports
+                    """,
+                )["total"],
+                0,
+            )
+        )
+        restored_plan_audit_count = int(
+            _to_number(
+                fetch_one(
+                    self.connection,
+                    """
+                    SELECT COUNT(1) AS total
+                    FROM simulation_restore_snapshot_daily_line_capacity_plan_audit
+                    """,
+                )["total"],
+                0,
+            )
+        )
         with transaction(self.connection):
+            self.connection.execute("DELETE FROM daily_line_capacity_plan_audit")
+            self.connection.execute("DELETE FROM daily_line_capacity_actual")
+            self.connection.execute("DELETE FROM daily_line_capacity_plan")
+            self.connection.execute("DELETE FROM work_reports")
+            self.connection.execute(
+                """
+                INSERT INTO daily_line_capacity_plan_audit (
+                    audit_id,
+                    calendar_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    old_planned_capacity_qty,
+                    new_planned_capacity_qty,
+                    old_worker_count,
+                    new_worker_count,
+                    old_machine_count,
+                    new_machine_count,
+                    operator_user_id,
+                    operator_username,
+                    operator_display_name,
+                    changed_at
+                )
+                SELECT
+                    audit_id,
+                    calendar_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    old_planned_capacity_qty,
+                    new_planned_capacity_qty,
+                    old_worker_count,
+                    new_worker_count,
+                    old_machine_count,
+                    new_machine_count,
+                    operator_user_id,
+                    operator_username,
+                    operator_display_name,
+                    changed_at
+                FROM simulation_restore_snapshot_daily_line_capacity_plan_audit
+                """
+            )
+            self.connection.execute(
+                """
+                INSERT INTO daily_line_capacity_plan (
+                    calendar_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    planned_capacity_qty,
+                    worker_count,
+                    machine_count,
+                    source_note,
+                    updated_at
+                )
+                SELECT
+                    calendar_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    planned_capacity_qty,
+                    worker_count,
+                    machine_count,
+                    source_note,
+                    updated_at
+                FROM simulation_restore_snapshot_daily_line_capacity_plan
+                """
+            )
+            self.connection.execute(
+                """
+                INSERT INTO daily_line_capacity_actual (
+                    calendar_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    actual_capacity_qty,
+                    report_count,
+                    last_report_time,
+                    updated_at
+                )
+                SELECT
+                    calendar_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    actual_capacity_qty,
+                    report_count,
+                    last_report_time,
+                    updated_at
+                FROM simulation_restore_snapshot_daily_line_capacity_actual
+                """
+            )
+            self.connection.execute(
+                """
+                INSERT INTO work_reports (
+                    report_id,
+                    production_order_no,
+                    process_code,
+                    process_name,
+                    workshop_code,
+                    workshop_name,
+                    line_code,
+                    line_name,
+                    report_qty,
+                    report_time,
+                    operator_name,
+                    updated_at
+                )
+                SELECT
+                    report_id,
+                    production_order_no,
+                    process_code,
+                    process_name,
+                    workshop_code,
+                    workshop_name,
+                    line_code,
+                    line_name,
+                    report_qty,
+                    report_time,
+                    operator_name,
+                    updated_at
+                FROM simulation_restore_snapshot_work_reports
+                """
+            )
             self.connection.execute(
                 """
                 INSERT INTO simulation_state (
@@ -3761,12 +4000,443 @@ class AppService:
                     current_date = excluded.current_date,
                     updated_at = excluded.updated_at
                 """,
-                (RULES_SINGLETON_KEY, current_date, utc_now()),
+                (RULES_SINGLETON_KEY, restored_date, utc_now()),
+            )
+            self._clear_simulation_restore_snapshot()
+        return {
+            "current_date": restored_date,
+            "message": "Simulation reset.",
+            "restored_plan_count": restored_plan_count,
+            "restored_actual_count": restored_actual_count,
+            "restored_report_count": restored_report_count,
+            "restored_plan_audit_count": restored_plan_audit_count,
+        }
+
+    def _ensure_simulation_restore_snapshot(self, *, baseline_date: str) -> bool:
+        existing = fetch_one(
+            self.connection,
+            """
+            SELECT singleton_key
+            FROM simulation_restore_snapshot_meta
+            WHERE singleton_key = ?
+            """,
+            (RULES_SINGLETON_KEY,),
+        )
+        if existing is not None:
+            return False
+        normalized_date = _normalize_date_text(baseline_date)
+        if normalized_date is None:
+            raise bad_request(
+                code="SIMULATION_BASELINE_DATE_INVALID",
+                message="baseline_date must be a valid YYYY-MM-DD date.",
+                details={"baseline_date": baseline_date},
+            )
+        self._clear_simulation_restore_snapshot()
+        self.connection.execute(
+            """
+            INSERT INTO simulation_restore_snapshot_meta (
+                singleton_key,
+                snapshot_current_date,
+                snapshot_created_at
+            ) VALUES (?, ?, ?)
+            """,
+            (RULES_SINGLETON_KEY, normalized_date, utc_now()),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO simulation_restore_snapshot_daily_line_capacity_plan (
+                calendar_date,
+                company_code,
+                workshop_code,
+                line_code,
+                process_code,
+                planned_capacity_qty,
+                worker_count,
+                machine_count,
+                source_note,
+                updated_at
+            )
+            SELECT
+                calendar_date,
+                company_code,
+                workshop_code,
+                line_code,
+                process_code,
+                planned_capacity_qty,
+                worker_count,
+                machine_count,
+                source_note,
+                updated_at
+            FROM daily_line_capacity_plan
+            """
+        )
+        self.connection.execute(
+            """
+            INSERT INTO simulation_restore_snapshot_daily_line_capacity_actual (
+                calendar_date,
+                company_code,
+                workshop_code,
+                line_code,
+                process_code,
+                actual_capacity_qty,
+                report_count,
+                last_report_time,
+                updated_at
+            )
+            SELECT
+                calendar_date,
+                company_code,
+                workshop_code,
+                line_code,
+                process_code,
+                actual_capacity_qty,
+                report_count,
+                last_report_time,
+                updated_at
+            FROM daily_line_capacity_actual
+            """
+        )
+        self.connection.execute(
+            """
+            INSERT INTO simulation_restore_snapshot_daily_line_capacity_plan_audit (
+                audit_id,
+                calendar_date,
+                company_code,
+                workshop_code,
+                line_code,
+                process_code,
+                old_planned_capacity_qty,
+                new_planned_capacity_qty,
+                old_worker_count,
+                new_worker_count,
+                old_machine_count,
+                new_machine_count,
+                operator_user_id,
+                operator_username,
+                operator_display_name,
+                changed_at
+            )
+            SELECT
+                audit_id,
+                calendar_date,
+                company_code,
+                workshop_code,
+                line_code,
+                process_code,
+                old_planned_capacity_qty,
+                new_planned_capacity_qty,
+                old_worker_count,
+                new_worker_count,
+                old_machine_count,
+                new_machine_count,
+                operator_user_id,
+                operator_username,
+                operator_display_name,
+                changed_at
+            FROM daily_line_capacity_plan_audit
+            """
+        )
+        self.connection.execute(
+            """
+            INSERT INTO simulation_restore_snapshot_work_reports (
+                report_id,
+                production_order_no,
+                process_code,
+                process_name,
+                workshop_code,
+                workshop_name,
+                line_code,
+                line_name,
+                report_qty,
+                report_time,
+                operator_name,
+                updated_at
+            )
+            SELECT
+                report_id,
+                production_order_no,
+                process_code,
+                process_name,
+                workshop_code,
+                workshop_name,
+                line_code,
+                line_name,
+                report_qty,
+                report_time,
+                operator_name,
+                updated_at
+            FROM work_reports
+            """
+        )
+        return True
+
+    def _clear_simulation_restore_snapshot(self) -> None:
+        self.connection.execute("DELETE FROM simulation_restore_snapshot_daily_line_capacity_plan")
+        self.connection.execute("DELETE FROM simulation_restore_snapshot_daily_line_capacity_actual")
+        self.connection.execute("DELETE FROM simulation_restore_snapshot_daily_line_capacity_plan_audit")
+        self.connection.execute("DELETE FROM simulation_restore_snapshot_work_reports")
+        self.connection.execute(
+            "DELETE FROM simulation_restore_snapshot_meta WHERE singleton_key = ?",
+            (RULES_SINGLETON_KEY,),
+        )
+
+    def _seed_simulated_morning_capacity(self, calendar_date: str) -> int:
+        normalized_date = _normalize_date_text(calendar_date)
+        if normalized_date is None:
+            raise bad_request(
+                code="CALENDAR_DATE_REQUIRED",
+                message="calendar_date must be a valid YYYY-MM-DD date.",
+            )
+        capacity_data = self.list_line_daily_capacity(normalized_date)
+        capacity_items = capacity_data.get("items") if isinstance(capacity_data, dict) else []
+        if not isinstance(capacity_items, list) or len(capacity_items) == 0:
+            raise server_error(
+                code="SIMULATION_CAPACITY_TOPOLOGY_EMPTY",
+                message="No line topology rows are available for simulation capacity seeding.",
+                details={"calendar_date": normalized_date},
+            )
+        existing_rows = fetch_all(
+            self.connection,
+            """
+            SELECT company_code, workshop_code, line_code, process_code
+            FROM daily_line_capacity_plan
+            WHERE calendar_date = ?
+            """,
+            (normalized_date,),
+        )
+        existing_keys = {
+            (
+                str(row.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper()
+                or DEFAULT_COMPANY_CODE,
+                str(row.get("workshop_code") or "").strip().upper(),
+                str(row.get("line_code") or "").strip().upper(),
+                str(row.get("process_code") or "").strip().upper(),
+            )
+            for row in existing_rows
+        }
+        rows_to_insert: list[tuple[Any, ...]] = []
+        updated_at = utc_now()
+        for item in capacity_items:
+            company_code = (
+                str(item.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper()
+                or DEFAULT_COMPANY_CODE
+            )
+            workshop_code = str(item.get("workshop_code") or "").strip().upper()
+            line_code = str(item.get("line_code") or "").strip().upper()
+            process_code = str(item.get("process_code") or "").strip().upper()
+            if not workshop_code or not line_code or not process_code:
+                raise server_error(
+                    code="SIMULATION_CAPACITY_KEY_INVALID",
+                    message="Simulation capacity row key is invalid.",
+                    details={
+                        "calendar_date": normalized_date,
+                        "workshop_code": workshop_code,
+                        "line_code": line_code,
+                        "process_code": process_code,
+                    },
+                )
+            key = (company_code, workshop_code, line_code, process_code)
+            if key in existing_keys:
+                continue
+            rows_to_insert.append(
+                (
+                    normalized_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    _to_number(item.get("planned_capacity_qty"), 0),
+                    int(_to_number(item.get("worker_count"), 0)),
+                    int(_to_number(item.get("machine_count"), 0)),
+                    "SIMULATION_AUTO_MORNING_ESTIMATE",
+                    updated_at,
+                )
+            )
+        if rows_to_insert:
+            self.connection.executemany(
+                """
+                INSERT INTO daily_line_capacity_plan (
+                    calendar_date,
+                    company_code,
+                    workshop_code,
+                    line_code,
+                    process_code,
+                    planned_capacity_qty,
+                    worker_count,
+                    machine_count,
+                    source_note,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows_to_insert,
+            )
+        return len(rows_to_insert)
+
+    def _simulate_same_day_reportings(self, calendar_date: str) -> dict[str, int]:
+        normalized_date = _normalize_date_text(calendar_date)
+        if normalized_date is None:
+            raise bad_request(
+                code="CALENDAR_DATE_REQUIRED",
+                message="calendar_date must be a valid YYYY-MM-DD date.",
+            )
+        plan_rows = fetch_all(
+            self.connection,
+            """
+            SELECT
+                plan.company_code,
+                plan.workshop_code,
+                COALESCE(top.workshop_name, plan.workshop_code) AS workshop_name,
+                plan.line_code,
+                COALESCE(top.line_name, plan.line_code) AS line_name,
+                plan.process_code,
+                plan.planned_capacity_qty
+            FROM daily_line_capacity_plan plan
+            LEFT JOIN masterdata_line_topology top
+              ON top.company_code = plan.company_code
+             AND top.workshop_code = plan.workshop_code
+             AND top.line_code = plan.line_code
+             AND top.process_code = plan.process_code
+            WHERE plan.calendar_date = ?
+            ORDER BY
+                plan.workshop_code ASC,
+                plan.line_code ASC,
+                plan.process_code ASC
+            """,
+            (normalized_date,),
+        )
+        if len(plan_rows) == 0:
+            raise server_error(
+                code="SIMULATION_CAPACITY_PLAN_EMPTY",
+                message=(
+                    "No daily line capacity plan rows exist for the simulation date. "
+                    "Simulation reporting cannot be generated."
+                ),
+                details={"calendar_date": normalized_date},
+            )
+        existing_reporting_rows = fetch_all(
+            self.connection,
+            """
+            SELECT DISTINCT
+                UPPER(TRIM(COALESCE(workshop_code, ''))) AS workshop_code,
+                UPPER(TRIM(COALESCE(line_code, ''))) AS line_code,
+                UPPER(TRIM(COALESCE(process_code, ''))) AS process_code
+            FROM work_reports
+            WHERE date(report_time, '+8 hours') = ?
+            """,
+            (normalized_date,),
+        )
+        existing_report_keys = {
+            (
+                str(row.get("workshop_code") or "").strip().upper(),
+                str(row.get("line_code") or "").strip().upper(),
+                str(row.get("process_code") or "").strip().upper(),
+            )
+            for row in existing_reporting_rows
+        }
+        process_name_by_code = self._process_name_by_code()
+        report_base_time = (
+            datetime.fromisoformat(f"{normalized_date}T10:00:00+08:00")
+            .astimezone(timezone.utc)
+            .replace(microsecond=0)
+        )
+        rows_to_insert: list[tuple[Any, ...]] = []
+        skipped_existing_report_count = 0
+        skipped_zero_capacity_report_count = 0
+        for index, row in enumerate(plan_rows):
+            company_code = (
+                str(row.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper()
+                or DEFAULT_COMPANY_CODE
+            )
+            workshop_code = str(row.get("workshop_code") or "").strip().upper()
+            line_code = str(row.get("line_code") or "").strip().upper()
+            process_code = str(row.get("process_code") or "").strip().upper()
+            if not workshop_code or not line_code or not process_code:
+                raise server_error(
+                    code="SIMULATION_REPORTING_KEY_INVALID",
+                    message="Simulation reporting row key is invalid.",
+                    details={
+                        "calendar_date": normalized_date,
+                        "workshop_code": workshop_code,
+                        "line_code": line_code,
+                        "process_code": process_code,
+                    },
+                )
+            if (workshop_code, line_code, process_code) in existing_report_keys:
+                skipped_existing_report_count += 1
+                continue
+            planned_capacity_qty = _to_number(row.get("planned_capacity_qty"), 0)
+            if planned_capacity_qty <= SCHEDULE_NUMBER_EPSILON:
+                skipped_zero_capacity_report_count += 1
+                continue
+            ratio = self._simulation_reporting_ratio(
+                calendar_date=normalized_date,
+                company_code=company_code,
+                workshop_code=workshop_code,
+                line_code=line_code,
+                process_code=process_code,
+            )
+            report_qty = round(planned_capacity_qty * ratio)
+            if report_qty <= SCHEDULE_NUMBER_EPSILON:
+                skipped_zero_capacity_report_count += 1
+                continue
+            report_time = (report_base_time + timedelta(minutes=index)).isoformat()
+            rows_to_insert.append(
+                (
+                    f"RPT-SIM-{uuid4().hex[:10].upper()}",
+                    None,
+                    process_code,
+                    process_name_by_code.get(process_code, process_code),
+                    workshop_code,
+                    str(row.get("workshop_name") or workshop_code).strip() or workshop_code,
+                    line_code,
+                    str(row.get("line_name") or line_code).strip() or line_code,
+                    float(report_qty),
+                    report_time,
+                    "simulation-auto",
+                    report_time,
+                )
+            )
+        if rows_to_insert:
+            self.connection.executemany(
+                """
+                INSERT INTO work_reports (
+                    report_id,
+                    production_order_no,
+                    process_code,
+                    process_name,
+                    workshop_code,
+                    workshop_name,
+                    line_code,
+                    line_name,
+                    report_qty,
+                    report_time,
+                    operator_name,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                rows_to_insert,
             )
         return {
-            "current_date": current_date,
-            "message": "Simulation reset.",
+            "inserted_report_count": len(rows_to_insert),
+            "skipped_existing_report_count": skipped_existing_report_count,
+            "skipped_zero_capacity_report_count": skipped_zero_capacity_report_count,
         }
+
+    def _simulation_reporting_ratio(
+        self,
+        *,
+        calendar_date: str,
+        company_code: str,
+        workshop_code: str,
+        line_code: str,
+        process_code: str,
+    ) -> float:
+        seed_text = (
+            f"{calendar_date}|{company_code}|{workshop_code}|{line_code}|{process_code}"
+        )
+        weighted_sum = sum((index + 1) * ord(ch) for index, ch in enumerate(seed_text))
+        bucket = weighted_sum % 31
+        return 0.65 + (bucket / 100.0)
 
     def test_material_issues(self, order_no: str, mode: str) -> dict[str, Any]:
         normalized_mode = str(mode or "fast").strip().lower()
