@@ -49,29 +49,20 @@ def _normalize_shift_code(value: object) -> str:
 
 
 def _pick_reference_schedule_version_no(connection: sqlite3.Connection) -> str | None:
-    published = fetch_one(
-        connection,
-        """
-        SELECT version_no
-        FROM schedule_versions
-        WHERE UPPER(TRIM(COALESCE(status, ''))) = 'PUBLISHED'
-        ORDER BY COALESCE(NULLIF(TRIM(COALESCE(published_at, '')), ''), created_at) DESC,
-                 created_at DESC,
-                 version_no DESC
-        LIMIT 1
-        """,
-    )
-    if published is not None:
-        version_no = str(published.get("version_no") or "").strip()
-        if version_no:
-            return version_no
-
     latest = fetch_one(
         connection,
         """
         SELECT version_no
         FROM schedule_versions
-        ORDER BY created_at DESC, version_no DESC
+        ORDER BY
+            created_at DESC,
+            CAST(
+                CASE
+                    WHEN INSTR(version_no, '-D') > 0 THEN SUBSTR(version_no, INSTR(version_no, '-D') + 2)
+                    ELSE '0'
+                END AS INTEGER
+            ) DESC,
+            version_no DESC
         LIMIT 1
         """,
     )

@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse
 
 from .api.router import api_router
 from .config import get_settings
-from .db import ensure_database_exists
+from .db import prepare_database
 from .errors import AppError
 from .worker import JobWorker
 
@@ -20,7 +20,7 @@ worker = JobWorker()
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    ensure_database_exists()
+    prepare_database()
     await worker.start()
     try:
         yield

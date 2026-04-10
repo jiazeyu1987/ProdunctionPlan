@@ -14,6 +14,15 @@ from ...schemas.jobs import AcceptedCommandResponse
 router = APIRouter(tags=["commands"])
 
 
+def build_actor_payload(current_user: dict[str, Any]) -> dict[str, str]:
+    return {
+        "user_id": str(current_user.get("user_id") or "").strip(),
+        "username": str(current_user.get("username") or "").strip(),
+        "display_name": str(current_user.get("display_name") or "").strip(),
+        "role_code": str(current_user.get("role_code") or "").strip(),
+    }
+
+
 def enqueue_command_job(
     connection: sqlite3.Connection,
     *,
@@ -223,19 +232,13 @@ def save_line_daily_capacity(
 ) -> AcceptedCommandResponse:
     assert connection is not None
     calendar_date = str(payload.get("calendar_date") or "").strip() or "UNKNOWN"
-    actor = {
-        "user_id": str(current_user.get("user_id") or "").strip(),
-        "username": str(current_user.get("username") or "").strip(),
-        "display_name": str(current_user.get("display_name") or "").strip(),
-        "role_code": str(current_user.get("role_code") or "").strip(),
-    }
     return enqueue_command_job(
         connection,
         job_type="LEGACY_DAILY_LINE_CAPACITY_SAVE",
         target_type="LINE_CAPACITY_DAILY",
         target_key=calendar_date,
         request_id=str(payload.get("request_id") or "").strip() or None,
-        payload={**payload, "actor": actor},
+        payload={**payload, "actor": build_actor_payload(current_user)},
     )
 
 
@@ -319,19 +322,13 @@ def create_reporting(
     ] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
-    actor = {
-        "user_id": str(current_user.get("user_id") or "").strip(),
-        "username": str(current_user.get("username") or "").strip(),
-        "display_name": str(current_user.get("display_name") or "").strip(),
-        "role_code": str(current_user.get("role_code") or "").strip(),
-    }
     return enqueue_command_job(
         connection,
         job_type="LEGACY_REPORT_CREATE",
         target_type="ORDER",
         target_key=str(payload.get("order_no") or "").strip() or "UNKNOWN",
         request_id=str(payload.get("request_id") or "").strip() or None,
-        payload={**payload, "actor": actor},
+        payload={**payload, "actor": build_actor_payload(current_user)},
     )
 
 
@@ -346,19 +343,13 @@ def delete_reporting(
     ] = None,
 ) -> AcceptedCommandResponse:
     assert connection is not None
-    actor = {
-        "user_id": str(current_user.get("user_id") or "").strip(),
-        "username": str(current_user.get("username") or "").strip(),
-        "display_name": str(current_user.get("display_name") or "").strip(),
-        "role_code": str(current_user.get("role_code") or "").strip(),
-    }
     return enqueue_command_job(
         connection,
         job_type="LEGACY_REPORT_DELETE",
         target_type="REPORT",
         target_key=report_id,
         request_id=str(payload.get("request_id") or "").strip() or None,
-        payload={"report_id": report_id, "actor": actor},
+        payload={"report_id": report_id, "actor": build_actor_payload(current_user)},
     )
 
 

@@ -5,10 +5,15 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 from .config import BACKEND_ROOT, get_settings
 from .errors import server_error
+
+
+_schema_ready = False
+_schema_lock = Lock()
 
 
 def utc_now() -> str:
@@ -28,13 +33,42 @@ def ensure_database_exists() -> Path:
     return database_path
 
 
-def open_connection() -> sqlite3.Connection:
-    database_path = ensure_database_exists()
-    connection = sqlite3.connect(database_path, check_same_thread=False)
+def _configure_connection(connection: sqlite3.Connection) -> None:
     connection.row_factory = sqlite3.Row
     connection.execute("PRAGMA foreign_keys = ON")
-    migrate_database_schema(connection)
-    connection.commit()
+
+
+def _mark_schema_ready() -> None:
+    global _schema_ready
+    _schema_ready = True
+
+
+def prepare_database() -> Path:
+    database_path = ensure_database_exists()
+    global _schema_ready
+    if _schema_ready:
+        return database_path
+
+    with _schema_lock:
+        if _schema_ready:
+            return database_path
+
+        connection = sqlite3.connect(database_path, check_same_thread=False)
+        try:
+            _configure_connection(connection)
+            migrate_database_schema(connection)
+            connection.commit()
+        finally:
+            connection.close()
+
+        _mark_schema_ready()
+    return database_path
+
+
+def open_connection() -> sqlite3.Connection:
+    database_path = prepare_database()
+    connection = sqlite3.connect(database_path, check_same_thread=False)
+    _configure_connection(connection)
     return connection
 
 
@@ -96,10 +130,13 @@ def initialize_database(database_path: Path | None = None) -> Path:
     connection = sqlite3.connect(target_path)
     try:
         connection.executescript(load_init_sql())
+        _configure_connection(connection)
         migrate_database_schema(connection)
         connection.commit()
     finally:
         connection.close()
+    if target_path.resolve() == get_settings().database_path.resolve():
+        _mark_schema_ready()
     return target_path
 
 

@@ -1,0 +1,250 @@
+{
+  "schema_version": 2,
+  "task_id": "e2e-llm-20260410T094509",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "隔离运行时与确定性数据基线",
+      "status": "completed",
+      "objective": "提供一个不会污染当前业务库的独立 E2E 数据库与固定账号/产线/订单/工序数据，使重排、发布、产能维护、报工和汇总都能在同一数据集中真实执行。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "种子脚本命令输出、数据库断言、隔离库路径、运行时健康检查。",
+      "evidence": [
+        "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\seed-summary.json",
+        "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\browser-run-summary.json"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-10T13:16:27",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "`seed_e2e_db.py` 每次运行都生成一份独立的 SQLite E2E 数据库，不读取或覆盖用户当前业务数据库。",
+          "status": "completed",
+          "evidence": [
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\seed-summary.json",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\browser-run-summary.json",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\validate-test-report.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\check-completion.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\llm-verdict.json"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "种子数据至少包含 1 个排产员账号、1 个车间主任账号、车间主任产线权限、可用于排产的工艺路线/产线拓扑/订单/能力绑定/订单状态数据。",
+          "status": "completed",
+          "evidence": [
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\seed-summary.json",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\browser-run-summary.json",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\validate-test-report.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\check-completion.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\llm-verdict.json"
+          ]
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "用种子库启动系统后，可以真实执行排产生成、发布、当日产能保存、产能审计查询、报工和订单汇总查询。",
+          "status": "completed",
+          "evidence": [
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\seed-summary.json",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\browser-run-summary.json",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\validate-test-report.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\check-completion.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\llm-verdict.json"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P2",
+      "title": "真实浏览器 E2E 覆盖",
+      "status": "completed",
+      "objective": "基于真实前后端运行时实现浏览器 E2E，用例覆盖排产员与车间主任核心路径，并至少跑通一次“重排到报工”的完整链路。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "Playwright 报告、截图、trace、结构化 evidence manifest。",
+      "evidence": [
+        "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\evidence-manifest.json",
+        "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\t2-scheduler-full-flow-from-replan-to-reporting-0.trace.zip"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-10T13:16:27",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "Playwright E2E 至少有一个排产员用例完整覆盖“登录 -> 重排生成草稿 -> 发布草稿 -> 修改当日产能 -> 查看产能审计 -> 报工 -> 在订单汇总中看到结果”。",
+          "status": "completed",
+          "evidence": [
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\evidence-manifest.json",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\t2-scheduler-full-flow-from-replan-to-reporting-0.trace.zip",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\validate-test-report.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\check-completion.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\llm-verdict.json"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "E2E 还要覆盖相邻高价值页面和角色约束，至少包括生产订单页、报工页、订单汇总页、车间主任可见产线/报工范围。",
+          "status": "completed",
+          "evidence": [
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\evidence-manifest.json",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\t2-scheduler-full-flow-from-replan-to-reporting-0.trace.zip",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\validate-test-report.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\check-completion.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\llm-verdict.json"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "每个通过的浏览器用例都输出至少一个真实证据文件，并写入结构化证据清单供后续 LLM 评测消费。",
+          "status": "completed",
+          "evidence": [
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\evidence-manifest.json",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\t2-scheduler-full-flow-from-replan-to-reporting-0.trace.zip",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\validate-test-report.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\check-completion.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\llm-verdict.json"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P3",
+      "title": "LLM 评测接入",
+      "status": "completed",
+      "objective": "在浏览器执行完成后，使用结构化证据和系统要求通过 Codex CLI 做独立评测，并输出机器可读结论。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "评测请求输入摘要、LLM verdict JSON、主入口命令日志。",
+      "evidence": [
+        "D:\\ProjectPackage\\ProductionPlan\\fronted\\tests\\e2e\\llm\\evaluate.mjs",
+        "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md#T6",
+        "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval.log",
+        "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-probe-output-54mini.json",
+        "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval-last-message.txt",
+        "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\llm-verdict.json"
+      ],
+      "notes": "- LLM evaluation now uses the current local codex login/config directly, but real verdict generation is blocked because the active provider returns repeated 503 Service Unavailable / No available providers errors.\n- 2026-04-10: evaluator retried 12 runs with tiny single-shot prompt; all runs failed with provider 503.\n- 2026-04-10 local codex invocation switched to --output-last-message and produced a valid pass verdict in full npm run e2e.",
+      "last_reviewed_at": "2026-04-10T22:50:03",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "`npm run e2e` 或等价主入口必须先跑浏览器测试，再跑 Codex LLM 评测；若本机 Codex 登录态不可用，或当前 provider 无法完成真实评测请求（例如连续 `503 Service Unavailable`），必须明确失败，不能跳过。",
+          "status": "completed",
+          "evidence": [
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md#T6",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\validate-test-report.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\check-completion.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\tests\\e2e\\llm\\evaluate.mjs",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval-last-message.txt",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\llm-verdict.json"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "LLM 评测输入必须包含系统要求、关键业务断言和浏览器证据摘要，输出必须是机器可读 verdict，并能据此决定整套 E2E 成败。",
+          "status": "completed",
+          "evidence": [
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md#T6",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\tests\\e2e\\llm\\evaluate.mjs",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval-last-message.txt",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\llm-verdict.json",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\validate-test-report.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\check-completion.log"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P4",
+      "title": "证据归档与交付闭环",
+      "status": "completed",
+      "objective": "以 workflow 要求更新执行记录、测试报告与任务状态，使每个 acceptance id 都有代码和测试证据可追踪。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "workflow 脚本输出、任务工件中的 evidence refs、completion check 结果。",
+      "evidence": [
+        "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\validate-test-report.log",
+        "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\check-completion.log",
+        "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md#T7"
+      ],
+      "notes": "- Workflow artifacts aligned to the Codex evaluator path; completion gate remains blocked until Codex ChatGPT auth is refreshed and a real verdict can be produced.\n- 2026-04-10 completion gate passed after local Codex evaluator success.",
+      "last_reviewed_at": "2026-04-10T22:57:27",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P4-AC1",
+          "text": "`execution-log.md`、`test-report.md` 和 `task-state.json` 对每个 acceptance id 都有对应证据引用和状态更新。",
+          "status": "completed",
+          "evidence": [
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\execution-log.md#Phase-P4",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md#T7",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\validate-test-report.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\check-completion.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\llm-verdict.json"
+          ]
+        },
+        {
+          "ac_id": "P4-AC2",
+          "text": "只有在浏览器 E2E 与 LLM 评测都通过后，任务才允许进入 completion gate；否则保留明确失败或阻塞原因。",
+          "status": "completed",
+          "evidence": [
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\check-completion.log",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md#T7",
+            "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\validate-test-report.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\codex-eval.log",
+            "D:\\ProjectPackage\\ProductionPlan\\fronted\\test-results\\e2e\\llm-verdict.json"
+          ]
+        }
+      ]
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 3,
+    "test_loops": 2
+  },
+  "created_at": "2026-04-10T09:45:09",
+  "updated_at": "2026-04-10T23:09:03",
+  "branch": "master",
+  "baseline_revision": "caa4e4c5e662aaa8a6c79d2593e451a9273d5e93",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509",
+  "goal": "为当前生产排期系统设计并实现一套尽量全面的E2E测试，覆盖从重排到报工的完整流程，并加入LLM评测以判断系统行为是否符合要求",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-llm-20260410T094509\\test-report.md"
+  }
+}
