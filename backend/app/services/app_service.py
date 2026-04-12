@@ -1289,6 +1289,14 @@ class AppService:
     def rebuild_line_daily_actual_capacity(self, payload: dict[str, Any]) -> dict[str, Any]:
         return self.line_daily_capacity_service.rebuild_line_daily_actual_capacity(payload)
 
+    def _rebuild_line_daily_actual_capacity_rows(
+        self,
+        normalized_date: str,
+    ) -> tuple[int, int]:
+        return self.line_daily_capacity_service._rebuild_line_daily_actual_capacity_rows(
+            normalized_date
+        )
+
     def create_reporting(self, payload: dict[str, Any]) -> dict[str, Any]:
         order_no = str(payload.get("order_no") or "").strip() or None
         process_code = str(payload.get("process_code") or "").strip().upper()
@@ -3085,6 +3093,7 @@ class AppService:
 
     def get_schedule_calendar_rules(self) -> dict[str, Any]:
         row = self._get_rules_row()
+        simulation_state = self._get_simulation_state()
         return {
             "data": {
                 "horizon_start_date": row["horizon_start_date"],
@@ -3092,6 +3101,7 @@ class AppService:
                 "skip_statutory_holidays": bool(row["skip_statutory_holidays"]),
                 "weekend_rest_mode": row["weekend_rest_mode"],
                 "date_shift_mode_by_date": loads(row["date_shift_mode_by_date_json"]) or {},
+                "current_date": simulation_state["current_date"],
             }
         }
 
@@ -5992,7 +6002,10 @@ class AppService:
         row = fetch_one(
             self.connection,
             """
-            SELECT singleton_key, current_date, updated_at
+            SELECT
+                simulation_state.singleton_key,
+                simulation_state.current_date AS current_date,
+                simulation_state.updated_at
             FROM simulation_state
             WHERE singleton_key = ?
             """,

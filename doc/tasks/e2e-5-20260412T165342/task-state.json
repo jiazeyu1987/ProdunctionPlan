@@ -1,0 +1,126 @@
+{
+  "schema_version": 2,
+  "task_id": "e2e-5-20260412T165342",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "Add Deterministic Browser Coverage For Manual Simulation Advance And Reset",
+      "status": "completed",
+      "objective": "",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "`execution-log.md` 记录新增/修改的 E2E 路径、断言方式、以及为何这些断言足以回答“是否符合预期”。",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "存在一个稳定的真实浏览器用例，能够从页面真实可见的当前日高亮中提取基线日期，并在连续点击“推进一天”5次后，逐次校验日期按天推进。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#Final-Verdict",
+            "fronted/test-results/e2e/t1-simulation-advance-one-day-5-times-and-reset-simulation-0.trace.zip"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "同一用例在点击“重置模拟”后，能够校验当前日高亮回到推进前基线日期，而不是停留在推进后的日期。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#Final-Verdict",
+            "fronted/test-results/e2e/t1-simulation-advance-one-day-5-times-and-reset-simulation-0.trace.zip"
+          ]
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "同一用例会记录至少一个后端副作用基线（如报工数量），并验证“推进后变化、重置后恢复”。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#Final-Verdict",
+            "fronted/test-results/e2e/t1-simulation-advance-one-day-5-times-and-reset-simulation-0.trace.zip"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "- Real-browser simulation coverage was added and verified against the seeded baseline, five advances, reset behavior, and reporting side effects.",
+      "last_reviewed_at": "2026-04-12T18:17:12"
+    },
+    {
+      "phase_id": "P2",
+      "title": "Execute The Simulation E2E And Judge Current Behavior Against Expected Outcome",
+      "status": "completed",
+      "objective": "",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "`execution-log.md` 与 `test-report.md` 都要包含目标 E2E 命令、环境路径、证据文件路径，以及最终是否符合预期的结论。",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "目标浏览器 E2E 在隔离运行时可执行并生成真实证据文件（截图、trace、manifest 至少其一可用于 tester 复核）。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#Final-Verdict",
+            "fronted/test-results/e2e/t1-simulation-advance-one-day-5-times-and-reset-simulation-0.trace.zip"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "最终结论明确包含具体日期与观测值，例如“基线日期是 2026-04-10，连续推进 5 次后变为 2026-04-15，重置后回到 2026-04-10”。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#Final-Verdict",
+            "fronted/test-results/e2e/t1-simulation-advance-one-day-5-times-and-reset-simulation-0.trace.zip"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "如果初次运行发现实现不符合预期，修复后的复验必须通过，且未引入 fallback、mock 或静默降级。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#Final-Verdict",
+            "fronted/test-results/e2e/t1-simulation-advance-one-day-5-times-and-reset-simulation-0.trace.zip"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P2"
+      ],
+      "notes": "- Initial browser failure was fixed by correcting simulation_state.current_date reads and restoring actual-capacity rebuild delegation; the same E2E command passed afterward without fallback logic.",
+      "last_reviewed_at": "2026-04-12T18:16:32"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 2,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-12T16:53:42",
+  "updated_at": "2026-04-12T18:17:39",
+  "branch": "master",
+  "baseline_revision": "d9db13f2a6d2b3990d38f597897c55528dc867d5",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-5-20260412T165342",
+  "goal": "使用 e2e 测试点击推进一天 5 次并验证结果，再点击重置模拟并验证是否符合预期",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-5-20260412T165342\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-5-20260412T165342\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-5-20260412T165342\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-5-20260412T165342\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\e2e-5-20260412T165342\\test-report.md"
+  }
+}
