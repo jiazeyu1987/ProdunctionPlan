@@ -31,6 +31,48 @@ class JobRepository:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.connection = connection
 
+    def ensure_exists(self, job: dict[str, Any]) -> None:
+        existing = self.get(str(job["job_id"]))
+        if existing is not None:
+            return
+        self.connection.execute(
+            """
+            INSERT INTO jobs (
+                job_id,
+                job_type,
+                target_type,
+                target_key,
+                request_id,
+                status,
+                progress,
+                payload_json,
+                result_json,
+                error_code,
+                error_message,
+                created_at,
+                started_at,
+                finished_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(job["job_id"]),
+                str(job["job_type"]),
+                str(job["target_type"]),
+                str(job["target_key"]),
+                str(job.get("request_id") or "").strip() or None,
+                str(job.get("status") or "RUNNING"),
+                int(job.get("progress") or 5),
+                dumps(job.get("payload") or {}),
+                dumps(job.get("result") or {}) if job.get("result") is not None else None,
+                str(job.get("error_code") or "").strip() or None,
+                str(job.get("error_message") or "").strip() or None,
+                str(job.get("created_at") or utc_now()),
+                str(job.get("started_at") or utc_now()),
+                str(job.get("finished_at") or "").strip() or None,
+            ),
+        )
+        self.connection.commit()
+
     def enqueue(
         self,
         *,

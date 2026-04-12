@@ -9,6 +9,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 BACKEND_ROOT = PROJECT_ROOT / "backend"
 DEFAULT_DB_PATH = BACKEND_ROOT / "data" / "production_plan.db"
+DEFAULT_BACKUP_DIR = BACKEND_ROOT / "data" / "backups"
 DEFAULT_ENV_PATH = BACKEND_ROOT / ".env"
 
 
@@ -40,6 +41,7 @@ class Settings:
     api_title: str
     api_version: str
     database_path: Path
+    backup_dir: Path
     worker_poll_interval_seconds: float
     erp_base_url: str | None
     erp_timeout_seconds: float
@@ -93,10 +95,16 @@ def get_settings() -> Settings:
     if not database_path.is_absolute():
         database_path = (PROJECT_ROOT / database_path).resolve()
 
+    raw_backup_dir = os.getenv("PRODUCTION_PLAN_BACKUP_DIR", str(DEFAULT_BACKUP_DIR))
+    backup_dir = Path(raw_backup_dir)
+    if not backup_dir.is_absolute():
+        backup_dir = (PROJECT_ROOT / backup_dir).resolve()
+
     return Settings(
         api_title="ProductionPlan API",
         api_version="0.2.0",
         database_path=database_path,
+        backup_dir=backup_dir,
         worker_poll_interval_seconds=float(
             os.getenv("PRODUCTION_PLAN_WORKER_POLL_SECONDS", "1.0")
         ),

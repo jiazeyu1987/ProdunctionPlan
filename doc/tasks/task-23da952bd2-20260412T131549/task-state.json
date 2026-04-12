@@ -1,0 +1,155 @@
+{
+  "schema_version": 2,
+  "task_id": "task-23da952bd2-20260412T131549",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "Persist Backup Config + Backup Records and Expose via Queries",
+      "status": "completed",
+      "objective": "",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "Backup config (enabled_flag, frequency_minutes, max_backups) is persisted in SQLite and remains consistent after refresh and backend restart.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#p1---persist-backup-config--backup-records-and-expose-via-queries-2026-04-12",
+            "test-report.md#final-verdict"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "Backup list is queryable and each backup record includes `backup_id` and `created_at` (ISO 8601) sorted by newest first.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#p1---persist-backup-config--backup-records-and-expose-via-queries-2026-04-12",
+            "test-report.md#final-verdict"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#p1---persist-backup-config--backup-records-and-expose-via-queries-2026-04-12"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-12T14:11:52"
+    },
+    {
+      "phase_id": "P2",
+      "title": "Manual Backup/Restore Jobs + Auto Backup Trigger + Retention + Fail-Fast",
+      "status": "completed",
+      "objective": "",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "Manual backup can be triggered as a job and, on success, produces both a backup file under `PRODUCTION_PLAN_BACKUP_DIR` and a corresponding `app_backup_records` entry with correct created_at semantics.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#p2---manual-backuprestore-jobs--auto-backup-trigger--retention--fail-fast-2026-04-12",
+            "test-report.md#final-verdict"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "Restore a specified backup can be triggered as a job and is both successful and fail-fast observable.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#p2---manual-backuprestore-jobs--auto-backup-trigger--retention--fail-fast-2026-04-12",
+            "test-report.md#final-verdict"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "Auto backup is triggered by the worker when enabled, and retention keeps only the newest `max_backups` backups.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#p2---manual-backuprestore-jobs--auto-backup-trigger--retention--fail-fast-2026-04-12",
+            "test-report.md#final-verdict"
+          ]
+        },
+        {
+          "ac_id": "P2-AC4",
+          "text": "Backup and restore are strict fail-fast with explicit errors and no silent downgrade.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#p2---manual-backuprestore-jobs--auto-backup-trigger--retention--fail-fast-2026-04-12",
+            "test-report.md#final-verdict"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#p2---manual-backuprestore-jobs--auto-backup-trigger--retention--fail-fast-2026-04-12"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-12T15:00:39"
+    },
+    {
+      "phase_id": "P3",
+      "title": "Frontend UI Entry + Interactions + Job Tracking",
+      "status": "completed",
+      "objective": "",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "UI provides a discoverable entry point to edit backup config and uses job tracking to show progress and errors; on success, the UI refresh shows persisted values.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#p3---frontend-ui-entry--interactions--job-tracking-2026-04-12",
+            "test-report.md#final-verdict"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "UI lists backups with per-backup created_at timestamps and supports manual backup and restore interactions with job tracking.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#p3---frontend-ui-entry--interactions--job-tracking-2026-04-12",
+            "test-report.md#final-verdict"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#p3---frontend-ui-entry--interactions--job-tracking-2026-04-12"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-12T16:32:58"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 1,
+    "executor_loops": 3,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-12T13:15:49",
+  "updated_at": "2026-04-12T16:34:39",
+  "branch": "master",
+  "baseline_revision": "c01f7a27ae8d0ef5893c392e203c67ccc97080e6",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-23da952bd2-20260412T131549",
+  "goal": "增加数据备份、恢复功能，可设置备份频率、最大备份个数，并展示每条备份时间",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-23da952bd2-20260412T131549\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-23da952bd2-20260412T131549\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-23da952bd2-20260412T131549\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-23da952bd2-20260412T131549\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-23da952bd2-20260412T131549\\test-report.md"
+  }
+}

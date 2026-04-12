@@ -15,6 +15,7 @@ from ..gateway.masterdata import UpstreamMasterdataGateway
 from ..gateway.orders import ERPOrderGateway
 from ..gateway.supply import ERPSupplyGateway
 from ..json_utils import dumps, loads
+from ..repositories.backups import BackupRepository
 from .final_process_metrics import build_order_final_process_metrics
 from .job_dispatcher import ServiceFactory
 from .line_daily_capacity_service import LineDailyCapacityService
@@ -209,6 +210,49 @@ def _normalize_priority_level(value: object, default: int = PRIORITY_LEVEL_MAX) 
     except (TypeError, ValueError):
         return default
     return max(PRIORITY_LEVEL_MIN, min(PRIORITY_LEVEL_MAX, level))
+
+
+def _parse_enabled_flag(value: object) -> int:
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, int):
+        if value in (0, 1):
+            return value
+        raise ValueError("enabled_flag must be 0 or 1.")
+    text = str(value).strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return 1
+    if text in {"0", "false", "no", "off"}:
+        return 0
+    raise ValueError("enabled_flag must be 0/1 or a boolean-like value.")
+
+
+def _parse_int_in_range(
+    value: object,
+    *,
+    field_name: str,
+    min_value: int,
+    max_value: int,
+) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"{field_name} must be an integer.")
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, float):
+        if not value.is_integer():
+            raise ValueError(f"{field_name} must be an integer.")
+        parsed = int(value)
+    else:
+        text = str(value or "").strip()
+        if not text or any(ch not in "0123456789" for ch in text):
+            raise ValueError(f"{field_name} must be an integer.")
+        parsed = int(text)
+
+    if parsed < min_value or parsed > max_value:
+        raise ValueError(
+            f"{field_name} must be between {min_value} and {max_value} (inclusive)."
+        )
+    return parsed
 
 
 def _urgent_flag_from_priority_level(priority_level: object) -> int:
@@ -2617,6 +2661,9 @@ class AppService:
             {"process_code": code, "process_name_cn": name}
             for code, name in sorted(process_seen.items())
         ]
+        backup_repository = BackupRepository(self.connection)
+        backup_config = backup_repository.get_backup_config()
+        backup_records = backup_repository.list_backup_records()
         return {
             "data": {
                 "horizon_start_date": rules["horizon_start_date"],
@@ -2631,6 +2678,8 @@ class AppService:
                 "workshop_manager_line_scopes": workshop_manager_line_scopes,
                 "resource_pool": [],
                 "material_availability": [],
+                "backup_config": backup_config,
+                "backup_records": backup_records,
             }
         }
 
@@ -2668,6 +2717,48 @@ class AppService:
             if str(row.get("user_id") or "").strip()
         }
         updated_at = utc_now()
+        backup_config_payload = payload.get("backup_config")
+        backup_config_update: tuple[int, int, int] | None = None
+        if backup_config_payload is not None:
+            if not isinstance(backup_config_payload, dict):
+                raise bad_request(
+                    code="BACKUP_CONFIG_INVALID",
+                    message="backup_config must be an object.",
+                )
+            try:
+                enabled_flag = _parse_enabled_flag(
+                    backup_config_payload.get("enabled_flag")
+                )
+            except ValueError as exc:
+                raise bad_request(
+                    code="BACKUP_CONFIG_ENABLED_FLAG_INVALID",
+                    message=str(exc),
+                )
+            try:
+                frequency_minutes = _parse_int_in_range(
+                    backup_config_payload.get("frequency_minutes"),
+                    field_name="frequency_minutes",
+                    min_value=1,
+                    max_value=525600,
+                )
+            except ValueError as exc:
+                raise bad_request(
+                    code="BACKUP_CONFIG_FREQUENCY_INVALID",
+                    message=str(exc),
+                )
+            try:
+                max_backups = _parse_int_in_range(
+                    backup_config_payload.get("max_backups"),
+                    field_name="max_backups",
+                    min_value=1,
+                    max_value=1000,
+                )
+            except ValueError as exc:
+                raise bad_request(
+                    code="BACKUP_CONFIG_MAX_BACKUPS_INVALID",
+                    message=str(exc),
+                )
+            backup_config_update = (enabled_flag, frequency_minutes, max_backups)
         payload_workshop_manager_user_ids: set[str] = set()
         workshop_manager_visibility_rows: list[tuple[Any, ...]] = []
         for item in workshop_manager_users_payload:
@@ -2912,6 +3003,14 @@ class AppService:
                     ) VALUES (?, ?, ?)
                     """,
                     workshop_manager_visibility_rows,
+                )
+            if backup_config_update is not None:
+                enabled_flag, frequency_minutes, max_backups = backup_config_update
+                BackupRepository(self.connection).upsert_backup_config(
+                    enabled_flag=enabled_flag,
+                    frequency_minutes=frequency_minutes,
+                    max_backups=max_backups,
+                    updated_at=updated_at,
                 )
         return self.get_masterdata_config()
 

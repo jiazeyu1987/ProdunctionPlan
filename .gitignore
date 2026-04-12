@@ -1,1 +1,5 @@
 /fronted/
+/backend/data/backups/*
+!/backend/data/backups/.gitkeep
+/backend/data/e2e/backups/*
+!/backend/data/e2e/backups/.gitkeep

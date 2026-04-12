@@ -476,3 +476,40 @@ CREATE TABLE IF NOT EXISTS simulation_restore_snapshot_work_reports (
 
 CREATE INDEX IF NOT EXISTS idx_sim_snapshot_work_reports_time
     ON simulation_restore_snapshot_work_reports (report_time DESC);
+
+-- Backup config / records (P1)
+CREATE TABLE IF NOT EXISTS app_backup_config (
+    singleton_key TEXT PRIMARY KEY,
+    enabled_flag INTEGER NOT NULL DEFAULT 0 CHECK (enabled_flag IN (0, 1)),
+    frequency_minutes INTEGER NOT NULL DEFAULT 1440 CHECK (frequency_minutes BETWEEN 1 AND 525600),
+    max_backups INTEGER NOT NULL DEFAULT 30 CHECK (max_backups BETWEEN 1 AND 1000),
+    updated_at TEXT NOT NULL
+);
+
+INSERT OR IGNORE INTO app_backup_config (
+    singleton_key,
+    enabled_flag,
+    frequency_minutes,
+    max_backups,
+    updated_at
+) VALUES (
+    'default',
+    0,
+    1440,
+    30,
+    datetime('now')
+);
+
+CREATE TABLE IF NOT EXISTS app_backup_records (
+    backup_id TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL,
+    trigger TEXT NOT NULL,
+    backup_path TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL DEFAULT 0 CHECK (size_bytes >= 0),
+    created_by_user_id TEXT,
+    created_by_username TEXT NOT NULL,
+    FOREIGN KEY (created_by_user_id) REFERENCES app_users(user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_app_backup_records_created_at
+    ON app_backup_records (created_at DESC, backup_id DESC);

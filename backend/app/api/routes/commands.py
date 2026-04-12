@@ -136,6 +136,45 @@ def save_masterdata_config(
     )
 
 
+@router.post("/masterdata/backups/create", status_code=202)
+def create_masterdata_backup(
+    payload: dict[str, Any] = Body(default_factory=dict),
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    current_user: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    return enqueue_command_job(
+        connection,
+        job_type="DB_BACKUP_CREATE",
+        target_type="MASTERDATA_BACKUP",
+        target_key="MANUAL",
+        request_id=str(payload.get("request_id") or "").strip() or None,
+        payload={**payload, "actor": build_actor_payload(current_user)},
+    )
+
+
+@router.post("/masterdata/backups/{backup_id}/restore", status_code=202)
+def restore_masterdata_backup(
+    backup_id: str,
+    payload: dict[str, Any] = Body(default_factory=dict),
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    current_user: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    return enqueue_command_job(
+        connection,
+        job_type="DB_BACKUP_RESTORE",
+        target_type="MASTERDATA_BACKUP",
+        target_key=backup_id,
+        request_id=str(payload.get("request_id") or "").strip() or None,
+        payload={
+            **payload,
+            "backup_id": backup_id,
+            "actor": build_actor_payload(current_user),
+        },
+    )
+
+
 @router.post("/masterdata/calendar-rules", status_code=202)
 def save_schedule_calendar_rules(
     payload: dict[str, Any] = Body(default_factory=dict),

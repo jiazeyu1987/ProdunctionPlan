@@ -12,6 +12,7 @@ from ..repositories.materials import BomChildrenRepository, MaterialIssueReposit
 from ..repositories.orders import ProductionOrderRepository
 from ..repositories.reports import WorkReportRepository
 from ..repositories.supply import MaterialSupplyRepository
+from .backup_service import BACKUP_TRIGGER_AUTO, BACKUP_TRIGGER_MANUAL, BackupService, restore_backup_job
 from .capacity_query_service import CapacityQueryService
 from .inventory_refresh_service import InventoryRefreshService
 from .material_query_service import MaterialQueryService
@@ -78,15 +79,37 @@ class ServiceFactory:
             inventory_gateway=self.inventory_gateway,
         )
 
+    def build_backup_service(self) -> BackupService:
+        return BackupService(self.connection)
+
 
 class JobDispatcher:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.factory = ServiceFactory(connection)
 
+    @staticmethod
+    def dispatch_without_connection(job: dict[str, Any]) -> dict[str, Any]:
+        job_type = str(job["job_type"])
+        if job_type == "DB_BACKUP_RESTORE":
+            return restore_backup_job(job)
+        raise ValueError(f"Unsupported connectionless job type: {job_type}")
+
     def dispatch(self, job: dict[str, Any]) -> dict[str, Any]:
         payload = job.get("payload") or {}
         job_type = str(job["job_type"])
 
+        if job_type == "DB_BACKUP_CREATE":
+            return self.factory.build_backup_service().create_backup(
+                trigger=BACKUP_TRIGGER_MANUAL,
+                actor=payload.get("actor"),
+            )
+        if job_type == "DB_BACKUP_CREATE_AUTO":
+            return self.factory.build_backup_service().create_backup(
+                trigger=BACKUP_TRIGGER_AUTO,
+                actor=payload.get("actor"),
+            )
+        if job_type == "DB_BACKUP_RESTORE":
+            return self.dispatch_without_connection(job)
         if job_type == "ORDER_MATERIALS_REFRESH":
             return self.factory.build_material_refresh_service().refresh_order_materials(
                 str(payload["order_no"])
