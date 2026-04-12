@@ -1,0 +1,171 @@
+{
+  "schema_version": 2,
+  "task_id": "dashboard-20260411T134822",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "Backend Scheduler Dashboard Query API",
+      "status": "completed",
+      "objective": "Implement a single backend query endpoint that returns all dashboard metrics and chart data for a date range.",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "backend query response samples, validation command output, and code references for calculation rules.",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "API validates `start_date` and `end_date` (`YYYY-MM-DD`) and rejects invalid range with explicit error.",
+          "status": "completed",
+          "evidence": [
+            "doc/tasks/dashboard-20260411T134822/execution-log.md",
+            "fronted/test-results/e2e/evidence-manifest.json"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "API response includes these top-level groups: `range`, `summary`, `daily_capacity`, `material_consumption`.",
+          "status": "completed",
+          "evidence": [
+            "doc/tasks/dashboard-20260411T134822/execution-log.md",
+            "fronted/test-results/e2e/evidence-manifest.json"
+          ]
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "`summary` includes order completion rate, equipment failure rate, and total capacity values sourced from real tables only.",
+          "status": "completed",
+          "evidence": [
+            "doc/tasks/dashboard-20260411T134822/execution-log.md",
+            "fronted/test-results/e2e/evidence-manifest.json"
+          ]
+        },
+        {
+          "ac_id": "P1-AC4",
+          "text": "Equipment failure rate uses explicit rule `machine_count < required_machines` on daily capacity rows within selected range.",
+          "status": "completed",
+          "evidence": [
+            "doc/tasks/dashboard-20260411T134822/execution-log.md",
+            "fronted/test-results/e2e/evidence-manifest.json"
+          ]
+        }
+      ],
+      "evidence": [
+        "doc/tasks/dashboard-20260411T134822/execution-log.md"
+      ],
+      "notes": "- Backend scheduler dashboard API implemented and validated.",
+      "last_reviewed_at": "2026-04-11T14:42:58"
+    },
+    {
+      "phase_id": "P2",
+      "title": "Frontend Dashboard Page and Charts",
+      "status": "completed",
+      "objective": "Add a scheduler dashboard UI with default one-month filter, metric cards, and chart sections.",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "UI screenshots and real-browser traces showing dashboard rendering and filter updates.",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "Scheduler can access dashboard route from sidebar; non-scheduler roles cannot access it.",
+          "status": "completed",
+          "evidence": [
+            "doc/tasks/dashboard-20260411T134822/execution-log.md",
+            "fronted/test-results/e2e/evidence-manifest.json"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "Dashboard defaults to one-month range and allows custom start/end date query.",
+          "status": "completed",
+          "evidence": [
+            "doc/tasks/dashboard-20260411T134822/execution-log.md",
+            "fronted/test-results/e2e/evidence-manifest.json"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "Dashboard renders required KPI cards and chart blocks:",
+          "status": "completed",
+          "evidence": [
+            "doc/tasks/dashboard-20260411T134822/execution-log.md",
+            "fronted/test-results/e2e/evidence-manifest.json"
+          ]
+        },
+        {
+          "ac_id": "P2-AC4",
+          "text": "Charts use bar/pie format and render non-empty labels/values when data exists.",
+          "status": "completed",
+          "evidence": [
+            "doc/tasks/dashboard-20260411T134822/execution-log.md",
+            "fronted/test-results/e2e/evidence-manifest.json"
+          ]
+        }
+      ],
+      "evidence": [
+        "doc/tasks/dashboard-20260411T134822/execution-log.md"
+      ],
+      "notes": "- Scheduler dashboard UI, charts, routing, and styling implemented.",
+      "last_reviewed_at": "2026-04-11T14:43:11"
+    },
+    {
+      "phase_id": "P3",
+      "title": "Dashboard Validation and Regression",
+      "status": "completed",
+      "objective": "Validate the dashboard using real browser E2E and targeted regression checks.",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "Playwright run output and generated evidence artifacts in `fronted/test-results/`.",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "Playwright includes at least one scheduler dashboard case that verifies route access and required KPI/chart presence.",
+          "status": "completed",
+          "evidence": [
+            "fronted/test-results/e2e/evidence-manifest.json"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "Regression checks for existing scheduler flow still pass after dashboard integration.",
+          "status": "completed",
+          "evidence": [
+            "fronted/test-results/e2e/evidence-manifest.json"
+          ]
+        }
+      ],
+      "evidence": [
+        "fronted/test-results/e2e/evidence-manifest.json"
+      ],
+      "notes": "- Dashboard E2E and regression validation passed in real browser.",
+      "last_reviewed_at": "2026-04-11T14:43:23"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 0,
+    "test_loops": 0
+  },
+  "created_at": "2026-04-11T13:48:22",
+  "updated_at": "2026-04-11T14:46:42",
+  "branch": "master",
+  "baseline_revision": "37a5405d1fedcd8441e678bafdba8a2403ec73a5",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-20260411T134822",
+  "goal": "给排产员做一个dashboard,可以看到一段时间内,默认可以选择一个月的订单完成率,设备损坏率(通过每天预估时候的设备比默认设备少来获取),总产能,每日产能变化,物料消耗排名,用图表的形式展示,柱状图或者饼状图",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-20260411T134822\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-20260411T134822\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-20260411T134822\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-20260411T134822\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-20260411T134822\\test-report.md"
+  }
+}

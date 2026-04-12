@@ -880,6 +880,284 @@ class AppService:
             "process_items": process_items,
         }
 
+    def get_scheduler_dashboard(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        top_n: int = 8,
+        current_user: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        normalized_start_date = _normalize_date_text(start_date)
+        if normalized_start_date is None:
+            raise bad_request(
+                code="DASHBOARD_START_DATE_REQUIRED",
+                message="start_date must be a valid YYYY-MM-DD date.",
+            )
+        normalized_end_date = _normalize_date_text(end_date)
+        if normalized_end_date is None:
+            raise bad_request(
+                code="DASHBOARD_END_DATE_REQUIRED",
+                message="end_date must be a valid YYYY-MM-DD date.",
+            )
+        if normalized_end_date < normalized_start_date:
+            raise bad_request(
+                code="DASHBOARD_DATE_RANGE_INVALID",
+                message="end_date must be greater than or equal to start_date.",
+                details={
+                    "start_date": normalized_start_date,
+                    "end_date": normalized_end_date,
+                },
+            )
+
+        normalized_top_n = int(_to_number(top_n, 0))
+        if normalized_top_n < 1 or normalized_top_n > 50:
+            raise bad_request(
+                code="DASHBOARD_TOP_N_INVALID",
+                message="top_n must be between 1 and 50.",
+            )
+
+        topology_count_row = fetch_one(
+            self.connection,
+            """
+            SELECT COUNT(1) AS total
+            FROM masterdata_line_topology
+            """,
+        )
+        topology_count = int(_to_number((topology_count_row or {}).get("total"), 0))
+        if topology_count <= 0:
+            raise server_error(
+                code="DASHBOARD_TOPOLOGY_EMPTY",
+                message="masterdata_line_topology contains no rows.",
+            )
+
+        order_summary = self.get_order_summary(
+            start_date=normalized_start_date,
+            end_date=normalized_end_date,
+            current_user=current_user,
+        )
+        order_items = (
+            order_summary.get("order_items")
+            if isinstance(order_summary.get("order_items"), list)
+            else []
+        )
+        if len(order_items) == 0:
+            raise bad_request(
+                code="DASHBOARD_ORDER_DATA_EMPTY",
+                message="No order summary rows exist for the requested date range.",
+                details={
+                    "start_date": normalized_start_date,
+                    "end_date": normalized_end_date,
+                },
+            )
+
+        start_date_value = date.fromisoformat(normalized_start_date)
+        end_date_value = date.fromisoformat(normalized_end_date)
+        current_date_value = start_date_value
+        previous_planned_capacity_qty: float | None = None
+        daily_capacity_items: list[dict[str, Any]] = []
+        total_default_capacity_qty = 0.0
+        total_planned_capacity_qty = 0.0
+        total_actual_capacity_qty = 0.0
+        failure_row_count = 0
+        evaluated_row_count = 0
+
+        while current_date_value <= end_date_value:
+            calendar_date = current_date_value.isoformat()
+            capacity_payload = self.list_line_daily_capacity(calendar_date)
+            capacity_rows = (
+                capacity_payload.get("items")
+                if isinstance(capacity_payload.get("items"), list)
+                else []
+            )
+            if len(capacity_rows) == 0:
+                raise bad_request(
+                    code="DASHBOARD_CAPACITY_DATA_EMPTY",
+                    message="No daily capacity rows exist for the requested date.",
+                    details={"calendar_date": calendar_date},
+                )
+
+            day_default_capacity_qty = 0.0
+            day_planned_capacity_qty = 0.0
+            day_actual_capacity_qty = 0.0
+            day_failure_row_count = 0
+            for row in capacity_rows:
+                default_capacity_qty = _to_number(row.get("default_capacity_qty"), 0)
+                planned_capacity_qty = _to_number(row.get("planned_capacity_qty"), 0)
+                actual_capacity_qty = _to_number(row.get("actual_capacity_qty"), 0)
+                machine_count = int(_to_number(row.get("machine_count"), 0))
+                required_machines = int(_to_number(row.get("required_machines"), 0))
+                day_default_capacity_qty += default_capacity_qty
+                day_planned_capacity_qty += planned_capacity_qty
+                day_actual_capacity_qty += actual_capacity_qty
+                if required_machines > 0:
+                    evaluated_row_count += 1
+                    if machine_count < required_machines:
+                        day_failure_row_count += 1
+                        failure_row_count += 1
+
+            planned_capacity_change_qty = (
+                0
+                if previous_planned_capacity_qty is None
+                else round(day_planned_capacity_qty - previous_planned_capacity_qty, 4)
+            )
+            previous_planned_capacity_qty = day_planned_capacity_qty
+
+            day_failure_rate = (
+                round(day_failure_row_count / len(capacity_rows) * 100, 2)
+                if len(capacity_rows) > 0
+                else 0
+            )
+            daily_capacity_items.append(
+                {
+                    "calendar_date": calendar_date,
+                    "default_capacity_qty": round(day_default_capacity_qty, 4),
+                    "planned_capacity_qty": round(day_planned_capacity_qty, 4),
+                    "actual_capacity_qty": round(day_actual_capacity_qty, 4),
+                    "planned_capacity_change_qty": planned_capacity_change_qty,
+                    "failure_row_count": day_failure_row_count,
+                    "row_count": len(capacity_rows),
+                    "failure_rate": day_failure_rate,
+                }
+            )
+            total_default_capacity_qty += day_default_capacity_qty
+            total_planned_capacity_qty += day_planned_capacity_qty
+            total_actual_capacity_qty += day_actual_capacity_qty
+            current_date_value = current_date_value + timedelta(days=1)
+
+        if evaluated_row_count <= 0:
+            raise server_error(
+                code="DASHBOARD_MACHINE_REQUIREMENT_EMPTY",
+                message="No machine-driven capacity rows exist in the requested range.",
+            )
+
+        equipment_failure_rate = round(failure_row_count / evaluated_row_count * 100, 2)
+        summary_row = (
+            order_summary.get("summary")
+            if isinstance(order_summary.get("summary"), dict)
+            else {}
+        )
+        order_count = int(_to_number(summary_row.get("order_count"), 0))
+        completed_order_count = int(_to_number(summary_row.get("completed_order_count"), 0))
+        order_completion_rate = _to_number(summary_row.get("completion_rate"), 0)
+
+        order_no_set: set[str] = set()
+        for item in order_items:
+            order_no = str(item.get("order_no") or "").strip()
+            if not order_no:
+                continue
+            order_no_set.add(order_no)
+
+        material_rows: list[dict[str, Any]] = []
+        if order_no_set:
+            placeholders = ",".join("?" for _ in order_no_set)
+            material_rows = fetch_all(
+                self.connection,
+                f"""
+                SELECT
+                    production_order_no,
+                    child_material_code,
+                    child_material_name,
+                    child_unit,
+                    issue_qty
+                FROM material_issue_items
+                WHERE production_order_no IN ({placeholders})
+                """,
+                tuple(sorted(order_no_set)),
+            )
+
+        if len(material_rows) == 0:
+            raise bad_request(
+                code="DASHBOARD_MATERIAL_DATA_EMPTY",
+                message="No material_issue_items rows exist for the requested orders.",
+                details={
+                    "order_count": len(order_no_set),
+                },
+            )
+
+        material_aggregate_map: dict[str, dict[str, Any]] = {}
+        for row in material_rows:
+            order_no = str(row.get("production_order_no") or "").strip()
+            material_code = str(row.get("child_material_code") or "").strip().upper()
+            if not order_no or not material_code:
+                continue
+            if order_no not in order_no_set:
+                continue
+            issue_qty = _to_number(row.get("issue_qty"), 0)
+            estimated_issue_qty = issue_qty
+            if estimated_issue_qty <= SCHEDULE_NUMBER_EPSILON:
+                continue
+            aggregate_row = material_aggregate_map.get(material_code)
+            if aggregate_row is None:
+                aggregate_row = {
+                    "material_code": material_code,
+                    "material_name_cn": str(row.get("child_material_name") or material_code).strip()
+                    or material_code,
+                    "unit": str(row.get("child_unit") or "").strip(),
+                    "estimated_issue_qty": 0.0,
+                    "order_no_set": set(),
+                }
+                material_aggregate_map[material_code] = aggregate_row
+            aggregate_row["estimated_issue_qty"] = (
+                _to_number(aggregate_row.get("estimated_issue_qty"), 0) + estimated_issue_qty
+            )
+            cast_order_set = aggregate_row.get("order_no_set")
+            if isinstance(cast_order_set, set):
+                cast_order_set.add(order_no)
+
+        ranked_material_items = sorted(
+            material_aggregate_map.values(),
+            key=lambda item: (
+                -_to_number(item.get("estimated_issue_qty"), 0),
+                str(item.get("material_code") or ""),
+            ),
+        )
+        if len(ranked_material_items) == 0:
+            raise bad_request(
+                code="DASHBOARD_MATERIAL_CONSUMPTION_EMPTY",
+                message="Material consumption ranking is empty in the requested range.",
+            )
+        material_ranking = ranked_material_items[:normalized_top_n]
+        material_consumption_items = [
+            {
+                "rank": index + 1,
+                "material_code": str(item.get("material_code") or ""),
+                "material_name_cn": str(item.get("material_name_cn") or ""),
+                "unit": str(item.get("unit") or ""),
+                "estimated_issue_qty": round(_to_number(item.get("estimated_issue_qty"), 0), 4),
+                "order_count": len(item.get("order_no_set") or set()),
+            }
+            for index, item in enumerate(material_ranking)
+        ]
+
+        total_days = (end_date_value - start_date_value).days + 1
+        return {
+            "range": {
+                "start_date": normalized_start_date,
+                "end_date": normalized_end_date,
+                "total_days": total_days,
+            },
+            "summary": {
+                "order_count": order_count,
+                "completed_order_count": completed_order_count,
+                "order_completion_rate": round(order_completion_rate, 2),
+                "evaluated_machine_row_count": evaluated_row_count,
+                "failure_row_count": failure_row_count,
+                "equipment_failure_rate": equipment_failure_rate,
+                "total_capacity_qty": round(total_planned_capacity_qty, 4),
+                "total_default_capacity_qty": round(total_default_capacity_qty, 4),
+                "total_planned_capacity_qty": round(total_planned_capacity_qty, 4),
+                "total_actual_capacity_qty": round(total_actual_capacity_qty, 4),
+            },
+            "daily_capacity": {
+                "items": daily_capacity_items,
+            },
+            "material_consumption": {
+                "top_n": normalized_top_n,
+                "items": material_consumption_items,
+            },
+        }
+
     def list_order_summary_workshop_managers(
         self,
         *,
@@ -985,7 +1263,54 @@ class AppService:
             self._require_order(order_no)
         process_name_by_code = self._process_name_by_code()
         report_id = f"RPT-{uuid4().hex[:10].upper()}"
-        report_time = utc_now()
+        report_time_text = str(payload.get("report_time") or "").strip()
+        calendar_date_input = payload.get("calendar_date")
+        calendar_date_text = str(calendar_date_input or "").strip()
+        normalized_calendar_date = _normalize_date_text(calendar_date_input)
+        if calendar_date_text and normalized_calendar_date is None:
+            raise bad_request(
+                code="CALENDAR_DATE_INVALID",
+                message="calendar_date must be a valid YYYY-MM-DD date.",
+            )
+        local_timezone = timezone(timedelta(hours=8))
+        if report_time_text:
+            try:
+                report_time_dt = datetime.fromisoformat(report_time_text)
+            except ValueError as exc:
+                raise bad_request(
+                    code="REPORT_TIME_INVALID",
+                    message="report_time must be a valid ISO datetime.",
+                ) from exc
+            if report_time_dt.tzinfo is None or report_time_dt.utcoffset() is None:
+                raise bad_request(
+                    code="REPORT_TIME_TIMEZONE_REQUIRED",
+                    message="report_time must include timezone offset.",
+                )
+            report_time = report_time_dt.astimezone(timezone.utc).replace(microsecond=0).isoformat()
+            reporting_local_date = report_time_dt.astimezone(local_timezone).date().isoformat()
+        elif normalized_calendar_date:
+            reporting_local_date = normalized_calendar_date
+            report_time = (
+                datetime.fromisoformat(f"{normalized_calendar_date}T10:00:00+08:00")
+                .astimezone(timezone.utc)
+                .replace(microsecond=0)
+                .isoformat()
+            )
+        else:
+            simulation_state = self._get_simulation_state()
+            reporting_local_date = _normalize_date_text(simulation_state.get("current_date"))
+            if reporting_local_date is None:
+                raise server_error(
+                    code="SIMULATION_CURRENT_DATE_INVALID",
+                    message="Current simulation date is invalid.",
+                    details={"current_date": simulation_state.get("current_date")},
+                )
+            report_time = (
+                datetime.fromisoformat(f"{reporting_local_date}T10:00:00+08:00")
+                .astimezone(timezone.utc)
+                .replace(microsecond=0)
+                .isoformat()
+            )
         operator_name = (
             str(
                 payload.get("operator_name_cn")
@@ -1049,13 +1374,7 @@ class AppService:
                 ),
             )
         if workshop_code and line_code:
-            local_date = (
-                datetime.fromisoformat(report_time)
-                .astimezone(timezone(timedelta(hours=8)))
-                .date()
-                .isoformat()
-            )
-            self.rebuild_line_daily_actual_capacity({"calendar_date": local_date})
+            self.rebuild_line_daily_actual_capacity({"calendar_date": reporting_local_date})
         return {
             "report_id": report_id,
             "order_no": order_no,

@@ -247,3 +247,23 @@ def list_order_summary_workshop_managers(
 ) -> dict[str, Any]:
     assert service is not None
     return service.list_order_summary_workshop_managers(current_user=current_user)
+
+
+@router.get("/dashboard/scheduler")
+def get_scheduler_dashboard(
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    top_n: int = Query(default=8),
+    service: Annotated[AppService, Depends(get_app_service)] = None,
+    current_user: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER)),
+    ] = None,
+) -> dict[str, Any]:
+    assert service is not None
+    return service.get_scheduler_dashboard(
+        start_date=start_date,
+        end_date=end_date,
+        top_n=top_n,
+        current_user=current_user,
+    )

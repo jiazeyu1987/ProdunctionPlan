@@ -687,18 +687,35 @@ def seed_runtime_state(connection: sqlite3.Connection) -> None:
     with transaction(connection):
         connection.execute(
             """
-            UPDATE simulation_state
-            SET current_date = ?, updated_at = ?
-            WHERE singleton_key = 'default'
+            INSERT INTO simulation_state (
+                singleton_key,
+                current_date,
+                updated_at
+            ) VALUES ('default', ?, ?)
+            ON CONFLICT(singleton_key) DO UPDATE SET
+                current_date = excluded.current_date,
+                updated_at = excluded.updated_at
             """,
             (BASE_DATE, UPDATED_AT),
         )
         connection.execute(
             """
-            UPDATE schedule_calendar_rules
-            SET horizon_start_date = ?, horizon_days = 31, skip_statutory_holidays = 0,
-                weekend_rest_mode = 'DOUBLE', date_shift_mode_by_date_json = '{}', updated_at = ?
-            WHERE singleton_key = 'default'
+            INSERT INTO schedule_calendar_rules (
+                singleton_key,
+                horizon_start_date,
+                horizon_days,
+                skip_statutory_holidays,
+                weekend_rest_mode,
+                date_shift_mode_by_date_json,
+                updated_at
+            ) VALUES ('default', ?, 31, 0, 'DOUBLE', '{}', ?)
+            ON CONFLICT(singleton_key) DO UPDATE SET
+                horizon_start_date = excluded.horizon_start_date,
+                horizon_days = excluded.horizon_days,
+                skip_statutory_holidays = excluded.skip_statutory_holidays,
+                weekend_rest_mode = excluded.weekend_rest_mode,
+                date_shift_mode_by_date_json = excluded.date_shift_mode_by_date_json,
+                updated_at = excluded.updated_at
             """,
             (BASE_DATE, UPDATED_AT),
         )
