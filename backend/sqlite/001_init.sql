@@ -91,19 +91,78 @@ CREATE TABLE IF NOT EXISTS work_reports (
     production_order_no TEXT,
     process_code TEXT,
     process_name TEXT,
+    company_code TEXT,
     workshop_code TEXT,
     workshop_name TEXT,
     line_code TEXT,
     line_name TEXT,
     report_qty REAL NOT NULL,
     report_time TEXT NOT NULL,
+    operator_code TEXT,
     operator_name TEXT,
+    section_leader_name TEXT,
+    dispatch_no TEXT,
+    product_code TEXT,
+    product_name TEXT,
+    product_specification TEXT,
+    resource_group_name TEXT,
+    resource_name TEXT,
+    department_name TEXT,
+    source_process_code TEXT,
+    source_process_name TEXT,
+    mold_code TEXT,
+    support_count REAL,
+    weight_kg REAL,
+    cavity_count REAL,
+    total_cycle_time REAL,
+    production_quota REAL,
+    work_duration REAL,
+    clamp_or_assembly_weight REAL,
+    unit_weight REAL,
+    source_sheet_name TEXT,
+    source_row_no INTEGER,
+    source_file_name TEXT,
+    daily_capacity_compare_audit_id TEXT,
+    daily_capacity_compare_qty REAL,
+    daily_capacity_compare_selected_at TEXT,
     updated_at TEXT NOT NULL,
     FOREIGN KEY (production_order_no) REFERENCES production_orders (production_order_no) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_work_reports_order_no
     ON work_reports (production_order_no, report_time DESC);
+
+CREATE INDEX IF NOT EXISTS idx_work_reports_line_scope
+    ON work_reports (company_code, workshop_code, line_code, process_code, report_time DESC);
+
+CREATE INDEX IF NOT EXISTS idx_work_reports_source_sheet
+    ON work_reports (source_file_name, source_sheet_name, source_row_no);
+
+CREATE TABLE IF NOT EXISTS masterdata_reporting_resource_mappings (
+    mapping_id TEXT PRIMARY KEY,
+    company_code TEXT NOT NULL,
+    source_resource_group_name TEXT NOT NULL,
+    source_resource_name TEXT NOT NULL,
+    source_process_code TEXT NOT NULL,
+    source_process_name TEXT,
+    source_department_name TEXT,
+    workshop_code TEXT NOT NULL,
+    workshop_name TEXT,
+    line_code TEXT NOT NULL,
+    line_name TEXT,
+    process_code TEXT NOT NULL,
+    enabled_flag INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reporting_resource_mappings_source
+    ON masterdata_reporting_resource_mappings (
+        company_code,
+        source_resource_group_name,
+        source_resource_name,
+        source_process_code,
+        enabled_flag
+    );
 
 CREATE TABLE IF NOT EXISTS capacity_bindings (
     production_order_no TEXT NOT NULL,
@@ -464,13 +523,40 @@ CREATE TABLE IF NOT EXISTS simulation_restore_snapshot_work_reports (
     production_order_no TEXT,
     process_code TEXT,
     process_name TEXT,
+    company_code TEXT,
     workshop_code TEXT,
     workshop_name TEXT,
     line_code TEXT,
     line_name TEXT,
     report_qty REAL NOT NULL,
     report_time TEXT NOT NULL,
+    operator_code TEXT,
     operator_name TEXT,
+    section_leader_name TEXT,
+    dispatch_no TEXT,
+    product_code TEXT,
+    product_name TEXT,
+    product_specification TEXT,
+    resource_group_name TEXT,
+    resource_name TEXT,
+    department_name TEXT,
+    source_process_code TEXT,
+    source_process_name TEXT,
+    mold_code TEXT,
+    support_count REAL,
+    weight_kg REAL,
+    cavity_count REAL,
+    total_cycle_time REAL,
+    production_quota REAL,
+    work_duration REAL,
+    clamp_or_assembly_weight REAL,
+    unit_weight REAL,
+    source_sheet_name TEXT,
+    source_row_no INTEGER,
+    source_file_name TEXT,
+    daily_capacity_compare_audit_id TEXT,
+    daily_capacity_compare_qty REAL,
+    daily_capacity_compare_selected_at TEXT,
     updated_at TEXT NOT NULL
 );
 

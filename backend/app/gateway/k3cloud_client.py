@@ -25,6 +25,46 @@ def service_urls(base_url: str, service_name: str) -> list[str]:
     ]
 
 
+def _extract_k3cloud_result(payload: object) -> dict[str, Any] | None:
+    if not isinstance(payload, dict):
+        return None
+    direct = payload.get("Result")
+    if isinstance(direct, dict):
+        return direct
+    if len(payload) == 1:
+        wrapped = next(iter(payload.values()))
+        if isinstance(wrapped, dict):
+            wrapped_result = wrapped.get("Result")
+            if isinstance(wrapped_result, dict):
+                return wrapped_result
+    for value in payload.values():
+        if not isinstance(value, dict):
+            continue
+        nested = value.get("Result")
+        if isinstance(nested, dict) and isinstance(nested.get("ResponseStatus"), dict):
+            return nested
+    return None
+
+
+def _extract_k3cloud_error_messages(result: object) -> list[str]:
+    if not isinstance(result, dict):
+        return []
+    status = result.get("ResponseStatus")
+    if not isinstance(status, dict):
+        return []
+    errors = status.get("Errors") or []
+    if not isinstance(errors, list):
+        return []
+    messages: list[str] = []
+    for item in errors:
+        if not isinstance(item, dict):
+            continue
+        message = item.get("Message")
+        if message:
+            messages.append(str(message))
+    return messages
+
+
 class K3CloudClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -128,15 +168,32 @@ class K3CloudClient:
             parsed = parse_json(response.text)
             if isinstance(parsed, list):
                 if parsed and isinstance(parsed[0], list):
+                    if parsed[0] and isinstance(parsed[0][0], dict):
+                        result = _extract_k3cloud_result(parsed[0][0])
+                        if result is not None:
+                            messages = _extract_k3cloud_error_messages(result)
+                            message = "K3Cloud ExecuteBillQuery 返回错误。"
+                            if messages:
+                                message = f"K3Cloud ExecuteBillQuery 返回错误：{'；'.join(messages)}"
+                            raise server_error(
+                                code="K3CLOUD_EXECUTE_BILL_QUERY_FAILED",
+                                message=message,
+                                details={"result": result, "query": query_obj},
+                            )
                     field_names = [field.strip() for field in field_keys.split(",") if field.strip()]
                     return [dict(zip(field_names, row)) for row in parsed]
-                if parsed and isinstance(parsed[0], dict) and parsed[0].get("Result"):
-                    result = parsed[0]["Result"]
-                    raise server_error(
-                        code="K3CLOUD_EXECUTE_BILL_QUERY_FAILED",
-                        message="K3Cloud ExecuteBillQuery returned an error payload.",
-                        details={"result": result, "query": query_obj},
-                    )
+                if parsed and isinstance(parsed[0], dict):
+                    result = _extract_k3cloud_result(parsed[0])
+                    if result is not None:
+                        messages = _extract_k3cloud_error_messages(result)
+                        message = "K3Cloud ExecuteBillQuery 返回错误。"
+                        if messages:
+                            message = f"K3Cloud ExecuteBillQuery 返回错误：{'；'.join(messages)}"
+                        raise server_error(
+                            code="K3CLOUD_EXECUTE_BILL_QUERY_FAILED",
+                            message=message,
+                            details={"result": result, "query": query_obj},
+                        )
                 if parsed and isinstance(parsed[0], dict):
                     return parsed
                 return []

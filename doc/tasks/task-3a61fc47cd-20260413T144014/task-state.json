@@ -1,0 +1,209 @@
+{
+  "schema_version": 2,
+  "task_id": "task-3a61fc47cd-20260413T144014",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "扩展排产看板后端聚合结构",
+      "status": "completed",
+      "objective": "基于真实的每日产能明细，按日期聚合出“按产线”和“按工序”两组每日产能变化时间序列，并为前端提供稳定的筛选项数据。",
+      "owned_paths": [
+        "`backend/app/services/app_service.py` `backend/app/api/routes/app_queries.py`"
+      ],
+      "dependencies": [
+        "`list_line_daily_capacity(calendar_date)` 返回的明细中已包含 `line_code`、`line_name`、`process_code`"
+      ],
+      "deliverables": [
+        "排产看板接口新增 `capacity_change_by_line` 与 `capacity_change_by_process` 两个数据段，包含筛选项和覆盖完整日期范围的每日变化折线数据"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "`/api/dashboard/scheduler` 返回结果中新增 `capacity_change_by_line` 与 `capacity_change_by_process`，每个数据段都必须包含 `options` 与 `items`，且数据来自真实每日产能明细聚合结果。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#Results"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "`capacity_change_by_line.items` 必须按所请求的日期范围覆盖每天数据；每条产线序列都要包含日期、产线编码、产线名称和当天产能变化值，变化值按同一产线相邻日期的计划产能差值计算。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#Results"
+          ]
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "`capacity_change_by_process.items` 必须按所请求的日期范围覆盖每天数据；每条工序序列都要包含日期、工序编码、工序名称和当天产能变化值，变化值按同一工序相邻日期的计划产能差值计算。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#Results"
+          ]
+        },
+        {
+          "ac_id": "P1-AC4",
+          "text": "现有 `summary`、`material_consumption` 结构和统计口径保持可用，不因本次改造被移除或静默降级。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#Results"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-13T15:49:00"
+    },
+    {
+      "phase_id": "P2",
+      "title": "重构排产看板前端展示与交互",
+      "status": "completed",
+      "objective": "移除原“每日产能趋势（计划）”图表，将“每日产能变化”拆分为产线和工序两张折线图，并提供筛选控件与正式中文文案。",
+      "owned_paths": [
+        "`fronted/src/legacy/features/dashboard/useSchedulerDashboardController.js` `fronted/src/legacy/features/dashboard/schedulerDashboardQueryClient.js` `fronted/src/legacy/pages/SchedulerDashboardPage.jsx` `fronted/src/legacy/features/dashboard/components/SchedulerDashboardLineChart.jsx` `fronted/src/legacy/styles/pages/scheduler-dashboard.css`"
+      ],
+      "dependencies": [
+        "P1 已提供前端所需的分组时间序列与筛选项数据"
+      ],
+      "deliverables": [
+        "新的折线图组件、两个筛选区域、正式中文标签与空态文案，以及删除旧的计划趋势图表展示"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "排产看板页面不再展示“每日产能趋势（计划）”，改为“产线每日产能变化”和“工序每日产能变化”两张折线图卡片。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#Results"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "页面必须提供产线筛选下拉框和工序筛选下拉框；切换日期范围或筛选项后，折线图展示的数据与当前选择一致。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#Results"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "折线图组件必须使用折线形式展示时间范围内的每日变化，且在空数据时显示正式中文空态文案，不得出现乱码、英文残留或内部字段名。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#Results"
+          ]
+        },
+        {
+          "ac_id": "P2-AC4",
+          "text": "现有 KPI 卡片与物料消耗排行仍能正常渲染，页面整体布局在桌面与窄屏宽度下可用。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#Results"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P2"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-13T15:49:22"
+    },
+    {
+      "phase_id": "P3",
+      "title": "更新自动化验证与数据对账",
+      "status": "completed",
+      "objective": "让自动化测试能独立验证新接口结构、新 UI 行为和 30 天范围内的折线数据正确性，并回归中文展示。",
+      "owned_paths": [
+        "`fronted/tests/e2e/production-plan.e2e.spec.ts` `fronted/tests/e2e/copy-verification.spec.ts` `fronted/tests/e2e/support/backendClient.ts` `fronted/tests/e2e/support/dashboardReconciliation.ts`"
+      ],
+      "dependencies": [
+        "P1、P2 完成且 Playwright 可使用真实浏览器启动应用"
+      ],
+      "deliverables": [
+        "更新后的 Playwright 用例、对账辅助逻辑、命令验证结果与可追溯证据"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "自动化对账逻辑必须独立计算并验证 30 天范围内按产线和按工序的每日产能变化结果，与看板接口返回值逐项一致。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#Results"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "Playwright 真实浏览器用例必须验证排产看板中新的两个筛选控件、两个折线图容器以及旧计划趋势图已移除。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#Results"
+          ]
+        },
+        {
+          "ac_id": "P3-AC3",
+          "text": "文案验证用例必须覆盖排产看板相关标题、图表无障碍标签和筛选项中文文案，确保当前页面不再出现乱码或未翻译英文。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#Results"
+          ]
+        },
+        {
+          "ac_id": "P3-AC4",
+          "text": "`npm --prefix fronted run lint`、`npm --prefix fronted run build` 以及目标 Playwright 用例必须通过。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#Results"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P3"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-13T15:49:36"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 3,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-13T14:40:14",
+  "updated_at": "2026-04-13T15:50:28",
+  "branch": "master",
+  "baseline_revision": "25da6f040c087327f5c59f09562e39b5b0a09ea8",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-3a61fc47cd-20260413T144014",
+  "goal": "排产看板里的每日产能变化增加成两组，一个是产线，一个是工序；可以选择产线，可以选择工序，展示一段时间之内的工序与产线变化；图表改成折线图；去掉每日产能趋势（计划）的统计。",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-3a61fc47cd-20260413T144014\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-3a61fc47cd-20260413T144014\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-3a61fc47cd-20260413T144014\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-3a61fc47cd-20260413T144014\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-3a61fc47cd-20260413T144014\\test-report.md"
+  }
+}

@@ -36,6 +36,13 @@ def _read_env(name: str, default: str | None = None) -> str | None:
     return stripped or None
 
 
+def _read_csv_env(name: str) -> tuple[str, ...]:
+    value = _read_env(name)
+    if value is None:
+        return ()
+    return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
 @dataclass(frozen=True)
 class Settings:
     api_title: str
@@ -49,6 +56,8 @@ class Settings:
     erp_orders_source: str
     erp_orders_method: str
     erp_orders_path: str | None
+    erp_orders_business_status_field: str | None
+    erp_orders_excluded_statuses: tuple[str, ...]
     erp_order_materials_source: str
     erp_bom_children_source: str
     erp_inventory_source: str
@@ -122,6 +131,12 @@ def get_settings() -> Settings:
         ).strip().upper()
         or "POST",
         erp_orders_path=_read_env("PRODUCTION_PLAN_ERP_ORDERS_PATH"),
+        erp_orders_business_status_field=_read_env(
+            "PRODUCTION_PLAN_ERP_ORDERS_BUSINESS_STATUS_FIELD"
+        ),
+        erp_orders_excluded_statuses=_read_csv_env(
+            "PRODUCTION_PLAN_ERP_ORDERS_EXCLUDED_STATUSES"
+        ),
         erp_order_materials_source=str(
             os.getenv("PRODUCTION_PLAN_ERP_ORDER_MATERIALS_SOURCE", "HTTP")
         ).strip().upper()

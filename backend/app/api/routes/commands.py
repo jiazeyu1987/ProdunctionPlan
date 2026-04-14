@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends
 from ...auth import ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER, require_roles
 from ...db import get_db
 from ...repositories.jobs import JobRepository
-from ...schemas.jobs import AcceptedCommandResponse
+from ...schemas.jobs import AcceptedCommandResponse, BatchDispatchCommandBody
 
 
 router = APIRouter(tags=["commands"])
@@ -98,6 +98,26 @@ def patch_order_pool_order(
         target_key=order_no,
         request_id=str(payload.get("request_id") or "").strip() or None,
         payload={**payload, "order_no": order_no},
+    )
+
+
+@router.post("/order-pool/batch-dispatch", status_code=202)
+def batch_dispatch_order_pool_orders(
+    body: BatchDispatchCommandBody,
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    current_user: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    return enqueue_command_job(
+        connection,
+        job_type="LEGACY_DISPATCH_COMMAND_BATCH",
+        target_type="ORDER",
+        target_key=f"BATCH:{body.command_type}",
+        request_id=body.request_id,
+        payload={
+            **body.model_dump(),
+            "actor": build_actor_payload(current_user),
+        },
     )
 
 
@@ -389,6 +409,31 @@ def delete_reporting(
         target_key=report_id,
         request_id=str(payload.get("request_id") or "").strip() or None,
         payload={"report_id": report_id, "actor": build_actor_payload(current_user)},
+    )
+
+
+@router.post("/reportings/{report_id}/capacity-compare", status_code=202)
+def select_reporting_capacity_compare(
+    report_id: str,
+    payload: dict[str, Any] = Body(default_factory=dict),
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    current_user: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
+    ] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    return enqueue_command_job(
+        connection,
+        job_type="LEGACY_REPORT_CAPACITY_COMPARE_SELECT",
+        target_type="REPORT",
+        target_key=report_id,
+        request_id=str(payload.get("request_id") or "").strip() or None,
+        payload={
+            "report_id": report_id,
+            "audit_id": payload.get("audit_id"),
+            "actor": build_actor_payload(current_user),
+        },
     )
 
 

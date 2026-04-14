@@ -1,0 +1,195 @@
+{
+  "schema_version": 2,
+  "task_id": "excel-xlsx-20260413T195434",
+  "mode": "full",
+  "status": "ready_for_execution",
+  "current_phase": "P1",
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "Extend reporting domain model and strict resource mapping",
+      "status": "pending",
+      "objective": "Extend `work_reports` to persist the real workbook reporting fields and add a strict resource mapping table that resolves workbook resource information into workshop, line, and process scope.",
+      "owned_paths": [
+        "`backend/app/db.py`",
+        "`backend/sqlite/001_init.sql`",
+        "`backend/app/services/app_service.py`",
+        "`backend/app/api/routes/app_queries.py`",
+        "`backend/app/api/routes/commands.py`",
+        "`backend/app/services/job_dispatcher.py`",
+        "`backend/tests/`"
+      ],
+      "dependencies": [
+        "existing reporting command/query flow",
+        "existing line topology and capacity compare logic"
+      ],
+      "deliverables": [
+        "schema updates for `work_reports`",
+        "schema for reporting resource mappings",
+        "strict mapping helpers",
+        "reporting query response updates",
+        "backend tests for persistence and mapping behavior"
+      ],
+      "evidence_expectation": "schema inspection or migration-backed assertions, backend unit tests for persistence and mapping, and code references showing query and compare compatibility",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "`work_reports` persists the required workbook business fields, including operator code and name, section leader name, dispatch number, product code, product name, product specification, resource group name, resource name, department name, and source workbook metadata, without breaking report queries.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "A strict resource mapping table resolves `resource_group_name + resource_name + source_process_code` to exactly one `company_code + workshop_code + line_code + process_code`, and missing or ambiguous mappings produce explicit errors.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "Reporting query responses expose the new persisted fields so the frontend no longer depends on placeholder filler or section-leader values.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P1-AC4",
+          "text": "Existing same-day capacity compare selection continues to rely on stored `report_local_date + workshop_code + line_code + process_code` values without fallback behavior.",
+          "status": "pending",
+          "evidence": []
+        }
+      ],
+      "evidence": [],
+      "notes": "",
+      "last_reviewed_at": null
+    },
+    {
+      "phase_id": "P2",
+      "title": "Build xlsx preview and commit import pipeline",
+      "status": "pending",
+      "objective": "Add fail-fast `.xlsx` preview and commit APIs that parse multiple workbook sheets, validate each row with explicit failure reasons, and persist only rows that pass strict validation.",
+      "owned_paths": [
+        "`backend/app/services/app_service.py`",
+        "`backend/app/api/routes/app_queries.py`",
+        "`backend/app/api/routes/commands.py`",
+        "`backend/app/services/job_dispatcher.py`",
+        "`backend/tests/`"
+      ],
+      "dependencies": [
+        "P1 schema and mapping helpers",
+        "available `.xlsx` parser dependency"
+      ],
+      "deliverables": [
+        "workbook preview API",
+        "workbook commit API/job flow",
+        "row-level validation results",
+        "explicit error handling for missing order or mapping and ambiguous mapping",
+        "backend tests for preview and commit"
+      ],
+      "evidence_expectation": "backend API or service tests for preview and commit, assertions on row-level validation payloads, and query assertions proving persisted source metadata and mapped keys",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "The backend preview flow parses the provided `.xlsx` workbook format across multiple sheets and preserves sheet name plus source row number in preview results.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "Preview returns row-level validation results with explicit reasons for missing order, missing mapping, ambiguous mapping, invalid required fields, or other strict validation failures.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "Commit persists only rows that passed preview validation and writes the mapped reporting fields plus workbook provenance into `work_reports`.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P2-AC4",
+          "text": "Commit does not invent default workshop, line, process, or master-data values when required data is missing; it fails explicitly instead.",
+          "status": "pending",
+          "evidence": []
+        }
+      ],
+      "evidence": [],
+      "notes": "",
+      "last_reviewed_at": null
+    },
+    {
+      "phase_id": "P3",
+      "title": "Upgrade frontend import and reporting UI to real workbook fields",
+      "status": "pending",
+      "objective": "Replace the current text import flow with `.xlsx` preview/commit UX and update the reporting records table to display the real workbook fields while preserving the same-day capacity compare experience.",
+      "owned_paths": [
+        "`fronted/src/legacy/features/execution-wip/**`",
+        "`fronted/src/legacy/features/order-execution/**`",
+        "`fronted/src/legacy/styles/**`",
+        "`fronted/tests/e2e/**`"
+      ],
+      "dependencies": [
+        "P2 preview and commit APIs"
+      ],
+      "deliverables": [
+        "`.xlsx` file selection",
+        "preview and commit UI",
+        "row-level error display",
+        "reporting records table field updates",
+        "browser tests for success and failure paths",
+        "regression coverage for `当日产能` compare on imported rows"
+      ],
+      "evidence_expectation": "frontend build output, Playwright evidence for preview and commit, and browser assertions showing imported rows still participate in capacity compare",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "The frontend import flow accepts `.xlsx`, shows a preview before commit, and surfaces backend row-level validation results clearly to the user.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "The reporting records table displays real report fields such as order number, dispatch number, product code, process code and name, resource, operator, section leader, quantity, and `当日产能`.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P3-AC3",
+          "text": "After importing rows with valid mappings, blank compare cells on imported reports still open the existing compare modal and keep the same strict same-day compare rules.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P3-AC4",
+          "text": "Browser validation covers one successful workbook import path and one explicit failure path from the real UI.",
+          "status": "pending",
+          "evidence": []
+        }
+      ],
+      "evidence": [],
+      "notes": "",
+      "last_reviewed_at": null
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "not_started",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 0,
+    "test_loops": 0
+  },
+  "created_at": "2026-04-13T19:54:34",
+  "updated_at": "2026-04-14T09:56:11",
+  "branch": "master",
+  "baseline_revision": "25da6f040c087327f5c59f09562e39b5b0a09ea8",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\excel-xlsx-20260413T195434",
+  "goal": "基于实际报工Excel扩展报工模型，新增资源映射与xlsx导入预览/提交链路，并保留当日产能对比所需的严格线体映射",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\excel-xlsx-20260413T195434\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\excel-xlsx-20260413T195434\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\excel-xlsx-20260413T195434\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\excel-xlsx-20260413T195434\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\excel-xlsx-20260413T195434\\test-report.md"
+  }
+}

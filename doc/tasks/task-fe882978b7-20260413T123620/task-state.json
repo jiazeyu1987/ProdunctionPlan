@@ -1,0 +1,150 @@
+{
+  "schema_version": 2,
+  "task_id": "task-fe882978b7-20260413T123620",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "修复当前可见文案与本地化逻辑",
+      "status": "completed",
+      "objective": "修复当前真实用户流程中仍会暴露英文、内部字段名或不正式提示的前端文案。",
+      "owned_paths": [
+        "`fronted/src/legacy/features/schedule-calendar/useScheduleCalendarController.js` `fronted/src/legacy/features/daily-capacity/useDailyCapacityController.js` `fronted/src/legacy/utils/i18n.js`"
+      ],
+      "dependencies": [
+        "现有前端 API 封装、排产日历接口、当日产能报工接口。"
+      ],
+      "deliverables": [
+        "中文且正式的模拟提示语、中文化的报工校验错误、统一消息翻译辅助逻辑。"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "排产日历页面在“推进一天”和“重置模拟”成功后，前端展示的提示语必须为正式中文；即使后端返回英文 `message`，界面也不能直接展示英文原文。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "当日产能页面提交报工时，若报工数量为空、非数字或小于等于 0，错误提示必须为正式中文，且不能暴露诸如 `report_qty` 之类的内部字段名。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4"
+          ]
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "前端新增或调整的消息翻译逻辑只能转换已知英文消息，不得覆盖原本已经正确显示的中文提示。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "- 已完成排产日历提示语中文化、报工校验正式化与通用消息翻译。",
+      "last_reviewed_at": "2026-04-13T13:27:16"
+    },
+    {
+      "phase_id": "P2",
+      "title": "更新回归用例并完成真实浏览器验证",
+      "status": "completed",
+      "objective": "让相关 e2e 用例准确校验修复后的中文文案，并验证模拟推进与重置行为没有回归。",
+      "owned_paths": [
+        "`fronted/tests/e2e/copy-verification.spec.ts` `fronted/tests/e2e/simulation-calendar.e2e.spec.ts`"
+      ],
+      "dependencies": [
+        "P1 已完成且前后端可通过 Playwright 配置启动。"
+      ],
+      "deliverables": [
+        "更新后的 e2e 断言、通过的 lint/build/e2e 结果、可追溯测试证据。"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "文案回归用例需在真实浏览器中覆盖侧边栏、排产看板、当日产能、业务接口验证页与排产日历页的关键中文文案，并通过断言。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "排产日历 e2e 用例需在真实浏览器中连续点击“推进一天”5 次，再点击“重置模拟”，并验证日期推进、提示语语言、以及报工副作用恢复均符合预期。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "`npm --prefix fronted run lint` 与 `npm --prefix fronted run build` 必须通过。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P2"
+      ],
+      "notes": "- 已更新并通过文案回归与模拟推进 e2e，用例证据已写入测试报告。",
+      "last_reviewed_at": "2026-04-13T13:26:28"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 2,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-13T12:36:20",
+  "updated_at": "2026-04-13T13:28:48",
+  "branch": "master",
+  "baseline_revision": "25da6f040c087327f5c59f09562e39b5b0a09ea8",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-fe882978b7-20260413T123620",
+  "goal": "修改当前前端现在的乱码问题,描述不正式问题,英文没有转换成中文的问题",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-fe882978b7-20260413T123620\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-fe882978b7-20260413T123620\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-fe882978b7-20260413T123620\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-fe882978b7-20260413T123620\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-fe882978b7-20260413T123620\\test-report.md"
+  }
+}

@@ -313,6 +313,9 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
             report_qty REAL NOT NULL,
             report_time TEXT NOT NULL,
             operator_name TEXT,
+            daily_capacity_compare_audit_id TEXT,
+            daily_capacity_compare_qty REAL,
+            daily_capacity_compare_selected_at TEXT,
             updated_at TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_sim_snapshot_work_reports_time
@@ -377,7 +380,9 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
         """
     )
     _ensure_masterdata_process_routes_schema(connection)
+    _ensure_reporting_resource_mappings_schema(connection)
     _ensure_work_reports_schema(connection)
+    _ensure_simulation_restore_snapshot_work_reports_schema(connection)
 
 
 def _ensure_masterdata_process_routes_schema(connection: sqlite3.Connection) -> None:
@@ -419,30 +424,91 @@ def _ensure_masterdata_process_routes_schema(connection: sqlite3.Connection) -> 
     )
 
 
+def _ensure_reporting_resource_mappings_schema(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS masterdata_reporting_resource_mappings (
+            mapping_id TEXT PRIMARY KEY,
+            company_code TEXT NOT NULL,
+            source_resource_group_name TEXT NOT NULL,
+            source_resource_name TEXT NOT NULL,
+            source_process_code TEXT NOT NULL,
+            source_process_name TEXT,
+            source_department_name TEXT,
+            workshop_code TEXT NOT NULL,
+            workshop_name TEXT,
+            line_code TEXT NOT NULL,
+            line_name TEXT,
+            process_code TEXT NOT NULL,
+            enabled_flag INTEGER NOT NULL DEFAULT 1,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_reporting_resource_mappings_source
+            ON masterdata_reporting_resource_mappings (
+                company_code,
+                source_resource_group_name,
+                source_resource_name,
+                source_process_code,
+                enabled_flag
+            );
+        """
+    )
+
+
 def _ensure_work_reports_schema(connection: sqlite3.Connection) -> None:
+    create_table_sql = """
+        CREATE TABLE IF NOT EXISTS work_reports (
+            report_id TEXT PRIMARY KEY,
+            production_order_no TEXT,
+            process_code TEXT,
+            process_name TEXT,
+            company_code TEXT,
+            workshop_code TEXT,
+            workshop_name TEXT,
+            line_code TEXT,
+            line_name TEXT,
+            report_qty REAL NOT NULL,
+            report_time TEXT NOT NULL,
+            operator_code TEXT,
+            operator_name TEXT,
+            section_leader_name TEXT,
+            dispatch_no TEXT,
+            product_code TEXT,
+            product_name TEXT,
+            product_specification TEXT,
+            resource_group_name TEXT,
+            resource_name TEXT,
+            department_name TEXT,
+            source_process_code TEXT,
+            source_process_name TEXT,
+            mold_code TEXT,
+            support_count REAL,
+            weight_kg REAL,
+            cavity_count REAL,
+            total_cycle_time REAL,
+            production_quota REAL,
+            work_duration REAL,
+            clamp_or_assembly_weight REAL,
+            unit_weight REAL,
+            source_sheet_name TEXT,
+            source_row_no INTEGER,
+            source_file_name TEXT,
+            daily_capacity_compare_audit_id TEXT,
+            daily_capacity_compare_qty REAL,
+            daily_capacity_compare_selected_at TEXT,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (production_order_no) REFERENCES production_orders (production_order_no) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_work_reports_order_no
+            ON work_reports (production_order_no, report_time DESC);
+        CREATE INDEX IF NOT EXISTS idx_work_reports_line_scope
+            ON work_reports (company_code, workshop_code, line_code, process_code, report_time DESC);
+        CREATE INDEX IF NOT EXISTS idx_work_reports_source_sheet
+            ON work_reports (source_file_name, source_sheet_name, source_row_no);
+    """
     table_info = _table_info(connection, "work_reports")
     if not table_info:
-        connection.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS work_reports (
-                report_id TEXT PRIMARY KEY,
-                production_order_no TEXT,
-                process_code TEXT,
-                process_name TEXT,
-                workshop_code TEXT,
-                workshop_name TEXT,
-                line_code TEXT,
-                line_name TEXT,
-                report_qty REAL NOT NULL,
-                report_time TEXT NOT NULL,
-                operator_name TEXT,
-                updated_at TEXT NOT NULL,
-                FOREIGN KEY (production_order_no) REFERENCES production_orders (production_order_no) ON DELETE CASCADE
-            );
-            CREATE INDEX IF NOT EXISTS idx_work_reports_order_no
-                ON work_reports (production_order_no, report_time DESC);
-            """
-        )
+        connection.executescript(create_table_sql)
         return
 
     production_order_column = next(
@@ -455,57 +521,137 @@ def _ensure_work_reports_schema(connection: sqlite3.Connection) -> None:
             message="work_reports.production_order_no column is missing.",
         )
     is_not_null = int(production_order_column[3] or 0) == 1
-    if not is_not_null:
-        return
+    if is_not_null:
+        connection.executescript(
+            """
+            ALTER TABLE work_reports RENAME TO work_reports__legacy_order_required;
+            """
+        )
+        connection.executescript(create_table_sql)
+        connection.executescript(
+            """
+            INSERT INTO work_reports (
+                report_id,
+                production_order_no,
+                process_code,
+                process_name,
+                workshop_code,
+                workshop_name,
+                line_code,
+                line_name,
+                report_qty,
+                report_time,
+                operator_name,
+                updated_at
+            )
+            SELECT
+                report_id,
+                production_order_no,
+                process_code,
+                process_name,
+                workshop_code,
+                workshop_name,
+                line_code,
+                line_name,
+                report_qty,
+                report_time,
+                operator_name,
+                updated_at
+            FROM work_reports__legacy_order_required;
+            DROP TABLE work_reports__legacy_order_required;
+            """
+        )
 
+    columns = _table_columns(connection, "work_reports")
+    extra_columns = {
+        "company_code": "TEXT",
+        "operator_code": "TEXT",
+        "section_leader_name": "TEXT",
+        "dispatch_no": "TEXT",
+        "product_code": "TEXT",
+        "product_name": "TEXT",
+        "product_specification": "TEXT",
+        "resource_group_name": "TEXT",
+        "resource_name": "TEXT",
+        "department_name": "TEXT",
+        "source_process_code": "TEXT",
+        "source_process_name": "TEXT",
+        "mold_code": "TEXT",
+        "support_count": "REAL",
+        "weight_kg": "REAL",
+        "cavity_count": "REAL",
+        "total_cycle_time": "REAL",
+        "production_quota": "REAL",
+        "work_duration": "REAL",
+        "clamp_or_assembly_weight": "REAL",
+        "unit_weight": "REAL",
+        "source_sheet_name": "TEXT",
+        "source_row_no": "INTEGER",
+        "source_file_name": "TEXT",
+        "daily_capacity_compare_audit_id": "TEXT",
+        "daily_capacity_compare_qty": "REAL",
+        "daily_capacity_compare_selected_at": "TEXT",
+    }
+    for column_name, column_type in extra_columns.items():
+        if column_name in columns:
+            continue
+        connection.execute(
+            f"""
+            ALTER TABLE work_reports
+            ADD COLUMN {column_name} {column_type}
+            """
+        )
     connection.executescript(
         """
-        ALTER TABLE work_reports RENAME TO work_reports__legacy_order_required;
-        CREATE TABLE work_reports (
-            report_id TEXT PRIMARY KEY,
-            production_order_no TEXT,
-            process_code TEXT,
-            process_name TEXT,
-            workshop_code TEXT,
-            workshop_name TEXT,
-            line_code TEXT,
-            line_name TEXT,
-            report_qty REAL NOT NULL,
-            report_time TEXT NOT NULL,
-            operator_name TEXT,
-            updated_at TEXT NOT NULL,
-            FOREIGN KEY (production_order_no) REFERENCES production_orders (production_order_no) ON DELETE CASCADE
-        );
-        INSERT INTO work_reports (
-            report_id,
-            production_order_no,
-            process_code,
-            process_name,
-            workshop_code,
-            workshop_name,
-            line_code,
-            line_name,
-            report_qty,
-            report_time,
-            operator_name,
-            updated_at
-        )
-        SELECT
-            report_id,
-            production_order_no,
-            process_code,
-            process_name,
-            workshop_code,
-            workshop_name,
-            line_code,
-            line_name,
-            report_qty,
-            report_time,
-            operator_name,
-            updated_at
-        FROM work_reports__legacy_order_required;
-        DROP TABLE work_reports__legacy_order_required;
         CREATE INDEX IF NOT EXISTS idx_work_reports_order_no
             ON work_reports (production_order_no, report_time DESC);
+        CREATE INDEX IF NOT EXISTS idx_work_reports_line_scope
+            ON work_reports (company_code, workshop_code, line_code, process_code, report_time DESC);
+        CREATE INDEX IF NOT EXISTS idx_work_reports_source_sheet
+            ON work_reports (source_file_name, source_sheet_name, source_row_no);
         """
     )
+
+
+def _ensure_simulation_restore_snapshot_work_reports_schema(
+    connection: sqlite3.Connection,
+) -> None:
+    columns = _table_columns(connection, "simulation_restore_snapshot_work_reports")
+    extra_columns = {
+        "company_code": "TEXT",
+        "operator_code": "TEXT",
+        "section_leader_name": "TEXT",
+        "dispatch_no": "TEXT",
+        "product_code": "TEXT",
+        "product_name": "TEXT",
+        "product_specification": "TEXT",
+        "resource_group_name": "TEXT",
+        "resource_name": "TEXT",
+        "department_name": "TEXT",
+        "source_process_code": "TEXT",
+        "source_process_name": "TEXT",
+        "mold_code": "TEXT",
+        "support_count": "REAL",
+        "weight_kg": "REAL",
+        "cavity_count": "REAL",
+        "total_cycle_time": "REAL",
+        "production_quota": "REAL",
+        "work_duration": "REAL",
+        "clamp_or_assembly_weight": "REAL",
+        "unit_weight": "REAL",
+        "source_sheet_name": "TEXT",
+        "source_row_no": "INTEGER",
+        "source_file_name": "TEXT",
+        "daily_capacity_compare_audit_id": "TEXT",
+        "daily_capacity_compare_qty": "REAL",
+        "daily_capacity_compare_selected_at": "TEXT",
+    }
+    for column_name, column_type in extra_columns.items():
+        if column_name in columns:
+            continue
+        connection.execute(
+            f"""
+            ALTER TABLE simulation_restore_snapshot_work_reports
+            ADD COLUMN {column_name} {column_type}
+            """
+        )

@@ -137,3 +137,28 @@ def refresh_self_made_materials(
         status_url=f"/api/jobs/{job['job_id']}",
         message="Task accepted.",
     )
+
+
+@router.post(
+    "/sync-from-erp",
+    response_model=AcceptedCommandResponse,
+    status_code=202,
+)
+def sync_orders_from_erp(
+    body: RequestCommandBody,
+    connection: Annotated[sqlite3.Connection, Depends(get_db)],
+    _: Annotated[dict[str, str], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> AcceptedCommandResponse:
+    job = JobRepository(connection).enqueue(
+        job_type="ORDERS_SYNC_FROM_ERP",
+        target_type="ORDER",
+        target_key="ALL",
+        request_id=body.request_id,
+        payload={},
+    )
+    return AcceptedCommandResponse(
+        success=True,
+        job_id=str(job["job_id"]),
+        status_url=f"/api/jobs/{job['job_id']}",
+        message="Task accepted.",
+    )

@@ -20,6 +20,11 @@ class RefreshInventoryBody(RequestCommandBody):
     material_codes: list[str] = Field(default_factory=list)
 
 
+class BatchDispatchCommandBody(RequestCommandBody):
+    order_nos: list[str] = Field(min_length=1)
+    command_type: Literal["LOCK", "UNLOCK"]
+
+
 class AcceptedCommandResponse(BaseModel):
     success: bool = True
     job_id: str

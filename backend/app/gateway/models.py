@@ -18,6 +18,19 @@ class ERPProductionOrder(BaseModel):
     material_list_no: str | None = None
 
 
+class ERPProductionOrderSyncRecord(BaseModel):
+    production_order_no: str
+    material_code: str
+    material_name: str
+    material_specification: str | None = None
+    production_qty: float
+    planned_start_date: str | None = None
+    planned_end_date: str | None = None
+    source_bill_no: str | None = None
+    material_list_no: str | None = None
+    business_status: str | None = None
+
+
 class ERPMaterialIssueItem(BaseModel):
     production_order_no: str
     child_material_code: str

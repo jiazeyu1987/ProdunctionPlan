@@ -1,0 +1,125 @@
+{
+  "schema_version": 2,
+  "task_id": "tab-20260413T194138",
+  "mode": "full",
+  "status": "executing",
+  "current_phase": "P3",
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "Add Masterdata Tab Entry Point",
+      "status": "completed",
+      "objective": "",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "Masterdata tab list includes `设备台账` and it is positioned between `主任配置` and `数据备份`.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "`/masterdata?tab=equipment_ledger` opens the `设备台账` panel and marks the tab active.",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-14T10:30:07"
+    },
+    {
+      "phase_id": "P2",
+      "title": "Implement \"设备台账\" Panel and Table Rendering",
+      "status": "pending",
+      "objective": "",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "`设备台账` table header structure matches screenshot, including group header `1日` and 8 child columns.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "Table contains the 13 seeded rows and each row's first 5 columns match the seed data strings/numbers.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "Default day-group values match the confirmed screenshot behavior:",
+          "status": "pending",
+          "evidence": []
+        }
+      ],
+      "evidence": [],
+      "notes": "",
+      "last_reviewed_at": null
+    },
+    {
+      "phase_id": "P3",
+      "title": "Add Playwright E2E Coverage",
+      "status": "in_progress",
+      "objective": "",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "New Playwright e2e spec passes via repo command.",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "Existing `fronted/tests/e2e/masterdata-backup.e2e.spec.ts` remains passing (regression).",
+          "status": "pending",
+          "evidence": []
+        }
+      ],
+      "evidence": [],
+      "notes": "",
+      "last_reviewed_at": "2026-04-14T11:00:28"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "not_started",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 1,
+    "test_loops": 0
+  },
+  "created_at": "2026-04-13T19:41:39",
+  "updated_at": "2026-04-14T11:00:28",
+  "branch": "master",
+  "baseline_revision": "25da6f040c087327f5c59f09562e39b5b0a09ea8",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\tab-20260413T194138",
+  "goal": "在主数据里的主任配置与数据备份中间增加一个tab，设备台账；设备台账表结构符合提供图片中的表结构，并默认填充图片中的设备数据。",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\tab-20260413T194138\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\tab-20260413T194138\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\tab-20260413T194138\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\tab-20260413T194138\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\tab-20260413T194138\\test-report.md"
+  }
+}

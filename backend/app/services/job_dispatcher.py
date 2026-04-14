@@ -3,6 +3,7 @@ from __future__ import annotations
 import sqlite3
 from typing import Any
 
+from ..gateway.orders import ERPOrderGateway
 from ..gateway.inventory import ERPInventoryGateway
 from ..gateway.materials import ERPMaterialGateway
 from ..gateway.supply import ERPSupplyGateway
@@ -17,6 +18,7 @@ from .capacity_query_service import CapacityQueryService
 from .inventory_refresh_service import InventoryRefreshService
 from .material_query_service import MaterialQueryService
 from .material_refresh_service import MaterialRefreshService
+from .order_sync_service import OrderSyncService
 from .order_query_service import OrderQueryService
 from .report_query_service import ReportQueryService
 
@@ -31,6 +33,7 @@ class ServiceFactory:
         self.supply_repository = MaterialSupplyRepository(connection)
         self.report_repository = WorkReportRepository(connection)
         self.capacity_repository = CapacityRepository(connection)
+        self.order_gateway = ERPOrderGateway()
         self.material_gateway = ERPMaterialGateway()
         self.supply_gateway = ERPSupplyGateway()
         self.inventory_gateway = ERPInventoryGateway()
@@ -68,6 +71,13 @@ class ServiceFactory:
             supply_repository=self.supply_repository,
             material_gateway=self.material_gateway,
             supply_gateway=self.supply_gateway,
+        )
+
+    def build_order_sync_service(self) -> OrderSyncService:
+        return OrderSyncService(
+            connection=self.connection,
+            order_repository=self.order_repository,
+            order_gateway=self.order_gateway,
         )
 
     def build_inventory_refresh_service(self) -> InventoryRefreshService:
@@ -123,6 +133,8 @@ class JobDispatcher:
             return self.factory.build_inventory_refresh_service().refresh_inventory(
                 [str(item) for item in payload.get("material_codes", [])]
             )
+        if job_type == "ORDERS_SYNC_FROM_ERP":
+            return self.factory.build_order_sync_service().sync_orders_from_erp_full_reset()
         if job_type == "LEGACY_ORDER_PATCH":
             return self._dispatch_app_service("patch_order_pool_order", str(payload["order_no"]), payload)
         if job_type == "LEGACY_ORDER_DELETE":
@@ -135,8 +147,12 @@ class JobDispatcher:
                 str(payload["command_id"]),
                 payload,
             )
+        if job_type == "LEGACY_DISPATCH_COMMAND_BATCH":
+            return self._dispatch_app_service("batch_dispatch_commands", payload)
         if job_type == "LEGACY_REPORT_CREATE":
             return self._dispatch_app_service("create_reporting", payload)
+        if job_type == "LEGACY_REPORT_CAPACITY_COMPARE_SELECT":
+            return self._dispatch_app_service("select_reporting_capacity_compare", payload)
         if job_type == "LEGACY_REPORT_DELETE":
             return self._dispatch_app_service(
                 "delete_reporting",
