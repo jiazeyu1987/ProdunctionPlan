@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+import hashlib
 import sqlite3
 from typing import Annotated, Any
+from uuid import uuid4
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body, Depends, File, Form, UploadFile
 
 from ...auth import ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER, require_roles
+from ...config import BACKEND_ROOT
 from ...db import get_db
+from ...errors import bad_request
 from ...repositories.jobs import JobRepository
 from ...schemas.jobs import AcceptedCommandResponse, BatchDispatchCommandBody
 
@@ -368,6 +372,90 @@ def reset_manual_simulation(
         target_key="default",
         request_id=str(payload.get("request_id") or "").strip() or None,
         payload={},
+    )
+
+
+@router.post("/reportings/import-xlsx", status_code=202)
+def import_reportings_xlsx(
+    payload: dict[str, Any] = Body(default_factory=dict),
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    current_user: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER)),
+    ] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    assert current_user is not None
+    file_path = str(payload.get("file_path") or "").strip()
+    return enqueue_command_job(
+        connection,
+        job_type="LEGACY_REPORT_IMPORT_XLSX",
+        target_type="REPORTING_IMPORT",
+        target_key=file_path or "UNKNOWN",
+        request_id=str(payload.get("request_id") or "").strip() or None,
+        payload={**payload, "actor": build_actor_payload(current_user)},
+    )
+
+
+@router.post("/reportings/import-xlsx-upload", status_code=202)
+def import_reportings_xlsx_upload(
+    file: UploadFile = File(...),
+    company_code: str | None = Form(default=None),
+    sheet_names: list[str] | None = Form(default=None),
+    create_missing_orders: str | None = Form(default=None),
+    request_id: str | None = Form(default=None),
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    current_user: Annotated[
+        dict[str, Any],
+        Depends(require_roles(ROLE_SCHEDULER)),
+    ] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    assert current_user is not None
+    filename = str(file.filename or "").strip()
+    if not filename.lower().endswith(".xlsx"):
+        raise bad_request(
+            code="REPORTING_IMPORT_FILE_TYPE_INVALID",
+            message="Only .xlsx files are supported.",
+            details={"file_name": filename},
+        )
+
+    imports_dir = (BACKEND_ROOT / "data" / "imports").resolve()
+    imports_dir.mkdir(parents=True, exist_ok=True)
+    saved_name = f"mes-reportings-{uuid4().hex}.xlsx"
+    saved_path = (imports_dir / saved_name).resolve()
+    hasher = hashlib.sha256()
+    size_bytes = 0
+    with saved_path.open("wb") as output:
+        while True:
+            chunk = file.file.read(1024 * 1024)
+            if not chunk:
+                break
+            hasher.update(chunk)
+            size_bytes += len(chunk)
+            output.write(chunk)
+
+    file_sha256 = hasher.hexdigest()
+    source_file_name = f"sha256:{file_sha256}"
+
+    payload: dict[str, Any] = {
+        "file_path": str(saved_path),
+        "source_file_name": source_file_name,
+        "file_sha256": file_sha256,
+        "file_size_bytes": size_bytes,
+        "original_file_name": filename,
+        "company_code": company_code,
+        "sheet_names": sheet_names or None,
+        "create_missing_orders": create_missing_orders,
+        "actor": build_actor_payload(current_user),
+    }
+    return enqueue_command_job(
+        connection,
+        job_type="LEGACY_REPORT_IMPORT_XLSX",
+        target_type="REPORTING_IMPORT",
+        target_key=saved_name,
+        request_id=str(request_id or "").strip() or None,
+        payload=payload,
     )
 
 

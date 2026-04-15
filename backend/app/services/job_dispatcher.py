@@ -151,6 +151,8 @@ class JobDispatcher:
             return self._dispatch_app_service("batch_dispatch_commands", payload)
         if job_type == "LEGACY_REPORT_CREATE":
             return self._dispatch_app_service("create_reporting", payload)
+        if job_type == "LEGACY_REPORT_IMPORT_XLSX":
+            return self._dispatch_app_service("import_mes_reportings_from_xlsx", payload)
         if job_type == "LEGACY_REPORT_CAPACITY_COMPARE_SELECT":
             return self._dispatch_app_service("select_reporting_capacity_compare", payload)
         if job_type == "LEGACY_REPORT_DELETE":

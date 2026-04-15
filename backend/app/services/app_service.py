@@ -4,8 +4,10 @@ import base64
 import binascii
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
+import hashlib
 from io import BytesIO
 import math
+from pathlib import Path
 import random
 import sqlite3
 from typing import Any
@@ -806,7 +808,10 @@ class AppService:
                 line_name,
                 report_qty,
                 report_time,
+                operator_code,
                 operator_name,
+                section_leader_name,
+                updated_at,
                 date(report_time, '+8 hours') AS report_local_date,
                 daily_capacity_compare_audit_id,
                 daily_capacity_compare_qty
@@ -830,13 +835,55 @@ class AppService:
                     "report_qty": row.get("report_qty"),
                     "report_time": row.get("report_time"),
                     "report_local_date": _normalize_date_text(row.get("report_local_date")),
+                    "operator_code": row.get("operator_code"),
                     "operator_name_cn": row.get("operator_name") or "系统填报",
+                    "section_leader_name": row.get("section_leader_name"),
+                    "updated_at": row.get("updated_at"),
                     "daily_capacity_compare_audit_id": row.get("daily_capacity_compare_audit_id"),
                     "daily_capacity_compare_qty": row.get("daily_capacity_compare_qty"),
                 }
                 for row in rows
             ]
         }
+
+    def list_reporting_import_files(self, *, limit: int = 50) -> dict[str, Any]:
+        normalized_limit = max(1, min(200, int(limit or 50)))
+        rows = fetch_all(
+            self.connection,
+            """
+            SELECT
+                file_sha256,
+                source_file_name,
+                file_path,
+                original_file_name,
+                file_size_bytes,
+                sheet_names_json,
+                imported_by_user_id,
+                imported_by_username,
+                imported_by_display_name,
+                total_row_count,
+                imported_count,
+                skipped_existing_count,
+                failed_count,
+                created_missing_order_count,
+                created_at,
+                last_imported_at
+            FROM reporting_import_files
+            ORDER BY last_imported_at DESC, file_sha256 DESC
+            LIMIT ?
+            """,
+            (normalized_limit,),
+        )
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            sheet_names = row.get("sheet_names_json")
+            parsed_sheet_names = (
+                loads(sheet_names)
+                if isinstance(sheet_names, str) and sheet_names.strip()
+                else []
+            )
+            items.append({**row, "sheet_names": parsed_sheet_names})
+        return {"items": items, "total": len(items)}
 
     def get_order_summary(
         self,
@@ -1691,6 +1738,568 @@ class AppService:
             "report_time": report_time,
             "operator_name_cn": operator_name,
         }
+
+    def import_mes_reportings_from_xlsx(self, payload: dict[str, Any]) -> dict[str, Any]:
+        file_path = str(payload.get("file_path") or "").strip()
+        if not file_path:
+            raise bad_request(
+                code="REPORTING_IMPORT_FILE_PATH_REQUIRED",
+                message="file_path is required.",
+            )
+        if not file_path.lower().endswith(".xlsx"):
+            raise bad_request(
+                code="REPORTING_IMPORT_FILE_TYPE_INVALID",
+                message="Only .xlsx files are supported.",
+                details={"file_path": file_path},
+            )
+        workbook_path = Path(file_path)
+        if not workbook_path.exists():
+            raise bad_request(
+                code="REPORTING_IMPORT_FILE_NOT_FOUND",
+                message="xlsx file does not exist.",
+                details={"file_path": file_path},
+            )
+
+        def _normalize_sha256(value: object) -> str | None:
+            raw = str(value or "").strip().lower()
+            if not raw:
+                return None
+            text = raw[7:] if raw.startswith("sha256:") else raw
+            if len(text) != 64:
+                return None
+            try:
+                binascii.unhexlify(text)
+            except binascii.Error:
+                return None
+            return text
+
+        file_sha256 = _normalize_sha256(payload.get("file_sha256"))
+        if file_sha256 is None:
+            file_sha256 = _normalize_sha256(payload.get("source_file_name"))
+        if file_sha256 is None:
+            hasher = hashlib.sha256()
+            with workbook_path.open("rb") as reader:
+                for chunk in iter(lambda: reader.read(1024 * 1024), b""):
+                    hasher.update(chunk)
+            file_sha256 = hasher.hexdigest()
+
+        sha_source_file_name = f"sha256:{file_sha256}"
+        explicit_source_file_name = str(payload.get("source_file_name") or "").strip()
+        source_file_names: list[str] = []
+        for candidate in (sha_source_file_name, explicit_source_file_name, file_path):
+            if candidate and candidate not in source_file_names:
+                source_file_names.append(candidate)
+
+        original_file_name = str(payload.get("original_file_name") or "").strip() or workbook_path.name
+        file_size_bytes = int(workbook_path.stat().st_size or 0)
+        size_input = str(payload.get("file_size_bytes") or "").strip()
+        if size_input:
+            try:
+                file_size_bytes = max(0, int(size_input))
+            except ValueError:
+                file_size_bytes = int(workbook_path.stat().st_size or 0)
+
+        company_code = (
+            str(payload.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper()
+            or DEFAULT_COMPANY_CODE
+        )
+        create_missing_orders = False
+        if payload.get("create_missing_orders") is not None:
+            try:
+                create_missing_orders = _parse_enabled_flag(
+                    payload.get("create_missing_orders")
+                ) == 1
+            except ValueError as exc:
+                raise bad_request(
+                    code="REPORTING_IMPORT_CREATE_MISSING_ORDERS_INVALID",
+                    message=str(exc),
+                ) from exc
+        sheet_names_payload = payload.get("sheet_names")
+        sheet_names: list[str] | None = None
+        if sheet_names_payload is not None:
+            if not isinstance(sheet_names_payload, list):
+                raise bad_request(
+                    code="REPORTING_IMPORT_SHEET_NAMES_INVALID",
+                    message="sheet_names must be an array of strings.",
+                )
+            normalized_sheet_names: list[str] = []
+            for item in sheet_names_payload:
+                name = str(item or "").strip()
+                if not name:
+                    raise bad_request(
+                        code="REPORTING_IMPORT_SHEET_NAMES_INVALID",
+                        message="sheet_names must not contain empty names.",
+                    )
+                if name not in normalized_sheet_names:
+                    normalized_sheet_names.append(name)
+            sheet_names = normalized_sheet_names
+
+        def parse_optional_text(value: object) -> str | None:
+            text = str(value or "").strip()
+            return text or None
+
+        def parse_optional_number(value: object) -> float | None:
+            if value is None:
+                return None
+            if isinstance(value, (int, float)):
+                number = float(value)
+                return number if number == number else None
+            text = str(value or "").strip()
+            if not text:
+                return None
+            try:
+                number = float(text)
+            except (TypeError, ValueError):
+                return None
+            return number if number == number else None
+
+        def parse_required_positive_number(value: object) -> float | None:
+            number = parse_optional_number(value)
+            if number is None or number <= 0:
+                return None
+            return number
+
+        def parse_report_datetime(value: object) -> datetime | None:
+            if isinstance(value, datetime):
+                return value
+            if isinstance(value, date):
+                return datetime.combine(value, datetime.min.time())
+            text = str(value or "").strip()
+            if not text:
+                return None
+            try:
+                return datetime.fromisoformat(text)
+            except ValueError:
+                return None
+
+        def to_utc_iso(value: datetime) -> str:
+            parsed = value
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                parsed = parsed.replace(tzinfo=LOCAL_TIMEZONE)
+            return (
+                parsed.astimezone(timezone.utc).replace(microsecond=0).isoformat()
+            )
+
+        required_headers = ("报工日期", "生产订单号", "工序编码", "报工数量")
+        header_to_field: dict[str, str] = {
+            **REPORTING_IMPORT_REQUIRED_HEADER_MAP,
+            **REPORTING_IMPORT_OPTIONAL_HEADER_MAP,
+            "工序编码": "process_code",
+            "工序名称": "process_name",
+        }
+
+        try:
+            workbook = load_workbook(workbook_path, data_only=True, read_only=True)
+        except Exception as exc:
+            raise bad_request(
+                code="REPORTING_IMPORT_WORKBOOK_LOAD_FAILED",
+                message="Failed to read xlsx workbook.",
+                details={"file_path": file_path, "error": str(exc)},
+            ) from exc
+
+        try:
+            available_sheet_names = list(workbook.sheetnames)
+            selected_sheet_names = sheet_names or available_sheet_names
+            if not selected_sheet_names:
+                raise bad_request(
+                    code="REPORTING_IMPORT_SHEETS_EMPTY",
+                    message="xlsx workbook has no sheets.",
+                    details={"file_path": file_path},
+                )
+            missing_sheets = [
+                name
+                for name in selected_sheet_names
+                if name not in available_sheet_names
+            ]
+            if missing_sheets:
+                raise bad_request(
+                    code="REPORTING_IMPORT_SHEET_NOT_FOUND",
+                    message="Some sheets do not exist in workbook.",
+                    details={
+                        "file_path": file_path,
+                        "missing_sheet_names": missing_sheets,
+                        "available_sheet_names": available_sheet_names,
+                    },
+                )
+
+            imported_count = 0
+            skipped_existing_count = 0
+            failed_count = 0
+            total_row_count = 0
+            failures: list[dict[str, Any]] = []
+            order_exists_cache: dict[str, bool] = {}
+            created_missing_order_count = 0
+            created_missing_order_nos: list[str] = []
+
+            for sheet_name in selected_sheet_names:
+                sheet = workbook[sheet_name]
+                header_cells = [
+                    str(sheet.cell(1, c).value or "").strip()
+                    for c in range(1, sheet.max_column + 1)
+                ]
+                header_index: dict[str, int] = {}
+                for col_index, header in enumerate(header_cells, start=1):
+                    if header and header not in header_index:
+                        header_index[header] = col_index
+
+                missing_headers = [
+                    header for header in required_headers if header not in header_index
+                ]
+                if missing_headers:
+                    raise bad_request(
+                        code="REPORTING_IMPORT_REQUIRED_HEADERS_MISSING",
+                        message=f"Missing required header(s) in sheet '{sheet_name}'.",
+                        details={
+                            "sheet_name": sheet_name,
+                            "missing_headers": missing_headers,
+                        },
+                    )
+
+                sheet_columns: list[tuple[str, int]] = []
+                for header, field_name in header_to_field.items():
+                    col = header_index.get(header)
+                    if col is None:
+                        continue
+                    sheet_columns.append((field_name, col))
+
+                for row_no in range(2, sheet.max_row + 1):
+                    raw: dict[str, Any] = {
+                        field_name: sheet.cell(row_no, col).value
+                        for field_name, col in sheet_columns
+                    }
+                    report_datetime_raw = raw.get("report_datetime")
+                    order_no_raw = raw.get("production_order_no")
+                    process_code_raw = raw.get("process_code")
+                    report_qty_raw = raw.get("report_qty")
+                    if (
+                        report_datetime_raw is None
+                        and not parse_optional_text(order_no_raw)
+                        and not parse_optional_text(process_code_raw)
+                        and parse_optional_text(report_qty_raw) is None
+                    ):
+                        continue
+
+                    total_row_count += 1
+                    source_placeholder_sql = ",".join("?" for _ in source_file_names)
+                    existing = fetch_one(
+                        self.connection,
+                        f"""
+                        SELECT report_id
+                        FROM work_reports
+                        WHERE source_file_name IN ({source_placeholder_sql})
+                          AND source_sheet_name = ?
+                          AND source_row_no = ?
+                        LIMIT 1
+                        """,
+                        tuple(source_file_names + [sheet_name, row_no]),
+                    )
+                    if existing is not None:
+                        skipped_existing_count += 1
+                        continue
+
+                    report_dt = parse_report_datetime(report_datetime_raw)
+                    if report_dt is None:
+                        failed_count += 1
+                        failures.append(
+                            {
+                                "sheet_name": sheet_name,
+                                "row_no": row_no,
+                                "error": "报工日期无法解析。",
+                            }
+                        )
+                        continue
+                    report_time = to_utc_iso(report_dt)
+
+                    order_no_text = parse_optional_text(order_no_raw)
+                    if not order_no_text:
+                        failed_count += 1
+                        failures.append(
+                            {
+                                "sheet_name": sheet_name,
+                                "row_no": row_no,
+                                "error": "生产订单号为空。",
+                            }
+                        )
+                        continue
+                    base_order_no = str(order_no_text.split("-")[0]).strip()
+                    if not base_order_no:
+                        failed_count += 1
+                        failures.append(
+                            {
+                                "sheet_name": sheet_name,
+                                "row_no": row_no,
+                                "order_no": order_no_text,
+                                "error": "生产订单号格式无效。",
+                            }
+                        )
+                        continue
+
+                    process_code_text = parse_optional_text(process_code_raw)
+                    if not process_code_text:
+                        failed_count += 1
+                        failures.append(
+                            {
+                                "sheet_name": sheet_name,
+                                "row_no": row_no,
+                                "order_no": order_no_text,
+                                "error": "工序编码为空。",
+                            }
+                        )
+                        continue
+                    process_code = process_code_text.upper()
+
+                    report_qty = parse_required_positive_number(report_qty_raw)
+                    if report_qty is None:
+                        failed_count += 1
+                        failures.append(
+                            {
+                                "sheet_name": sheet_name,
+                                "row_no": row_no,
+                                "order_no": order_no_text,
+                                "process_code": process_code,
+                                "error": "报工数量必须大于 0。",
+                            }
+                        )
+                        continue
+
+                    if base_order_no not in order_exists_cache:
+                        order_exists_cache[base_order_no] = (
+                            fetch_one(
+                                self.connection,
+                                """
+                                SELECT production_order_no
+                                FROM production_orders
+                                WHERE production_order_no = ?
+                                LIMIT 1
+                                """,
+                                (base_order_no,),
+                            )
+                            is not None
+                        )
+
+                    if not order_exists_cache[base_order_no]:
+                        if not create_missing_orders:
+                            failed_count += 1
+                            failures.append(
+                                {
+                                    "sheet_name": sheet_name,
+                                    "row_no": row_no,
+                                    "order_no": order_no_text,
+                                    "base_order_no": base_order_no,
+                                    "process_code": process_code,
+                                    "error": (
+                                        "生产订单不存在，请先同步/导入生产订单后再导入报工。"
+                                    ),
+                                }
+                            )
+                            continue
+                        material_code = parse_optional_text(raw.get("product_code")) or "UNKNOWN"
+                        material_name = (
+                            parse_optional_text(raw.get("product_name"))
+                            or material_code
+                            or base_order_no
+                        )
+                        material_specification = parse_optional_text(
+                            raw.get("product_specification")
+                        )
+                        with transaction(self.connection):
+                            self.connection.execute(
+                                """
+                                INSERT INTO production_orders (
+                                    production_order_no,
+                                    material_code,
+                                    material_name,
+                                    material_specification,
+                                    production_qty,
+                                    status,
+                                    planned_start_date,
+                                    planned_end_date,
+                                    source_bill_no,
+                                    material_list_no,
+                                    updated_at
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                ON CONFLICT(production_order_no) DO NOTHING
+                                """,
+                                (
+                                    base_order_no,
+                                    material_code,
+                                    material_name,
+                                    material_specification,
+                                    0.0,
+                                    "OPEN",
+                                    None,
+                                    None,
+                                    None,
+                                    None,
+                                    report_time,
+                                ),
+                            )
+                        order_exists_cache[base_order_no] = True
+                        created_missing_order_count += 1
+                        if len(created_missing_order_nos) < 50:
+                            created_missing_order_nos.append(base_order_no)
+
+                    process_name = parse_optional_text(raw.get("process_name"))
+                    report_id = f"RPT-{uuid4().hex[:10].upper()}"
+                    row_payload: dict[str, Any] = {
+                        "report_id": report_id,
+                        "production_order_no": base_order_no,
+                        "process_code": process_code,
+                        "process_name": process_name,
+                        "company_code": company_code,
+                        "workshop_code": None,
+                        "workshop_name": None,
+                        "line_code": None,
+                        "line_name": None,
+                        "report_qty": float(report_qty),
+                        "report_time": report_time,
+                        "operator_code": parse_optional_text(raw.get("operator_code")),
+                        "operator_name": parse_optional_text(raw.get("operator_name")),
+                        "section_leader_name": parse_optional_text(
+                            raw.get("section_leader_name")
+                        ),
+                        "dispatch_no": parse_optional_text(raw.get("dispatch_no")),
+                        "product_code": parse_optional_text(raw.get("product_code")),
+                        "product_name": parse_optional_text(raw.get("product_name")),
+                        "product_specification": parse_optional_text(
+                            raw.get("product_specification")
+                        ),
+                        "resource_group_name": parse_optional_text(
+                            raw.get("resource_group_name")
+                        ),
+                        "resource_name": parse_optional_text(raw.get("resource_name")),
+                        "department_name": parse_optional_text(
+                            raw.get("department_name")
+                        ),
+                        "source_process_code": process_code,
+                        "source_process_name": process_name,
+                        "mold_code": parse_optional_text(raw.get("mold_code")),
+                        "support_count": parse_optional_number(raw.get("support_count")),
+                        "weight_kg": parse_optional_number(raw.get("weight_kg")),
+                        "cavity_count": parse_optional_number(raw.get("cavity_count")),
+                        "total_cycle_time": parse_optional_number(
+                            raw.get("total_cycle_time")
+                        ),
+                        "production_quota": parse_optional_number(
+                            raw.get("production_quota")
+                        ),
+                        "work_duration": parse_optional_number(raw.get("work_duration")),
+                        "clamp_or_assembly_weight": parse_optional_number(
+                            raw.get("clamp_or_assembly_weight")
+                        ),
+                        "unit_weight": parse_optional_number(raw.get("unit_weight")),
+                        "source_sheet_name": sheet_name,
+                        "source_row_no": row_no,
+                        "source_file_name": sha_source_file_name,
+                        "updated_at": report_time,
+                    }
+                    columns_sql = ", ".join(WORK_REPORT_COLUMNS)
+                    placeholders = ", ".join("?" for _ in WORK_REPORT_COLUMNS)
+                    values = tuple(row_payload.get(column) for column in WORK_REPORT_COLUMNS)
+                    with transaction(self.connection):
+                        self.connection.execute(
+                            f"INSERT INTO work_reports ({columns_sql}) VALUES ({placeholders})",
+                            values,
+                        )
+                    imported_count += 1
+
+            actor = payload.get("actor") if isinstance(payload.get("actor"), dict) else {}
+            imported_by_user_id = str(actor.get("user_id") or "").strip() or None
+            imported_by_username = str(actor.get("username") or "").strip() or None
+            imported_by_display_name = (
+                str(actor.get("display_name") or "").strip() or None
+            )
+            imported_at = utc_now()
+            previous_imported_at: str | None = None
+            existing_file_record = fetch_one(
+                self.connection,
+                """
+                SELECT last_imported_at
+                FROM reporting_import_files
+                WHERE file_sha256 = ?
+                """,
+                (file_sha256,),
+            )
+            if existing_file_record is not None:
+                previous_imported_at = str(
+                    existing_file_record.get("last_imported_at") or ""
+                ).strip() or None
+
+            with transaction(self.connection):
+                self.connection.execute(
+                    """
+                    INSERT INTO reporting_import_files (
+                        file_sha256,
+                        source_file_name,
+                        file_path,
+                        original_file_name,
+                        file_size_bytes,
+                        sheet_names_json,
+                        imported_by_user_id,
+                        imported_by_username,
+                        imported_by_display_name,
+                        total_row_count,
+                        imported_count,
+                        skipped_existing_count,
+                        failed_count,
+                        created_missing_order_count,
+                        created_at,
+                        last_imported_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(file_sha256) DO UPDATE SET
+                        source_file_name = excluded.source_file_name,
+                        file_path = excluded.file_path,
+                        original_file_name = excluded.original_file_name,
+                        file_size_bytes = excluded.file_size_bytes,
+                        sheet_names_json = excluded.sheet_names_json,
+                        imported_by_user_id = excluded.imported_by_user_id,
+                        imported_by_username = excluded.imported_by_username,
+                        imported_by_display_name = excluded.imported_by_display_name,
+                        total_row_count = excluded.total_row_count,
+                        imported_count = excluded.imported_count,
+                        skipped_existing_count = excluded.skipped_existing_count,
+                        failed_count = excluded.failed_count,
+                        created_missing_order_count = excluded.created_missing_order_count,
+                        last_imported_at = excluded.last_imported_at
+                    """,
+                    (
+                        file_sha256,
+                        sha_source_file_name,
+                        file_path,
+                        original_file_name,
+                        int(file_size_bytes),
+                        dumps(selected_sheet_names),
+                        imported_by_user_id,
+                        imported_by_username,
+                        imported_by_display_name,
+                        int(total_row_count),
+                        int(imported_count),
+                        int(skipped_existing_count),
+                        int(failed_count),
+                        int(created_missing_order_count),
+                        imported_at,
+                        imported_at,
+                    ),
+                )
+
+            return {
+                "file_path": file_path,
+                "source_file_name": sha_source_file_name,
+                "file_sha256": file_sha256,
+                "original_file_name": original_file_name,
+                "file_size_bytes": int(file_size_bytes),
+                "previous_imported_at": previous_imported_at,
+                "sheet_names": selected_sheet_names,
+                "total_row_count": total_row_count,
+                "imported_count": imported_count,
+                "skipped_existing_count": skipped_existing_count,
+                "failed_count": failed_count,
+                "created_missing_order_count": created_missing_order_count,
+                "created_missing_order_nos": created_missing_order_nos,
+                "failures": failures,
+            }
+        finally:
+            workbook.close()
 
     def select_reporting_capacity_compare(self, payload: dict[str, Any]) -> dict[str, Any]:
         report_id = str(payload.get("report_id") or "").strip()

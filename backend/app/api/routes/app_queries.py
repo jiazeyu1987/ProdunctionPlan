@@ -217,6 +217,16 @@ def list_mes_reportings(
     )
 
 
+@router.get("/reportings/import-files")
+def list_reporting_import_files(
+    limit: int = Query(default=50, ge=1, le=200),
+    service: Annotated[AppService, Depends(get_app_service)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> dict[str, Any]:
+    assert service is not None
+    return service.list_reporting_import_files(limit=limit)
+
+
 @router.get("/order-summary")
 def get_order_summary(
     start_date: str = Query(...),

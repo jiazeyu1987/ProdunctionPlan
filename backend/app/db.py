@@ -382,6 +382,7 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
     _ensure_masterdata_process_routes_schema(connection)
     _ensure_reporting_resource_mappings_schema(connection)
     _ensure_work_reports_schema(connection)
+    _ensure_reporting_import_files_schema(connection)
     _ensure_simulation_restore_snapshot_work_reports_schema(connection)
 
 
@@ -609,6 +610,33 @@ def _ensure_work_reports_schema(connection: sqlite3.Connection) -> None:
             ON work_reports (company_code, workshop_code, line_code, process_code, report_time DESC);
         CREATE INDEX IF NOT EXISTS idx_work_reports_source_sheet
             ON work_reports (source_file_name, source_sheet_name, source_row_no);
+        """
+    )
+
+
+def _ensure_reporting_import_files_schema(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS reporting_import_files (
+            file_sha256 TEXT PRIMARY KEY,
+            source_file_name TEXT NOT NULL,
+            file_path TEXT NOT NULL,
+            original_file_name TEXT,
+            file_size_bytes INTEGER NOT NULL DEFAULT 0,
+            sheet_names_json TEXT,
+            imported_by_user_id TEXT,
+            imported_by_username TEXT,
+            imported_by_display_name TEXT,
+            total_row_count INTEGER NOT NULL DEFAULT 0,
+            imported_count INTEGER NOT NULL DEFAULT 0,
+            skipped_existing_count INTEGER NOT NULL DEFAULT 0,
+            failed_count INTEGER NOT NULL DEFAULT 0,
+            created_missing_order_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            last_imported_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_reporting_import_files_last_imported
+            ON reporting_import_files (last_imported_at DESC, file_sha256 DESC);
         """
     )
 
