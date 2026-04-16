@@ -4296,6 +4296,7 @@ class AppService:
         )
 
         schedule_candidates: list[dict[str, Any]] = []
+        fixed_orders: dict[str, dict[str, Any]] = {}
         day_mode_cache: dict[str, str] = {}
         simulation_state = self._get_simulation_state()
         simulation_start = _parse_date_or_today(simulation_state.get("current_date"))
@@ -4320,6 +4321,17 @@ class AppService:
             if remaining_qty_value <= SCHEDULE_NUMBER_EPSILON:
                 continue
 
+            lock_flag = int(_to_number(state_row.get("lock_flag"), 0))
+            frozen_flag = int(_to_number(state_row.get("frozen_flag"), 0))
+            base_hint = base_schedule_hints.get(order_no) or {}
+            if lock_flag == 1 or frozen_flag == 1:
+                if base_version_no and base_hint:
+                    fixed_orders[order_no] = {
+                        "order_no": order_no,
+                        "product_code": str(order_row["material_code"]),
+                    }
+                continue
+
             process_contexts = self._build_schedule_process_contexts(
                 order_no=order_no,
                 product_code=str(order_row["material_code"]),
@@ -4328,12 +4340,6 @@ class AppService:
                 topology_by_process=topology_by_process,
                 capacity_resolver=capacity_resolver,
             )
-            if len(process_contexts) == 0:
-                raise server_error(
-                    code="SCHEDULE_PROCESS_CONTEXTS_EMPTY",
-                    message="No process contexts available for schedule generation.",
-                    details={"order_no": order_no},
-                )
 
             if use_order_state_window:
                 start_date_source = (
@@ -4357,25 +4363,11 @@ class AppService:
                 due_date = start_date
 
             priority_level = _normalize_priority_level(state_row.get("priority_level"), PRIORITY_LEVEL_MAX)
-            lock_flag = int(_to_number(state_row.get("lock_flag"), 0))
-            frozen_flag = int(_to_number(state_row.get("frozen_flag"), 0))
-
-            base_hint = base_schedule_hints.get(order_no) or {}
-            if base_version_no and (lock_flag == 1 or frozen_flag == 1) and not base_hint:
-                raise bad_request(
-                    code="BASE_VERSION_LOCKED_ORDER_MISSING",
-                    message="Locked or frozen order is missing in base schedule version.",
-                    details={"order_no": order_no, "base_version_no": base_version_no},
-                )
-            base_first_slot = base_hint.get("first_slot")
             start_slot = _slot_index_for(start_date, "DAY")
-            if (lock_flag == 1 or frozen_flag == 1) and base_first_slot is not None:
-                start_slot = max(start_slot, int(base_first_slot))
 
             required_shifts = 0
             min_capacity = None
             total_capacity = 0.0
-            start_slot = _slot_index_for(start_date, "DAY")
             for context in process_contexts:
                 capacity_per_shift = self._resolve_effective_capacity_per_shift(
                     process_context=context,
@@ -4428,6 +4420,121 @@ class AppService:
         tasks: list[tuple[Any, ...]] = []
         used_capacity_by_slot: dict[tuple[int, str, str, str], float] = {}
         task_no = 1
+        if base_version_no and fixed_orders:
+            fixed_order_nos = list(fixed_orders.keys())
+            placeholders = ",".join("?" for _ in fixed_order_nos)
+            fixed_task_rows = fetch_all(
+                self.connection,
+                f"""
+                SELECT
+                    task_no,
+                    production_order_no,
+                    process_code,
+                    process_name_cn,
+                    calendar_date,
+                    shift_code,
+                    plan_qty,
+                    plan_start_time
+                FROM schedule_tasks
+                WHERE version_no = ?
+                  AND production_order_no IN ({placeholders})
+                ORDER BY task_no ASC
+                """,
+                tuple([base_version_no, *fixed_order_nos]),
+            )
+
+            fixed_process_locations: dict[str, dict[str, tuple[str, str]]] = {}
+            for order_no, meta in fixed_orders.items():
+                contexts = self._build_schedule_process_contexts(
+                    order_no=order_no,
+                    product_code=str(meta.get("product_code") or ""),
+                    capacity_rows=capacity_map.get(order_no, []),
+                    route_rows=route_rows_by_product.get(str(meta.get("product_code") or ""), []),
+                    topology_by_process=topology_by_process,
+                    capacity_resolver=capacity_resolver,
+                )
+                location_map: dict[str, tuple[str, str]] = {}
+                for context in contexts:
+                    process_code = str(context.get("process_code") or "").strip().upper()
+                    workshop_code = str(context.get("workshop_code") or "").strip().upper()
+                    line_code = str(context.get("line_code") or "").strip().upper()
+                    if not process_code:
+                        continue
+                    mapping = (workshop_code, line_code)
+                    existing = location_map.get(process_code)
+                    if existing is not None and existing != mapping:
+                        raise server_error(
+                            code="SCHEDULE_FIXED_ORDER_LOCATION_CONFLICT",
+                            message="Fixed order has multiple workshop/line mappings for the same process.",
+                            details={
+                                "order_no": order_no,
+                                "process_code": process_code,
+                                "mappings": [existing, mapping],
+                            },
+                        )
+                    location_map[process_code] = mapping
+                fixed_process_locations[order_no] = location_map
+
+            for row in fixed_task_rows:
+                order_no = str(row.get("production_order_no") or "").strip()
+                process_code = str(row.get("process_code") or "").strip().upper()
+                calendar_date = _normalize_date_text(row.get("calendar_date"))
+                if not order_no or not process_code or not calendar_date:
+                    raise server_error(
+                        code="BASE_SCHEDULE_TASK_INVALID",
+                        message="Base schedule task is invalid.",
+                        details={
+                            "version_no": base_version_no,
+                            "task_no": row.get("task_no"),
+                        },
+                    )
+                shift_code = _normalize_shift_code(row.get("shift_code"))
+                plan_qty = _to_number(row.get("plan_qty"), 0)
+                if plan_qty < -SCHEDULE_NUMBER_EPSILON:
+                    raise server_error(
+                        code="BASE_SCHEDULE_TASK_PLAN_QTY_INVALID",
+                        message="Base schedule task plan_qty must be non-negative.",
+                        details={
+                            "version_no": base_version_no,
+                            "task_no": row.get("task_no"),
+                            "order_no": order_no,
+                            "process_code": process_code,
+                            "plan_qty": row.get("plan_qty"),
+                        },
+                    )
+
+                tasks.append(
+                    (
+                        version_no,
+                        task_no,
+                        order_no,
+                        process_code,
+                        str(row.get("process_name_cn") or process_code),
+                        calendar_date,
+                        shift_code,
+                        plan_qty,
+                        row.get("plan_start_time"),
+                    )
+                )
+                task_no += 1
+
+                mapping = fixed_process_locations.get(order_no, {}).get(process_code)
+                if mapping is None:
+                    raise server_error(
+                        code="BASE_SCHEDULE_TASK_LOCATION_MISSING",
+                        message="Base schedule task workshop/line mapping is missing for fixed schedule.",
+                        details={
+                            "version_no": base_version_no,
+                            "task_no": row.get("task_no"),
+                            "order_no": order_no,
+                            "process_code": process_code,
+                        },
+                    )
+                workshop_code, line_code = mapping
+                slot_index = _slot_index_from_text(calendar_date, shift_code)
+                key = (slot_index, workshop_code, line_code, process_code)
+                used_capacity_by_slot[key] = _to_number(used_capacity_by_slot.get(key), 0) + plan_qty
+
         while pending_candidates:
             selected_index = self._select_next_candidate_index(
                 strategy_code=strategy_code,

@@ -19,6 +19,7 @@ EXCLUDED_PARTS = {
     ".codex",
     "node_modules",
     ".next",
+    "_tmp",
     "logs",
     ".logs",
     "__pycache__",
@@ -52,7 +53,10 @@ def build_archive(archive_path: Path) -> None:
         for path in ROOT.rglob("*"):
             if should_exclude(path):
                 continue
-            tar.add(path, arcname=str(path.relative_to(ROOT)))
+            try:
+                tar.add(path, arcname=str(path.relative_to(ROOT)), recursive=False)
+            except PermissionError as exc:
+                raise RuntimeError(f"cannot package path due to permission error: {path}") from exc
 
 
 def run_remote(ssh: paramiko.SSHClient, command: str, timeout: int = 7200) -> tuple[int, str, str]:
