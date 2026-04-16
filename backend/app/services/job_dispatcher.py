@@ -134,7 +134,7 @@ class JobDispatcher:
                 [str(item) for item in payload.get("material_codes", [])]
             )
         if job_type == "ORDERS_SYNC_FROM_ERP":
-            return self.factory.build_order_sync_service().sync_orders_from_erp_full_reset()
+            return self.factory.build_order_sync_service().sync_orders_from_erp_incremental()
         if job_type == "LEGACY_ORDER_PATCH":
             return self._dispatch_app_service("patch_order_pool_order", str(payload["order_no"]), payload)
         if job_type == "LEGACY_ORDER_DELETE":

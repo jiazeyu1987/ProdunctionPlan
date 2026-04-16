@@ -120,12 +120,52 @@ class AppServiceBatchDispatchTestCase(unittest.TestCase):
         self.assertEqual(self._lock_flags(), [("MO-FROZEN-001", 0), ("MO-FROZEN-002", 0)])
         self.assertEqual(self._count_rows("dispatch_commands"), 0)
 
+    def test_batch_priority_up_updates_priority_levels(self) -> None:
+        self._seed_order("MO-PRI-001")
+        self._seed_order("MO-PRI-002")
+
+        result = self.service.batch_dispatch_commands(
+            {
+                "order_nos": ["MO-PRI-001", "MO-PRI-002"],
+                "command_type": "PRIORITY_UP",
+                "actor": {"username": "scheduler_e2e"},
+            }
+        )
+
+        rows = self.connection.execute(
+            """
+            SELECT production_order_no, priority_level
+            FROM order_pool_state
+            WHERE production_order_no IN ('MO-PRI-001', 'MO-PRI-002')
+            ORDER BY production_order_no
+            """
+        ).fetchall()
+        self.assertEqual(result["command_type"], "PRIORITY_UP")
+        self.assertEqual([(str(row[0]), int(row[1])) for row in rows], [("MO-PRI-001", 4), ("MO-PRI-002", 4)])
+
+    def test_batch_priority_up_rejects_orders_already_at_highest_priority(self) -> None:
+        self._seed_order("MO-PRI-HIGH", priority_level=1)
+        self._seed_order("MO-PRI-NORMAL", priority_level=3)
+
+        with self.assertRaises(AppError) as cm:
+            self.service.batch_dispatch_commands(
+                {
+                    "order_nos": ["MO-PRI-HIGH", "MO-PRI-NORMAL"],
+                    "command_type": "PRIORITY_UP",
+                    "actor": {"username": "scheduler_e2e"},
+                }
+            )
+
+        self.assertEqual(cm.exception.code, "ORDER_BATCH_DISPATCH_PRIORITY_STATE_INVALID")
+        self.assertEqual(self._count_rows("dispatch_commands"), 0)
+
     def _seed_order(
         self,
         order_no: str,
         *,
         lock_flag: int = 0,
         frozen_flag: int = 0,
+        priority_level: int = 5,
         order_status: str = "OPEN",
         completed_qty: float = 0,
         remaining_qty: float | None = None,
@@ -192,8 +232,8 @@ class AppServiceBatchDispatchTestCase(unittest.TestCase):
                 "2026-04-13",
                 "2026-04-13T08:00:00+08:00",
                 "2026-04-15T18:00:00+08:00",
-                5,
-                0,
+                priority_level,
+                1 if priority_level <= 1 else 0,
                 lock_flag,
                 frozen_flag,
                 order_status,

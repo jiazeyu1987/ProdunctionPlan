@@ -2,13 +2,13 @@
   "schema_version": 2,
   "task_id": "e2e-20260416T095413",
   "mode": "full",
-  "status": "ready_for_execution",
-  "current_phase": "P1",
+  "status": "completed",
+  "current_phase": null,
   "phase_statuses": [
     {
       "phase_id": "P1",
       "title": "设计并补齐轻量排产 E2E",
-      "status": "pending",
+      "status": "completed",
       "objective": "为 `/schedule/lite` 增加一个真实浏览器主流程用例，验证页面可达、关键操作可执行、浏览器本地状态可持久化与恢复。",
       "owned_paths": [],
       "dependencies": [],
@@ -18,30 +18,41 @@
         {
           "ac_id": "P1-AC1",
           "text": "调度员登录后可进入 `/schedule/lite`，且页面渲染出轻量排产工具栏与四个主 tab。",
-          "status": "pending",
-          "evidence": []
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#Final-Verdict"
+          ]
         },
         {
           "ac_id": "P1-AC2",
           "text": "用例可在真实浏览器中完成至少一条关键操作链，覆盖以下行为中的最少三项：切换排产模式、打开新增订单弹窗、保存场景快照、读取场景快照、推进一天、重置场景。",
-          "status": "pending",
-          "evidence": []
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#Final-Verdict"
+          ]
         },
         {
           "ac_id": "P1-AC3",
           "text": "用例必须验证 `localStorage` 持久化结果与 UI 状态一致，不能只做点击不校验副作用。",
-          "status": "pending",
-          "evidence": []
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#Final-Verdict"
+          ]
         }
       ],
-      "evidence": [],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
       "notes": "",
-      "last_reviewed_at": null
+      "last_reviewed_at": "2026-04-16T10:28:02"
     },
     {
       "phase_id": "P2",
       "title": "补齐测试工具页 E2E",
-      "status": "pending",
+      "status": "completed",
       "objective": "为 `/test` 增加真实浏览器页面级 E2E，覆盖 tab 可达性、路由可访问性以及无需外部系统的本地校验行为。",
       "owned_paths": [],
       "dependencies": [],
@@ -51,30 +62,41 @@
         {
           "ac_id": "P2-AC1",
           "text": "调度员登录后可进入 `/test`，并能看到四个业务接口验证 tab。",
-          "status": "pending",
-          "evidence": []
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#Final-Verdict"
+          ]
         },
         {
           "ac_id": "P2-AC2",
           "text": "用例必须验证 tab 切换行为真实生效，而不是仅检查按钮存在。",
-          "status": "pending",
-          "evidence": []
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#Final-Verdict"
+          ]
         },
         {
           "ac_id": "P2-AC3",
           "text": "用例必须覆盖至少两个无需外部系统的本地输入校验分支，并确认页面展示明确错误提示或空态，不伪造真实 ERP 成功链路。",
-          "status": "pending",
-          "evidence": []
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#Final-Verdict"
+          ]
         }
       ],
-      "evidence": [],
+      "evidence": [
+        "execution-log.md#Phase-P2"
+      ],
       "notes": "",
-      "last_reviewed_at": null
+      "last_reviewed_at": "2026-04-16T10:28:30"
     },
     {
       "phase_id": "P3",
       "title": "回归执行与证据收口",
-      "status": "pending",
+      "status": "completed",
       "objective": "运行新增用例与相邻回归命令，确认新增覆盖接入现有报告体系并形成可审计证据。",
       "owned_paths": [],
       "dependencies": [],
@@ -84,37 +106,48 @@
         {
           "ac_id": "P3-AC1",
           "text": "新增 spec 可通过仓库现有 Playwright 命令独立运行并返回退出码 0。",
-          "status": "pending",
-          "evidence": []
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#Final-Verdict"
+          ]
         },
         {
           "ac_id": "P3-AC2",
           "text": "至少执行一条相邻回归命令，证明新增改动未破坏既有关键 E2E 入口。",
-          "status": "pending",
-          "evidence": []
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#Final-Verdict"
+          ]
         },
         {
           "ac_id": "P3-AC3",
           "text": "`execution-log.md` 与 `test-report.md` 记录新增用例、执行命令、结果、风险与证据文件路径。",
-          "status": "pending",
-          "evidence": []
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#Final-Verdict"
+          ]
         }
       ],
-      "evidence": [],
+      "evidence": [
+        "execution-log.md#Phase-P3"
+      ],
       "notes": "",
-      "last_reviewed_at": null
+      "last_reviewed_at": "2026-04-16T10:26:17"
     }
   ],
   "planner_review_status": "approved",
-  "test_status": "not_started",
+  "test_status": "passed",
   "blocking_prereqs": [],
   "iteration_counts": {
     "planner_revisions": 0,
-    "executor_loops": 0,
-    "test_loops": 0
+    "executor_loops": 1,
+    "test_loops": 1
   },
   "created_at": "2026-04-16T09:54:13",
-  "updated_at": "2026-04-16T10:10:55",
+  "updated_at": "2026-04-16T10:38:05",
   "branch": "master",
   "baseline_revision": "762828608d32f6feb760b023167508ef24accbfb",
   "workspace_root": "D:\\ProjectPackage\\ProductionPlan",

@@ -396,6 +396,8 @@ class LineDailyCapacityService:
         workshop_code: str | None = None,
         line_code: str | None = None,
         process_code: str | None = None,
+        operator_keyword: str | None = None,
+        changed_only: bool = False,
         current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         normalized_date = _normalize_date_text(calendar_date)
@@ -415,6 +417,22 @@ class LineDailyCapacityService:
         if process_code:
             filters.append("process_code = ?")
             parameters.append(str(process_code).strip().upper())
+        if operator_keyword:
+            keyword = f"%{str(operator_keyword).strip()}%"
+            filters.append(
+                "(COALESCE(operator_display_name, '') LIKE ? OR COALESCE(operator_username, '') LIKE ?)"
+            )
+            parameters.extend([keyword, keyword])
+        if changed_only:
+            filters.append(
+                """
+                (
+                    COALESCE(old_planned_capacity_qty, 0) <> COALESCE(new_planned_capacity_qty, 0)
+                    OR COALESCE(old_worker_count, 0) <> COALESCE(new_worker_count, 0)
+                    OR COALESCE(old_machine_count, 0) <> COALESCE(new_machine_count, 0)
+                )
+                """
+            )
         manager_user_id = self._resolve_manager_user_id(current_user)
         if manager_user_id is not None:
             filters.append(

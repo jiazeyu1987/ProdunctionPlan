@@ -296,6 +296,14 @@ def _days_between(start_text: object, end_text: object) -> int:
     return max(0, (date.fromisoformat(end) - date.fromisoformat(start)).days)
 
 
+def _days_from_today(date_text: object) -> int | None:
+    normalized = _normalize_date_text(date_text)
+    if normalized is None:
+        return None
+    today = datetime.now(LOCAL_TIMEZONE).date()
+    return (date.fromisoformat(normalized) - today).days
+
+
 def _to_number(value: object, fallback: float = 0.0) -> float:
     try:
         number = float(value)
@@ -499,12 +507,14 @@ class AppService:
         self.inventory_gateway = ERPInventoryGateway()
         self.supply_gateway = ERPSupplyGateway()
 
-    def list_order_pool(self) -> dict[str, Any]:
+    def list_order_pool(self, *, version_no: str | None = None) -> dict[str, Any]:
         rows = self._list_order_rows()
         order_nos = [str(row["production_order_no"]) for row in rows]
         states = self._get_order_state_map(order_nos)
         capacity_map = self._get_capacity_map(order_nos)
         self._ensure_masterdata_seeded()
+        reference_version_no = self._resolve_order_pool_version_no(version_no)
+        shortage_analysis = self._build_schedule_shortage_analysis(reference_version_no)
         final_process_metrics_by_order = build_order_final_process_metrics(
             self.connection,
             rows,
@@ -522,16 +532,20 @@ class AppService:
                 capacity_rows=capacity_map.get(order_no, []),
                 route_rows=route_map.get(str(row["material_code"]), []),
                 topology_by_process=topology_by_process,
+                reference_version_no=reference_version_no,
+                shortage_summary=shortage_analysis["order_map"].get(order_no),
                 final_process_metrics=final_process_metrics_by_order.get(order_no),
             )
             )
-        return {"items": items}
+        return {"reference_version_no": reference_version_no, "items": items}
 
-    def get_order_pool_item(self, order_no: str) -> dict[str, Any]:
+    def get_order_pool_item(self, order_no: str, *, version_no: str | None = None) -> dict[str, Any]:
         base_row = self._require_order(order_no)
         state_row = self._get_order_state(order_no)
         self._ensure_masterdata_seeded()
         normalized_order_no = str(base_row["production_order_no"])
+        reference_version_no = self._resolve_order_pool_version_no(version_no)
+        shortage_analysis = self._build_schedule_shortage_analysis(reference_version_no)
         final_process_metrics = build_order_final_process_metrics(
             self.connection,
             [base_row],
@@ -548,6 +562,8 @@ class AppService:
             capacity_rows=capacity_rows,
             route_rows=route_rows,
             topology_by_process=topology_by_process,
+            reference_version_no=reference_version_no,
+            shortage_summary=shortage_analysis["order_map"].get(normalized_order_no),
             final_process_metrics=final_process_metrics,
         )
 
@@ -556,6 +572,7 @@ class AppService:
         order_no: str,
         *,
         process_code: str | None = None,
+        version_no: str | None = None,
     ) -> dict[str, Any]:
         base_row = self._require_order(order_no)
         normalized_order_no = str(base_row["production_order_no"]).strip()
@@ -567,7 +584,7 @@ class AppService:
                 message="process_code must be non-empty when provided.",
             )
 
-        reference_version_no = self._pick_reference_schedule_version_no()
+        reference_version_no = self._resolve_order_pool_version_no(version_no)
         if reference_version_no is None:
             return {
                 "summary": {
@@ -699,18 +716,29 @@ class AppService:
         }
 
         expected_start_date = _normalize_date_text(payload.get("expected_start_date"))
-        if expected_start_date:
-            duration_days = _days_between(
-                base_row.get("planned_start_date"),
-                base_row.get("planned_end_date"),
+        expected_start_shift = str(payload.get("expected_start_shift") or "").strip().upper()
+        if expected_start_shift and expected_start_shift not in {"DAY", "NIGHT"}:
+            raise bad_request(
+                code="ORDER_EXPECTED_START_SHIFT_INVALID",
+                message="expected_start_shift must be DAY or NIGHT.",
             )
-            finish_date = (
-                date.fromisoformat(expected_start_date) + timedelta(days=duration_days)
-            ).isoformat()
+        if expected_start_date:
             next_row["expected_start_date"] = expected_start_date
-            next_row["expected_start_time"] = _iso_at(expected_start_date, "08:00:00")
-            next_row["expected_finish_time"] = _iso_at(finish_date, "18:00:00")
-            next_row["promised_due_date"] = finish_date
+            next_row["expected_start_time"] = _iso_at(
+                expected_start_date,
+                "20:00:00" if expected_start_shift == "NIGHT" else "08:00:00",
+            )
+        elif expected_start_shift:
+            current_start_date = _normalize_date_text(current.get("expected_start_date"))
+            if current_start_date is None:
+                raise bad_request(
+                    code="ORDER_EXPECTED_START_DATE_REQUIRED",
+                    message="expected_start_date is required when expected_start_shift is provided.",
+                )
+            next_row["expected_start_time"] = _iso_at(
+                current_start_date,
+                "20:00:00" if expected_start_shift == "NIGHT" else "08:00:00",
+            )
 
         if "priority_level" in payload:
             next_row["priority_level"] = _normalize_priority_level(payload.get("priority_level"), PRIORITY_LEVEL_MAX)
@@ -730,23 +758,23 @@ class AppService:
         if order_status_value:
             next_row["order_status"] = order_status_value
 
+        if status_value == "DONE" or order_status_value == "DONE" or int(_to_number(payload.get("revoke_done_flag"), 0)) == 1:
+            raise bad_request(
+                code="ORDER_MANUAL_COMPLETION_FORBIDDEN",
+                message="订单不能通过手工补丁直接完工或撤销完工，请使用末道报工更新订单状态。",
+            )
+
         production_qty = _to_number(base_row.get("production_qty"), 0)
-        revoke_done_flag = int(_to_number(payload.get("revoke_done_flag"), 0)) == 1
         normalized_status = str(
             next_row.get("order_status") or next_row.get("status") or ""
         ).strip().upper()
-        if revoke_done_flag:
-            next_row["status"] = "OPEN"
-            next_row["order_status"] = "OPEN"
-            next_row["completed_qty"] = 0
-            next_row["remaining_qty"] = production_qty
-            next_row["progress_rate"] = 0
-        elif normalized_status == "DONE":
-            next_row["status"] = "DONE"
-            next_row["order_status"] = "DONE"
-            next_row["completed_qty"] = production_qty
-            next_row["remaining_qty"] = 0
-            next_row["progress_rate"] = 100
+        if normalized_status in {"DONE", "COMPLETED"}:
+            raise bad_request(
+                code="ORDER_MANUAL_COMPLETION_FORBIDDEN",
+                message="订单不能通过手工补丁直接完工，请使用末道报工更新订单状态。",
+            )
+        next_row["remaining_qty"] = max(0, _to_number(next_row.get("remaining_qty"), production_qty))
+        next_row["progress_rate"] = max(0, _to_number(next_row.get("progress_rate"), 0))
 
         if "production_batch_no" in payload:
             next_row["production_batch_no"] = str(payload.get("production_batch_no") or "").strip() or None
@@ -757,12 +785,10 @@ class AppService:
 
     def delete_order_pool_order(self, order_no: str) -> dict[str, Any]:
         self._require_order(order_no)
-        with transaction(self.connection):
-            self.connection.execute(
-                "DELETE FROM production_orders WHERE production_order_no = ?",
-                (order_no,),
-            )
-        return {"ok": True}
+        raise bad_request(
+            code="ORDER_DELETE_FORBIDDEN",
+            message="生产订单不允许物理删除，请使用 ERP 同步失效/关闭或后续审批能力处理。",
+        )
 
     def list_mes_reportings(
         self,
@@ -800,6 +826,7 @@ class AppService:
             SELECT
                 report_id,
                 production_order_no,
+                report_scope,
                 process_code,
                 process_name,
                 workshop_code,
@@ -1236,6 +1263,9 @@ class AppService:
         process_meta_by_code: dict[str, dict[str, str]] = {}
         line_planned_capacity_by_code: dict[str, dict[str, float]] = defaultdict(dict)
         process_planned_capacity_by_code: dict[str, dict[str, float]] = defaultdict(dict)
+        line_daily_stats_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        process_daily_stats_by_key: dict[tuple[str, str], dict[str, Any]] = {}
+        daily_pressure_items: list[dict[str, Any]] = []
         process_name_by_code = self._process_name_by_code()
 
         while current_date_value <= end_date_value:
@@ -1260,6 +1290,10 @@ class AppService:
             day_failure_row_count = 0
             day_line_planned_capacity: dict[str, float] = defaultdict(float)
             day_process_planned_capacity: dict[str, float] = defaultdict(float)
+            day_line_default_capacity: dict[str, float] = defaultdict(float)
+            day_line_actual_capacity: dict[str, float] = defaultdict(float)
+            day_process_default_capacity: dict[str, float] = defaultdict(float)
+            day_process_actual_capacity: dict[str, float] = defaultdict(float)
             for row in capacity_rows:
                 default_capacity_qty = _to_number(row.get("default_capacity_qty"), 0)
                 planned_capacity_qty = _to_number(row.get("planned_capacity_qty"), 0)
@@ -1277,6 +1311,8 @@ class AppService:
                         },
                     )
                     day_line_planned_capacity[line_code] += planned_capacity_qty
+                    day_line_default_capacity[line_code] += default_capacity_qty
+                    day_line_actual_capacity[line_code] += actual_capacity_qty
                 process_code = _normalize_dashboard_code(row.get("process_code"))
                 if process_code:
                     process_name_cn = _normalize_dashboard_name(
@@ -1291,6 +1327,8 @@ class AppService:
                         },
                     )
                     day_process_planned_capacity[process_code] += planned_capacity_qty
+                    day_process_default_capacity[process_code] += default_capacity_qty
+                    day_process_actual_capacity[process_code] += actual_capacity_qty
                 day_default_capacity_qty += default_capacity_qty
                 day_planned_capacity_qty += planned_capacity_qty
                 day_actual_capacity_qty += actual_capacity_qty
@@ -1326,8 +1364,63 @@ class AppService:
             )
             for line_code, planned_capacity in day_line_planned_capacity.items():
                 line_planned_capacity_by_code[line_code][calendar_date] = planned_capacity
+                line_daily_stats_by_key[(calendar_date, line_code)] = {
+                    "calendar_date": calendar_date,
+                    "line_code": line_code,
+                    "line_name": str(
+                        (line_meta_by_code.get(line_code) or {}).get("line_name") or line_code
+                    ).strip()
+                    or line_code,
+                    "default_capacity_qty": round(day_line_default_capacity.get(line_code, 0), 4),
+                    "planned_capacity_qty": round(planned_capacity, 4),
+                    "actual_capacity_qty": round(day_line_actual_capacity.get(line_code, 0), 4),
+                }
             for process_code, planned_capacity in day_process_planned_capacity.items():
                 process_planned_capacity_by_code[process_code][calendar_date] = planned_capacity
+                process_daily_stats_by_key[(calendar_date, process_code)] = {
+                    "calendar_date": calendar_date,
+                    "process_code": process_code,
+                    "process_name_cn": str(
+                        (process_meta_by_code.get(process_code) or {}).get("process_name_cn")
+                        or process_code
+                    ).strip()
+                    or process_code,
+                    "default_capacity_qty": round(day_process_default_capacity.get(process_code, 0), 4),
+                    "planned_capacity_qty": round(planned_capacity, 4),
+                    "actual_capacity_qty": round(day_process_actual_capacity.get(process_code, 0), 4),
+                }
+            day_line_stats = [line_daily_stats_by_key[(calendar_date, code)] for code in day_line_planned_capacity]
+            overload_line_count = sum(
+                1
+                for item in day_line_stats
+                if _to_number(item.get("planned_capacity_qty"), 0)
+                > _to_number(item.get("default_capacity_qty"), 0) + SCHEDULE_NUMBER_EPSILON
+            )
+            idle_line_count = sum(
+                1
+                for item in day_line_stats
+                if _to_number(item.get("planned_capacity_qty"), 0)
+                + SCHEDULE_NUMBER_EPSILON
+                < _to_number(item.get("default_capacity_qty"), 0)
+            )
+            utilization_rate = (
+                round(day_planned_capacity_qty / day_default_capacity_qty * 100, 2)
+                if day_default_capacity_qty > SCHEDULE_NUMBER_EPSILON
+                else 0
+            )
+            daily_pressure_items.append(
+                {
+                    "calendar_date": calendar_date,
+                    "default_capacity_qty": round(day_default_capacity_qty, 4),
+                    "planned_capacity_qty": round(day_planned_capacity_qty, 4),
+                    "actual_capacity_qty": round(day_actual_capacity_qty, 4),
+                    "utilization_rate": utilization_rate,
+                    "overload_qty": round(max(0.0, day_planned_capacity_qty - day_default_capacity_qty), 4),
+                    "idle_qty": round(max(0.0, day_default_capacity_qty - day_planned_capacity_qty), 4),
+                    "overload_line_count": overload_line_count,
+                    "idle_line_count": idle_line_count,
+                }
+            )
             total_default_capacity_qty += day_default_capacity_qty
             total_planned_capacity_qty += day_planned_capacity_qty
             total_actual_capacity_qty += day_actual_capacity_qty
@@ -1448,6 +1541,108 @@ class AppService:
             for index, item in enumerate(material_ranking)
         ]
 
+        line_overload_items = []
+        for item in line_daily_stats_by_key.values():
+            default_capacity_qty = _to_number(item.get("default_capacity_qty"), 0)
+            planned_capacity_qty = _to_number(item.get("planned_capacity_qty"), 0)
+            actual_capacity_qty = _to_number(item.get("actual_capacity_qty"), 0)
+            utilization_rate = (
+                round(planned_capacity_qty / default_capacity_qty * 100, 2)
+                if default_capacity_qty > SCHEDULE_NUMBER_EPSILON
+                else 0
+            )
+            overload_qty = max(0.0, planned_capacity_qty - default_capacity_qty)
+            idle_qty = max(0.0, default_capacity_qty - planned_capacity_qty)
+            line_overload_items.append(
+                {
+                    **item,
+                    "utilization_rate": utilization_rate,
+                    "overload_qty": round(overload_qty, 4),
+                    "idle_qty": round(idle_qty, 4),
+                    "actual_capacity_qty": round(actual_capacity_qty, 4),
+                }
+            )
+        line_overload_items.sort(
+            key=lambda item: (
+                -_to_number(item.get("overload_qty"), 0),
+                -_to_number(item.get("utilization_rate"), 0),
+                str(item.get("calendar_date") or ""),
+                str(item.get("line_code") or ""),
+            )
+        )
+
+        process_bottleneck_items = []
+        process_grouped_daily: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for item in process_daily_stats_by_key.values():
+            process_grouped_daily[str(item.get("process_code") or "")].append(item)
+        for process_code, grouped_items in process_grouped_daily.items():
+            peak_item = None
+            utilization_rates: list[float] = []
+            peak_utilization_rate = 0.0
+            for item in grouped_items:
+                default_capacity_qty = _to_number(item.get("default_capacity_qty"), 0)
+                planned_capacity_qty = _to_number(item.get("planned_capacity_qty"), 0)
+                utilization_rate = (
+                    round(planned_capacity_qty / default_capacity_qty * 100, 2)
+                    if default_capacity_qty > SCHEDULE_NUMBER_EPSILON
+                    else 0
+                )
+                utilization_rates.append(utilization_rate)
+                if peak_item is None or utilization_rate > peak_utilization_rate:
+                    peak_item = item
+                    peak_utilization_rate = utilization_rate
+            average_utilization_rate = (
+                round(sum(utilization_rates) / len(utilization_rates), 2)
+                if utilization_rates
+                else 0
+            )
+            process_bottleneck_items.append(
+                {
+                    "process_code": process_code,
+                    "process_name_cn": str(
+                        (peak_item or {}).get("process_name_cn") or process_code
+                    ).strip()
+                    or process_code,
+                    "peak_utilization_rate": peak_utilization_rate,
+                    "average_utilization_rate": average_utilization_rate,
+                    "peak_date": (peak_item or {}).get("calendar_date"),
+                    "peak_planned_capacity_qty": round(
+                        _to_number((peak_item or {}).get("planned_capacity_qty"), 0),
+                        4,
+                    ),
+                    "peak_default_capacity_qty": round(
+                        _to_number((peak_item or {}).get("default_capacity_qty"), 0),
+                        4,
+                    ),
+                }
+            )
+        process_bottleneck_items.sort(
+            key=lambda item: (
+                -_to_number(item.get("peak_utilization_rate"), 0),
+                -_to_number(item.get("average_utilization_rate"), 0),
+                str(item.get("process_code") or ""),
+            )
+        )
+
+        peak_overload_day = max(
+            daily_pressure_items,
+            key=lambda item: (
+                _to_number(item.get("overload_qty"), 0),
+                _to_number(item.get("utilization_rate"), 0),
+            ),
+            default={},
+        )
+        peak_idle_day = max(
+            daily_pressure_items,
+            key=lambda item: (
+                _to_number(item.get("idle_qty"), 0),
+                -_to_number(item.get("utilization_rate"), 0),
+            ),
+            default={},
+        )
+        top_overload_line = line_overload_items[0] if line_overload_items else {}
+        top_bottleneck_process = process_bottleneck_items[0] if process_bottleneck_items else {}
+
         total_days = (end_date_value - start_date_value).days + 1
         return {
             "range": {
@@ -1501,6 +1696,36 @@ class AppService:
             "material_consumption": {
                 "top_n": normalized_top_n,
                 "items": material_consumption_items,
+            },
+            "cockpit": {
+                "summary": {
+                    "peak_overload_date": peak_overload_day.get("calendar_date"),
+                    "peak_overload_qty": round(
+                        _to_number(peak_overload_day.get("overload_qty"), 0),
+                        4,
+                    ),
+                    "peak_idle_date": peak_idle_day.get("calendar_date"),
+                    "peak_idle_qty": round(_to_number(peak_idle_day.get("idle_qty"), 0), 4),
+                    "top_overload_line_code": top_overload_line.get("line_code"),
+                    "top_overload_line_name": top_overload_line.get("line_name"),
+                    "top_overload_line_date": top_overload_line.get("calendar_date"),
+                    "top_overload_line_utilization_rate": _to_number(
+                        top_overload_line.get("utilization_rate"),
+                        0,
+                    ),
+                    "top_bottleneck_process_code": top_bottleneck_process.get("process_code"),
+                    "top_bottleneck_process_name_cn": top_bottleneck_process.get(
+                        "process_name_cn"
+                    ),
+                    "top_bottleneck_process_peak_date": top_bottleneck_process.get("peak_date"),
+                    "top_bottleneck_process_peak_utilization_rate": _to_number(
+                        top_bottleneck_process.get("peak_utilization_rate"),
+                        0,
+                    ),
+                },
+                "line_overload_items": line_overload_items[:8],
+                "process_bottleneck_items": process_bottleneck_items[:8],
+                "daily_pressure_items": daily_pressure_items,
             },
         }
 
@@ -1578,6 +1803,8 @@ class AppService:
         workshop_code: str | None = None,
         line_code: str | None = None,
         process_code: str | None = None,
+        operator_keyword: str | None = None,
+        changed_only: bool = False,
         current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         return self.line_daily_capacity_service.list_line_daily_capacity_audits(
@@ -1585,6 +1812,8 @@ class AppService:
             workshop_code=workshop_code,
             line_code=line_code,
             process_code=process_code,
+            operator_keyword=operator_keyword,
+            changed_only=changed_only,
             current_user=current_user,
         )
 
@@ -1603,6 +1832,7 @@ class AppService:
         order_no = str(payload.get("order_no") or "").strip() or None
         process_code = str(payload.get("process_code") or "").strip().upper()
         report_qty = _to_number(payload.get("report_qty"), -1)
+        report_scope = str(payload.get("report_scope") or "").strip().upper()
         if not process_code:
             raise bad_request(
                 code="PROCESS_CODE_REQUIRED",
@@ -1613,8 +1843,19 @@ class AppService:
                 code="REPORT_QTY_INVALID",
                 message="report_qty must be greater than 0.",
             )
+        if report_scope and report_scope not in {"ORDER", "LINE_OUTPUT"}:
+            raise bad_request(
+                code="REPORT_SCOPE_INVALID",
+                message="report_scope must be ORDER or LINE_OUTPUT.",
+            )
         if order_no:
             self._require_order(order_no)
+        elif report_scope == "ORDER":
+            raise bad_request(
+                code="REPORT_ORDER_REQUIRED",
+                message="订单报工必须指定 order_no。",
+            )
+        normalized_report_scope = report_scope or ("ORDER" if order_no else "LINE_OUTPUT")
         process_name_by_code = self._process_name_by_code()
         report_id = f"RPT-{uuid4().hex[:10].upper()}"
         report_time_text = str(payload.get("report_time") or "").strip()
@@ -1710,11 +1951,12 @@ class AppService:
                     report_time,
                     operator_name,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     report_id,
                     order_no,
+                    normalized_report_scope,
                     process_code,
                     process_name_by_code.get(process_code, process_code),
                     workshop_code,
@@ -1727,17 +1969,68 @@ class AppService:
                     report_time,
                 ),
             )
+            if order_no:
+                self._sync_order_state_from_reporting(
+                    order_no=order_no,
+                    process_code=process_code,
+                )
         if workshop_code and line_code:
             self.rebuild_line_daily_actual_capacity({"calendar_date": reporting_local_date})
         return {
             "report_id": report_id,
             "order_no": order_no,
+            "report_scope": normalized_report_scope,
             "process_code": process_code,
             "process_name_cn": process_name_by_code.get(process_code, process_code),
             "report_qty": report_qty,
             "report_time": report_time,
             "operator_name_cn": operator_name,
         }
+
+    def _sync_order_state_from_reporting(self, *, order_no: str, process_code: str) -> None:
+        base_row = self._require_order(order_no)
+        state_row = self._get_order_state(order_no) or {}
+        product_code = str(base_row.get("material_code") or "").strip().upper()
+        final_meta = self._resolve_final_process_meta_by_product({product_code}).get(product_code) or {}
+        final_process_code = str(final_meta.get("process_code") or "").strip().upper()
+        if not final_process_code or final_process_code != process_code:
+            return
+
+        final_report_row = fetch_one(
+            self.connection,
+            """
+            SELECT COALESCE(SUM(report_qty), 0) AS total_qty
+            FROM work_reports
+            WHERE production_order_no = ?
+              AND UPPER(TRIM(COALESCE(process_code, ''))) = ?
+            """,
+            (order_no, final_process_code),
+        )
+        completed_qty = _to_number((final_report_row or {}).get("total_qty"), 0)
+        production_qty = _to_number(base_row.get("production_qty"), 0)
+        remaining_qty = max(0.0, production_qty - completed_qty)
+        progress_rate = (completed_qty / production_qty * 100) if production_qty > 0 else 0
+        normalized_status = "DONE" if production_qty > 0 and completed_qty + SCHEDULE_NUMBER_EPSILON >= production_qty else "IN_PROGRESS" if completed_qty > 0 else "OPEN"
+        next_row = {
+            "production_order_no": order_no,
+            "promised_due_date": state_row.get("promised_due_date") or base_row.get("planned_end_date"),
+            "expected_start_date": state_row.get("expected_start_date") or base_row.get("planned_start_date"),
+            "expected_start_time": state_row.get("expected_start_time")
+            or _iso_at(state_row.get("expected_start_date") or base_row.get("planned_start_date"), "08:00:00"),
+            "expected_finish_time": state_row.get("expected_finish_time")
+            or _iso_at(state_row.get("promised_due_date") or base_row.get("planned_end_date"), "18:00:00"),
+            "priority_level": _normalize_priority_level(state_row.get("priority_level"), PRIORITY_LEVEL_MAX),
+            "urgent_flag": _urgent_flag_from_priority_level(state_row.get("priority_level")),
+            "lock_flag": int(_to_number(state_row.get("lock_flag"), 0)),
+            "frozen_flag": int(_to_number(state_row.get("frozen_flag"), 0)),
+            "status": normalized_status,
+            "order_status": normalized_status,
+            "completed_qty": completed_qty,
+            "remaining_qty": remaining_qty,
+            "progress_rate": min(100.0, round(progress_rate, 4)),
+            "production_batch_no": state_row.get("production_batch_no"),
+        }
+        self._upsert_order_state(next_row)
 
     def import_mes_reportings_from_xlsx(self, payload: dict[str, Any]) -> dict[str, Any]:
         file_path = str(payload.get("file_path") or "").strip()
@@ -2560,6 +2853,8 @@ class AppService:
                 production_order_no,
                 process_code,
                 process_name_cn,
+                workshop_code,
+                line_code,
                 calendar_date,
                 shift_code,
                 plan_qty,
@@ -2576,6 +2871,8 @@ class AppService:
                     "order_no": row["production_order_no"],
                     "process_code": row["process_code"],
                     "process_name_cn": row.get("process_name_cn") or row["process_code"],
+                    "workshop_code": row.get("workshop_code"),
+                    "line_code": row.get("line_code"),
                     "calendar_date": row["calendar_date"],
                     "shift_code": row["shift_code"],
                     "plan_qty": row["plan_qty"],
@@ -2669,53 +2966,18 @@ class AppService:
 
     def get_schedule_material_shortages(self, version_no: str) -> dict[str, Any]:
         current_version = self.get_schedule_version(version_no)
-        task_rows = self._list_schedule_task_detail_rows(version_no)
-        current_orders = self._build_schedule_order_summary_map(task_rows)
-        material_rows = self._list_schedule_material_rows()
-        material_map = self._build_schedule_material_usage_map(
-            current_orders,
-            material_rows=material_rows,
-        )
-        impacted_order_nos: set[str] = set()
-        items: list[dict[str, Any]] = []
-        for material_code in sorted(material_map):
-            current = material_map[material_code]
-            estimated_inventory_qty = _to_number(current.get("estimated_inventory_qty"), 0)
-            if estimated_inventory_qty >= 0:
-                continue
-            order_nos = sorted(
-                {
-                    str(order_no).strip()
-                    for order_no in current.get("order_nos", [])
-                    if str(order_no).strip()
-                }
-            )
-            impacted_order_nos.update(order_nos)
-            items.append(
-                {
-                    "material_code": material_code,
-                    "material_name": current.get("material_name"),
-                    "supply_type_name": current.get("supply_type_name"),
-                    "inventory_qty": _to_number(current.get("inventory_qty"), 0),
-                    "planned_consume_qty": _to_number(current.get("planned_consume_qty"), 0),
-                    "estimated_inventory_qty": estimated_inventory_qty,
-                    "shortage_qty": abs(estimated_inventory_qty),
-                    "order_nos": order_nos,
-                }
-            )
-        items.sort(
-            key=lambda item: (
-                -_to_number(item.get("shortage_qty"), 0),
-                str(item.get("material_code") or ""),
-            )
-        )
+        shortage_analysis = self._build_schedule_shortage_analysis(version_no)
         return {
             "summary": {
                 "version_no": str(current_version["version_no"]),
-                "shortage_material_count": len(items),
-                "impacted_order_count": len(impacted_order_nos),
+                "shortage_material_count": int(
+                    shortage_analysis["summary"].get("shortage_material_count") or 0
+                ),
+                "impacted_order_count": int(
+                    shortage_analysis["summary"].get("impacted_order_count") or 0
+                ),
             },
-            "items": items,
+            "items": shortage_analysis["items"],
         }
 
     def _pick_reference_schedule_version_no(self) -> str | None:
@@ -2765,6 +3027,13 @@ class AppService:
         version_no = str(row.get("version_no") or "").strip()
         return version_no or None
 
+    def _resolve_order_pool_version_no(self, version_no: str | None) -> str | None:
+        normalized_version_no = str(version_no or "").strip()
+        if normalized_version_no:
+            self.get_schedule_version(normalized_version_no)
+            return normalized_version_no
+        return self._pick_reference_schedule_version_no()
+
     def _list_schedule_task_rows_by_version_order(
         self,
         *,
@@ -2780,6 +3049,8 @@ class AppService:
                 st.production_order_no,
                 st.process_code,
                 COALESCE(st.process_name_cn, st.process_code) AS process_name_cn,
+                st.workshop_code,
+                st.line_code,
                 st.calendar_date,
                 st.shift_code,
                 st.plan_qty,
@@ -2812,6 +3083,8 @@ class AppService:
                 st.production_order_no,
                 st.process_code,
                 COALESCE(st.process_name_cn, st.process_code) AS process_name_cn,
+                st.workshop_code,
+                st.line_code,
                 st.calendar_date,
                 st.shift_code,
                 st.plan_qty,
@@ -3310,6 +3583,8 @@ class AppService:
                 st.production_order_no,
                 st.process_code,
                 COALESCE(st.process_name_cn, st.process_code) AS process_name_cn,
+                st.workshop_code,
+                st.line_code,
                 st.calendar_date,
                 st.shift_code,
                 st.plan_qty,
@@ -3635,6 +3910,170 @@ class AppService:
             current["estimated_inventory_qty"] = current["inventory_qty"] - current["planned_consume_qty"]
             current["order_nos"] = sorted(current["order_nos"])
         return out
+
+    def _build_schedule_shortage_analysis(self, version_no: str | None) -> dict[str, Any]:
+        if not version_no:
+            return {
+                "summary": {
+                    "shortage_material_count": 0,
+                    "impacted_order_count": 0,
+                },
+                "items": [],
+                "order_map": {},
+            }
+
+        task_rows = self._list_schedule_task_detail_rows(version_no)
+        if len(task_rows) == 0:
+            return {
+                "summary": {
+                    "shortage_material_count": 0,
+                    "impacted_order_count": 0,
+                },
+                "items": [],
+                "order_map": {},
+            }
+
+        current_orders = self._build_schedule_order_summary_map(task_rows)
+        first_task_by_order: dict[str, dict[str, Any]] = {}
+        for row in task_rows:
+            order_no = str(row.get("production_order_no") or "").strip()
+            if order_no and order_no not in first_task_by_order:
+                first_task_by_order[order_no] = row
+
+        material_map = self._build_schedule_material_usage_map(
+            current_orders,
+            material_rows=self._list_schedule_material_rows(),
+        )
+        impacted_order_nos: set[str] = set()
+        items: list[dict[str, Any]] = []
+        order_map: dict[str, dict[str, Any]] = {}
+
+        def impacted_order_sort_key(item: dict[str, Any]) -> tuple[str, str]:
+            start_date = str(item.get("shortage_start_date") or "").strip()
+            return (start_date or "9999-12-31", str(item.get("order_no") or "").strip())
+
+        for material_code in sorted(material_map):
+            current = material_map[material_code]
+            estimated_inventory_qty = _to_number(current.get("estimated_inventory_qty"), 0)
+            if estimated_inventory_qty >= 0:
+                continue
+            order_nos = sorted(
+                {
+                    str(order_no).strip()
+                    for order_no in current.get("order_nos", [])
+                    if str(order_no).strip()
+                }
+            )
+            impacted_order_nos.update(order_nos)
+            impacted_orders: list[dict[str, Any]] = []
+            for order_no in order_nos:
+                order_summary = current_orders.get(order_no) or {}
+                first_task = first_task_by_order.get(order_no) or {}
+                impacted_order = {
+                    "order_no": order_no,
+                    "shortage_start_date": _normalize_date_text(order_summary.get("start_date")),
+                    "first_impacted_process_code": str(
+                        first_task.get("process_code") or ""
+                    ).strip().upper()
+                    or None,
+                    "first_impacted_process_name_cn": str(
+                        first_task.get("process_name_cn")
+                        or first_task.get("process_code")
+                        or ""
+                    ).strip()
+                    or None,
+                }
+                impacted_orders.append(impacted_order)
+
+                current_order_summary = order_map.get(order_no)
+                if current_order_summary is None:
+                    current_order_summary = {
+                        "shortage_material_count": 0,
+                        "items": [],
+                    }
+                    order_map[order_no] = current_order_summary
+                current_order_summary["items"].append(
+                    {
+                        "material_code": material_code,
+                        "material_name": str(current.get("material_name") or material_code).strip()
+                        or material_code,
+                        "shortage_qty": abs(estimated_inventory_qty),
+                        **impacted_order,
+                    }
+                )
+
+            impacted_orders.sort(key=impacted_order_sort_key)
+            first_impacted_order = impacted_orders[0] if impacted_orders else {}
+            items.append(
+                {
+                    "material_code": material_code,
+                    "material_name": current.get("material_name"),
+                    "supply_type_name": current.get("supply_type_name"),
+                    "inventory_qty": _to_number(current.get("inventory_qty"), 0),
+                    "planned_consume_qty": _to_number(current.get("planned_consume_qty"), 0),
+                    "estimated_inventory_qty": estimated_inventory_qty,
+                    "shortage_qty": abs(estimated_inventory_qty),
+                    "order_nos": order_nos,
+                    "impacted_orders": impacted_orders,
+                    "first_impacted_order_no": first_impacted_order.get("order_no"),
+                    "shortage_start_date": first_impacted_order.get("shortage_start_date"),
+                    "first_impacted_process_code": first_impacted_order.get("first_impacted_process_code"),
+                    "first_impacted_process_name_cn": first_impacted_order.get(
+                        "first_impacted_process_name_cn"
+                    ),
+                }
+            )
+
+        items.sort(
+            key=lambda item: (
+                -_to_number(item.get("shortage_qty"), 0),
+                str(item.get("material_code") or ""),
+            )
+        )
+
+        for order_summary in order_map.values():
+            material_items = (
+                order_summary.get("items")
+                if isinstance(order_summary.get("items"), list)
+                else []
+            )
+            material_items.sort(
+                key=lambda item: (
+                    str(item.get("shortage_start_date") or "").strip() or "9999-12-31",
+                    -_to_number(item.get("shortage_qty"), 0),
+                    str(item.get("material_code") or ""),
+                )
+            )
+            first_item = material_items[0] if material_items else {}
+            order_summary["shortage_material_count"] = len(material_items)
+            order_summary["first_material_code"] = first_item.get("material_code")
+            order_summary["first_material_name"] = first_item.get("material_name")
+            order_summary["shortage_start_date"] = first_item.get("shortage_start_date")
+            order_summary["first_impacted_process_code"] = first_item.get("first_impacted_process_code")
+            order_summary["first_impacted_process_name_cn"] = first_item.get(
+                "first_impacted_process_name_cn"
+            )
+            if material_items:
+                first_material_name = str(
+                    first_item.get("material_name") or first_item.get("material_code") or "物料"
+                ).strip() or "物料"
+                if len(material_items) == 1:
+                    order_summary["summary_text"] = first_material_name
+                else:
+                    order_summary["summary_text"] = (
+                        f"{first_material_name} 等 {len(material_items)} 项"
+                    )
+            else:
+                order_summary["summary_text"] = ""
+
+        return {
+            "summary": {
+                "shortage_material_count": len(items),
+                "impacted_order_count": len(impacted_order_nos),
+            },
+            "items": items,
+            "order_map": order_map,
+        }
 
     def _build_schedule_material_changes(
         self,
@@ -4297,6 +4736,7 @@ class AppService:
 
         schedule_candidates: list[dict[str, Any]] = []
         fixed_orders: dict[str, dict[str, Any]] = {}
+        missing_fixed_order_nos: list[str] = []
         day_mode_cache: dict[str, str] = {}
         simulation_state = self._get_simulation_state()
         simulation_start = _parse_date_or_today(simulation_state.get("current_date"))
@@ -4330,6 +4770,8 @@ class AppService:
                         "order_no": order_no,
                         "product_code": str(order_row["material_code"]),
                     }
+                else:
+                    missing_fixed_order_nos.append(order_no)
                 continue
 
             process_contexts = self._build_schedule_process_contexts(
@@ -4412,13 +4854,20 @@ class AppService:
                 }
             )
 
+        if missing_fixed_order_nos:
+            raise bad_request(
+                code="SCHEDULE_FIXED_ORDER_MISSING_FROM_BASE",
+                message="存在锁定或冻结订单未出现在基准版本中，已禁止继续重排。",
+                details={"order_nos": sorted(set(missing_fixed_order_nos))},
+            )
+
         pending_candidates = self._sort_schedule_candidates(
             strategy_code=strategy_code,
             candidates=schedule_candidates,
         )
 
         tasks: list[tuple[Any, ...]] = []
-        used_capacity_by_slot: dict[tuple[int, str, str, str], float] = {}
+        used_capacity_by_slot: dict[tuple[Any, ...], float] = {}
         task_no = 1
         if base_version_no and fixed_orders:
             fixed_order_nos = list(fixed_orders.keys())
@@ -4429,8 +4878,11 @@ class AppService:
                 SELECT
                     task_no,
                     production_order_no,
+                    report_scope,
                     process_code,
                     process_name_cn,
+                    workshop_code,
+                    line_code,
                     calendar_date,
                     shift_code,
                     plan_qty,
@@ -4443,7 +4895,7 @@ class AppService:
                 tuple([base_version_no, *fixed_order_nos]),
             )
 
-            fixed_process_locations: dict[str, dict[str, tuple[str, str]]] = {}
+            fixed_process_locations: dict[str, dict[str, set[tuple[str, str]]]] = {}
             for order_no, meta in fixed_orders.items():
                 contexts = self._build_schedule_process_contexts(
                     order_no=order_no,
@@ -4453,26 +4905,20 @@ class AppService:
                     topology_by_process=topology_by_process,
                     capacity_resolver=capacity_resolver,
                 )
-                location_map: dict[str, tuple[str, str]] = {}
+                location_map: dict[str, set[tuple[str, str]]] = {}
                 for context in contexts:
                     process_code = str(context.get("process_code") or "").strip().upper()
-                    workshop_code = str(context.get("workshop_code") or "").strip().upper()
-                    line_code = str(context.get("line_code") or "").strip().upper()
+                    candidate_contexts = context.get("candidate_contexts") if isinstance(context.get("candidate_contexts"), list) else []
                     if not process_code:
                         continue
-                    mapping = (workshop_code, line_code)
-                    existing = location_map.get(process_code)
-                    if existing is not None and existing != mapping:
-                        raise server_error(
-                            code="SCHEDULE_FIXED_ORDER_LOCATION_CONFLICT",
-                            message="Fixed order has multiple workshop/line mappings for the same process.",
-                            details={
-                                "order_no": order_no,
-                                "process_code": process_code,
-                                "mappings": [existing, mapping],
-                            },
+                    location_map[process_code] = {
+                        (
+                            str(item.get("workshop_code") or "").strip().upper(),
+                            str(item.get("line_code") or "").strip().upper(),
                         )
-                    location_map[process_code] = mapping
+                        for item in candidate_contexts
+                        if str(item.get("workshop_code") or "").strip() and str(item.get("line_code") or "").strip()
+                    }
                 fixed_process_locations[order_no] = location_map
 
             for row in fixed_task_rows:
@@ -4510,6 +4956,8 @@ class AppService:
                         order_no,
                         process_code,
                         str(row.get("process_name_cn") or process_code),
+                        str(row.get("workshop_code") or "").strip().upper() or None,
+                        str(row.get("line_code") or "").strip().upper() or None,
                         calendar_date,
                         shift_code,
                         plan_qty,
@@ -4518,8 +4966,10 @@ class AppService:
                 )
                 task_no += 1
 
-                mapping = fixed_process_locations.get(order_no, {}).get(process_code)
-                if mapping is None:
+                workshop_code = str(row.get("workshop_code") or "").strip().upper()
+                line_code = str(row.get("line_code") or "").strip().upper()
+                allowed_mappings = fixed_process_locations.get(order_no, {}).get(process_code)
+                if not workshop_code or not line_code:
                     raise server_error(
                         code="BASE_SCHEDULE_TASK_LOCATION_MISSING",
                         message="Base schedule task workshop/line mapping is missing for fixed schedule.",
@@ -4530,9 +4980,31 @@ class AppService:
                             "process_code": process_code,
                         },
                     )
-                workshop_code, line_code = mapping
+                if allowed_mappings is not None and (workshop_code, line_code) not in allowed_mappings:
+                    raise server_error(
+                        code="BASE_SCHEDULE_TASK_LOCATION_INVALID",
+                        message="Base schedule task workshop/line is no longer available in candidate lines.",
+                        details={
+                            "version_no": base_version_no,
+                            "task_no": row.get("task_no"),
+                            "order_no": order_no,
+                            "process_code": process_code,
+                            "workshop_code": workshop_code,
+                            "line_code": line_code,
+                        },
+                    )
                 slot_index = _slot_index_from_text(calendar_date, shift_code)
-                key = (slot_index, workshop_code, line_code, process_code)
+                key = self._capacity_usage_key(
+                    process_context={
+                        "company_code": DEFAULT_COMPANY_CODE,
+                        "workshop_code": workshop_code,
+                        "line_code": line_code,
+                        "process_code": process_code,
+                    },
+                    slot_index=slot_index,
+                    calendar_date=calendar_date,
+                    capacity_resolver=capacity_resolver,
+                )
                 used_capacity_by_slot[key] = _to_number(used_capacity_by_slot.get(key), 0) + plan_qty
 
         while pending_candidates:
@@ -4578,6 +5050,8 @@ class AppService:
                             order_no,
                             process_code,
                             str(context["process_name_cn"]),
+                            allocation.get("workshop_code"),
+                            allocation.get("line_code"),
                             calendar_date,
                             shift_code,
                             allocation["plan_qty"],
@@ -4589,6 +5063,28 @@ class AppService:
                     )
                     task_no += 1
                 next_start_slot = last_slot + 1
+
+        order_summary_map = self._build_schedule_order_summary_map_from_generated_tasks(
+            tasks=tasks,
+            order_rows=order_rows,
+        )
+        shortage_result = self._build_generated_schedule_material_shortages(
+            order_summary_map=order_summary_map,
+        )
+        if shortage_result["items"]:
+            preview = ", ".join(
+                f"{item['material_code']}(-{round(_to_number(item.get('shortage_qty'), 0), 4)})"
+                for item in shortage_result["items"][:3]
+            )
+            raise bad_request(
+                code="SCHEDULE_MATERIAL_SHORTAGE_BLOCKED",
+                message=(
+                    f"排产失败：存在 {shortage_result['summary']['shortage_material_count']} 项缺料，"
+                    f"影响 {shortage_result['summary']['impacted_order_count']} 张订单。"
+                    f"{' 缺料示例：' + preview if preview else ''}"
+                ),
+                details=shortage_result,
+            )
 
         created_at = utc_now()
         with transaction(self.connection):
@@ -4621,11 +5117,13 @@ class AppService:
                         production_order_no,
                         process_code,
                         process_name_cn,
+                        workshop_code,
+                        line_code,
                         calendar_date,
                         shift_code,
                         plan_qty,
                         plan_start_time
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     tasks,
                 )
@@ -4712,10 +5210,10 @@ class AppService:
 
     def batch_dispatch_commands(self, payload: dict[str, Any]) -> dict[str, Any]:
         command_type = str(payload.get("command_type") or "").strip().upper()
-        if command_type not in {"LOCK", "UNLOCK"}:
+        if command_type not in {"LOCK", "UNLOCK", "PRIORITY_UP"}:
             raise bad_request(
                 code="ORDER_BATCH_DISPATCH_COMMAND_INVALID",
-                message="command_type must be LOCK or UNLOCK.",
+                message="command_type must be LOCK, UNLOCK or PRIORITY_UP.",
                 details={"command_type": command_type or None},
             )
 
@@ -4739,6 +5237,7 @@ class AppService:
         completed_order_nos: list[str] = []
         frozen_order_nos: list[str] = []
         invalid_lock_state_order_nos: list[str] = []
+        invalid_priority_state_order_nos: list[str] = []
         for order_no in order_nos:
             order_row = order_rows_by_no[order_no]
             state_row = state_rows_by_no.get(order_no)
@@ -4751,6 +5250,12 @@ class AppService:
                 invalid_lock_state_order_nos.append(order_no)
             if command_type == "UNLOCK" and not is_locked:
                 invalid_lock_state_order_nos.append(order_no)
+            if (
+                command_type == "PRIORITY_UP"
+                and _normalize_priority_level((state_row or {}).get("priority_level"), PRIORITY_LEVEL_MAX)
+                <= PRIORITY_LEVEL_MIN
+            ):
+                invalid_priority_state_order_nos.append(order_no)
 
         if len(completed_order_nos) > 0:
             raise bad_request(
@@ -4774,10 +5279,20 @@ class AppService:
                 ),
                 details={"order_nos": invalid_lock_state_order_nos, "command_type": command_type},
             )
+        if len(invalid_priority_state_order_nos) > 0:
+            raise bad_request(
+                code="ORDER_BATCH_DISPATCH_PRIORITY_STATE_INVALID",
+                message="Selected orders are already at the highest priority.",
+                details={"order_nos": invalid_priority_state_order_nos, "command_type": command_type},
+            )
 
         actor_name = self._resolve_dispatch_actor_name(payload.get("actor"))
         reason = str(payload.get("reason") or "").strip() or (
-            "Batch lock production orders" if command_type == "LOCK" else "Batch unlock production orders"
+            "Batch lock production orders"
+            if command_type == "LOCK"
+            else "Batch unlock production orders"
+            if command_type == "UNLOCK"
+            else "Batch priority-up production orders"
         )
         decision_reason = str(payload.get("decision_reason") or "").strip() or (
             "Batch dispatch auto approval"
@@ -5508,7 +6023,7 @@ class AppService:
                     report_time,
                     operator_name,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows_to_insert,
             )
@@ -6063,14 +6578,14 @@ class AppService:
     ) -> None:
         windows_by_order_no: dict[str, dict[str, str]] = {}
         for task in tasks:
-            if len(task) < 7:
+            if len(task) < 9:
                 continue
             order_no = str(task[2] or "").strip()
-            calendar_date = _normalize_date_text(task[5])
+            calendar_date = _normalize_date_text(task[7])
             if not order_no or not calendar_date:
                 continue
             finish_date = date.fromisoformat(calendar_date)
-            if _normalize_shift_code(task[6]) == "NIGHT":
+            if _normalize_shift_code(task[8]) == "NIGHT":
                 finish_date = finish_date + timedelta(days=1)
             finish_date_text = finish_date.isoformat()
             current = windows_by_order_no.get(order_no)
@@ -6129,7 +6644,7 @@ class AppService:
 
             next_row = {
                 "production_order_no": order_no,
-                "promised_due_date": window["finish_date"],
+                "promised_due_date": state_row.get("promised_due_date") or base_row.get("planned_end_date"),
                 "expected_start_date": window["start_date"],
                 "expected_start_time": _iso_at(window["start_date"], "08:00:00"),
                 "expected_finish_time": _iso_at(window["finish_date"], "18:00:00"),
@@ -6204,7 +6719,9 @@ class AppService:
         state_row: dict[str, Any] | None,
         capacity_rows: list[dict[str, Any]],
         route_rows: list[dict[str, Any]],
-        topology_by_process: dict[str, dict[str, Any]],
+        topology_by_process: dict[str, list[dict[str, Any]]],
+        reference_version_no: str | None,
+        shortage_summary: dict[str, Any] | None,
         final_process_metrics: dict[str, Any] | None,
     ) -> dict[str, Any]:
         production_qty = _to_number(base_row.get("production_qty"), 0)
@@ -6219,10 +6736,10 @@ class AppService:
         progress_rate = (state_row or {}).get("progress_rate")
         if progress_rate is None:
             progress_rate = (completed_qty / production_qty * 100) if production_qty > 0 else 0
-        promised_due_date = (
+        promised_due_date = _normalize_date_text(
             (state_row or {}).get("promised_due_date") or base_row.get("planned_end_date")
         )
-        expected_start_date = (
+        expected_start_date = _normalize_date_text(
             (state_row or {}).get("expected_start_date") or base_row.get("planned_start_date")
         )
         expected_start_time = (
@@ -6260,6 +6777,11 @@ class AppService:
         final_process_eta_date = _normalize_date_text(
             (final_process_metrics or {}).get("final_process_eta_date")
         )
+        shortage_items = (
+            shortage_summary.get("items")
+            if isinstance(shortage_summary, dict) and isinstance(shortage_summary.get("items"), list)
+            else []
+        )
         return {
             "order_no": base_row["production_order_no"],
             "product_code": base_row["material_code"],
@@ -6271,7 +6793,11 @@ class AppService:
             "remaining_qty": remaining_qty,
             "progress_rate": progress_rate,
             "promised_due_date": promised_due_date,
+            "due_in_days": _days_from_today(promised_due_date),
             "expected_start_time": expected_start_time,
+            "expected_start_shift": (
+                "NIGHT" if str(expected_start_time or "").strip().endswith("20:00:00+08:00") else "DAY"
+            ),
             "expected_finish_time": expected_finish_time,
             "expected_start_date": expected_start_date,
             "priority_level": _normalize_priority_level((state_row or {}).get("priority_level"), PRIORITY_LEVEL_MAX),
@@ -6287,6 +6813,29 @@ class AppService:
             "final_process_name_cn": final_process_name_cn,
             "final_process_completed_qty": final_process_completed_qty,
             "final_process_eta_date": final_process_eta_date,
+            "reference_version_no": reference_version_no,
+            "material_shortage_count": int((shortage_summary or {}).get("shortage_material_count") or 0),
+            "material_shortage_summary": str((shortage_summary or {}).get("summary_text") or "").strip(),
+            "material_shortage_start_date": _normalize_date_text(
+                (shortage_summary or {}).get("shortage_start_date")
+            ),
+            "material_shortage_first_process_code": str(
+                (shortage_summary or {}).get("first_impacted_process_code") or ""
+            ).strip().upper()
+            or None,
+            "material_shortage_first_process_name_cn": str(
+                (shortage_summary or {}).get("first_impacted_process_name_cn") or ""
+            ).strip()
+            or None,
+            "material_shortage_first_material_code": str(
+                (shortage_summary or {}).get("first_material_code") or ""
+            ).strip().upper()
+            or None,
+            "material_shortage_first_material_name": str(
+                (shortage_summary or {}).get("first_material_name") or ""
+            ).strip()
+            or None,
+            "material_shortage_items": shortage_items,
             "process_contexts": self._build_process_contexts(
                 order_no=str(base_row["production_order_no"]),
                 product_code=str(base_row["material_code"]),
@@ -6303,9 +6852,9 @@ class AppService:
         product_code: str,
         capacity_rows: list[dict[str, Any]],
         route_rows: list[dict[str, Any]],
-        topology_by_process: dict[str, dict[str, Any]],
+        topology_by_process: dict[str, list[dict[str, Any]]],
     ) -> list[dict[str, Any]]:
-        capacity_row_by_process = self._best_capacity_row_by_process(capacity_rows)
+        capacity_rows_by_process = self._best_capacity_row_by_process(capacity_rows)
 
         if route_rows:
             contexts: list[dict[str, Any]] = []
@@ -6313,42 +6862,28 @@ class AppService:
                 process_code = str(row.get("process_code") or "").strip().upper()
                 if not process_code:
                     continue
-                topology_row = topology_by_process.get(process_code, {})
-                capacity_row = capacity_row_by_process.get(process_code, {})
-                capacity_per_shift = _to_number(
-                    capacity_row.get("capacity_qty"),
-                    _to_number(topology_row.get("capacity_per_shift"), 0),
+                candidate_rows = capacity_rows_by_process.get(process_code) or topology_by_process.get(process_code) or []
+                candidate_contexts = self._build_candidate_process_contexts(
+                    process_code=process_code,
+                    process_name_cn=str(row.get("process_name_cn") or process_code).strip() or process_code,
+                    candidate_rows=candidate_rows,
                 )
+                primary_candidate = candidate_contexts[0] if candidate_contexts else {}
+                capacity_per_shift = _to_number(primary_candidate.get("capacity_per_shift"), 0)
                 contexts.append(
                     {
                         "sequence_no": index + 1,
                         "process_code": process_code,
                         "company_code": str(
-                            capacity_row.get("company_code")
-                            or topology_row.get("company_code")
-                            or "COMPANY-MAIN"
+                            primary_candidate.get("company_code") or DEFAULT_COMPANY_CODE
                         ).strip().upper()
-                        or "COMPANY-MAIN",
-                        "process_name_cn": (
-                            str(
-                                row.get("process_name_cn")
-                                or capacity_row.get("process_name")
-                                or process_code
-                            ).strip()
-                            or process_code
-                        ),
-                        "workshop_code": str(
-                            capacity_row.get("workshop_code")
-                            or topology_row.get("workshop_code")
-                            or "-"
-                        ).strip()
-                        or "-",
-                        "line_code": str(
-                            capacity_row.get("line_code")
-                            or topology_row.get("line_code")
-                            or "-"
-                        ).strip()
-                        or "-",
+                        or DEFAULT_COMPANY_CODE,
+                        "process_name_cn": str(row.get("process_name_cn") or process_code).strip() or process_code,
+                        "workshop_code": str(primary_candidate.get("workshop_code") or "-").strip() or "-",
+                        "line_code": str(primary_candidate.get("line_code") or "-").strip() or "-",
+                        "candidate_workshop_codes": [item["workshop_code"] for item in candidate_contexts],
+                        "candidate_line_codes": [item["line_code"] for item in candidate_contexts],
+                        "candidate_contexts": candidate_contexts,
                         "dependency_type": str(row.get("dependency_type") or "FS").strip().upper() or "FS",
                         "default_capacity_per_shift": capacity_per_shift,
                         "capacity_per_shift": capacity_per_shift,
@@ -6358,27 +6893,80 @@ class AppService:
 
         contexts = []
         deduplicated_rows = sorted(
-            capacity_row_by_process.values(),
-            key=lambda item: str(item.get("process_code") or ""),
+            capacity_rows_by_process.values(),
+            key=lambda items: str((items[0] if items else {}).get("process_code") or ""),
         )
-        for index, row in enumerate(deduplicated_rows):
-            process_code = str(row.get("process_code") or "").strip().upper()
+        for index, process_rows in enumerate(deduplicated_rows):
+            primary_row = process_rows[0] if process_rows else {}
+            process_code = str(primary_row.get("process_code") or "").strip().upper()
             if not process_code:
                 continue
+            candidate_contexts = self._build_candidate_process_contexts(
+                process_code=process_code,
+                process_name_cn=str(primary_row.get("process_name") or process_code).strip() or process_code,
+                candidate_rows=process_rows,
+            )
+            primary_candidate = candidate_contexts[0] if candidate_contexts else {}
             contexts.append(
                 {
                     "sequence_no": index + 1,
                     "process_code": process_code,
-                    "company_code": str(row.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN",
-                    "process_name_cn": str(row.get("process_name") or process_code).strip() or process_code,
-                    "workshop_code": str(row.get("workshop_code") or "-").strip() or "-",
-                    "line_code": str(row.get("line_code") or "-").strip() or "-",
+                    "company_code": str(primary_candidate.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper() or DEFAULT_COMPANY_CODE,
+                    "process_name_cn": str(primary_row.get("process_name") or process_code).strip() or process_code,
+                    "workshop_code": str(primary_candidate.get("workshop_code") or "-").strip() or "-",
+                    "line_code": str(primary_candidate.get("line_code") or "-").strip() or "-",
+                    "candidate_workshop_codes": [item["workshop_code"] for item in candidate_contexts],
+                    "candidate_line_codes": [item["line_code"] for item in candidate_contexts],
+                    "candidate_contexts": candidate_contexts,
                     "dependency_type": "FS",
-                    "default_capacity_per_shift": _to_number(row.get("capacity_qty"), 0),
-                    "capacity_per_shift": _to_number(row.get("capacity_qty"), 0),
+                    "default_capacity_per_shift": _to_number(primary_candidate.get("capacity_per_shift"), 0),
+                    "capacity_per_shift": _to_number(primary_candidate.get("capacity_per_shift"), 0),
                 }
             )
         return contexts
+
+    def _build_candidate_process_contexts(
+        self,
+        *,
+        process_code: str,
+        process_name_cn: str,
+        candidate_rows: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        seen_keys: set[tuple[str, str, str]] = set()
+        for row in candidate_rows:
+            company_code = str(row.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper() or DEFAULT_COMPANY_CODE
+            workshop_code = str(row.get("workshop_code") or "").strip().upper()
+            line_code = str(row.get("line_code") or "").strip().upper()
+            if not workshop_code or not line_code:
+                continue
+            key = (company_code, workshop_code, line_code)
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            capacity_per_shift = _to_number(
+                row.get("capacity_qty"),
+                _to_number(row.get("capacity_per_shift"), 0),
+            )
+            out.append(
+                {
+                    "company_code": company_code,
+                    "workshop_code": workshop_code,
+                    "line_code": line_code,
+                    "process_code": process_code,
+                    "process_name_cn": process_name_cn,
+                    "default_capacity_per_shift": capacity_per_shift,
+                    "capacity_per_shift": capacity_per_shift,
+                }
+            )
+        out.sort(
+            key=lambda item: (
+                -_to_number(item.get("capacity_per_shift"), 0),
+                str(item.get("workshop_code") or ""),
+                str(item.get("line_code") or ""),
+            )
+        )
+        return out
 
     def _build_schedule_process_contexts(
         self,
@@ -6387,7 +6975,7 @@ class AppService:
         product_code: str,
         capacity_rows: list[dict[str, Any]],
         route_rows: list[dict[str, Any]],
-        topology_by_process: dict[str, dict[str, Any]],
+        topology_by_process: dict[str, list[dict[str, Any]]],
         capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
     ) -> list[dict[str, Any]]:
         if len(route_rows) == 0:
@@ -6413,9 +7001,12 @@ class AppService:
 
         for context in contexts:
             process_code = str(context.get("process_code") or "").strip().upper()
+            candidate_contexts = (
+                context.get("candidate_contexts")
+                if isinstance(context.get("candidate_contexts"), list)
+                else []
+            )
             company_code = str(context.get("company_code") or "").strip().upper() or "COMPANY-MAIN"
-            workshop_code = str(context.get("workshop_code") or "").strip().upper()
-            line_code = str(context.get("line_code") or "").strip().upper()
             default_capacity_per_shift = _to_number(
                 context.get("default_capacity_per_shift"),
                 _to_number(context.get("capacity_per_shift"), 0),
@@ -6426,20 +7017,10 @@ class AppService:
                     message="Process code is missing in schedule process context.",
                     details={"order_no": order_no, "product_code": product_code},
                 )
-            if not workshop_code or workshop_code == "-":
+            if len(candidate_contexts) == 0:
                 raise server_error(
-                    code="SCHEDULE_WORKSHOP_CODE_REQUIRED",
-                    message="Workshop code is missing in schedule process context.",
-                    details={
-                        "order_no": order_no,
-                        "product_code": product_code,
-                        "process_code": process_code,
-                    },
-                )
-            if not line_code or line_code == "-":
-                raise server_error(
-                    code="SCHEDULE_LINE_CODE_REQUIRED",
-                    message="Line code is missing in schedule process context.",
+                    code="SCHEDULE_PROCESS_CANDIDATE_LINES_EMPTY",
+                    message="No candidate workshop/line exists for scheduled process.",
                     details={
                         "order_no": order_no,
                         "product_code": product_code,
@@ -6456,10 +7037,11 @@ class AppService:
                         "process_code": process_code,
                         "capacity_per_shift": default_capacity_per_shift,
                     },
-                )
+            )
             context["company_code"] = company_code
-            context["workshop_code"] = workshop_code
-            context["line_code"] = line_code
+            primary_candidate = candidate_contexts[0]
+            context["workshop_code"] = str(primary_candidate.get("workshop_code") or "").strip().upper()
+            context["line_code"] = str(primary_candidate.get("line_code") or "").strip().upper()
             context["process_code"] = process_code
             context["default_capacity_per_shift"] = default_capacity_per_shift
             context["capacity_per_shift"] = default_capacity_per_shift
@@ -6544,6 +7126,80 @@ class AppService:
             return _to_number(planned_map[lookup_key], 0)
         return _to_number(process_context.get("default_capacity_per_shift"), 0)
 
+    def _capacity_usage_key(
+        self,
+        *,
+        process_context: dict[str, Any],
+        slot_index: int,
+        calendar_date: str,
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
+    ) -> tuple[Any, ...]:
+        company_code = str(process_context.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper() or DEFAULT_COMPANY_CODE
+        workshop_code = str(process_context.get("workshop_code") or "").strip().upper()
+        line_code = str(process_context.get("line_code") or "").strip().upper()
+        process_code = str(process_context.get("process_code") or "").strip().upper()
+        lookup_key = (
+            str(calendar_date or "").strip(),
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+        )
+        actual_map = capacity_resolver.get("actual") or {}
+        planned_map = capacity_resolver.get("planned") or {}
+        if lookup_key in actual_map or lookup_key in planned_map:
+            return ("DAY_TOTAL", *lookup_key)
+        return ("SHIFT", int(slot_index), workshop_code, line_code, process_code)
+
+    def _select_candidate_context_for_slot(
+        self,
+        *,
+        process_context: dict[str, Any],
+        slot_index: int,
+        calendar_date: str,
+        used_capacity_by_slot: dict[tuple[Any, ...], float],
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
+    ) -> tuple[dict[str, Any] | None, float]:
+        candidate_contexts = (
+            process_context.get("candidate_contexts")
+            if isinstance(process_context.get("candidate_contexts"), list)
+            else []
+        )
+        if len(candidate_contexts) == 0:
+            candidate_contexts = [process_context]
+
+        best_candidate: dict[str, Any] | None = None
+        best_available_capacity = 0.0
+        best_sort_key: tuple[float, float, str, str] | None = None
+        for candidate in candidate_contexts:
+            capacity_per_shift = self._resolve_effective_capacity_per_shift(
+                process_context=candidate,
+                calendar_date=calendar_date,
+                capacity_resolver=capacity_resolver,
+            )
+            usage_key = self._capacity_usage_key(
+                process_context=candidate,
+                slot_index=slot_index,
+                calendar_date=calendar_date,
+                capacity_resolver=capacity_resolver,
+            )
+            used_capacity = _to_number(used_capacity_by_slot.get(usage_key), 0)
+            available_capacity = max(0.0, capacity_per_shift - used_capacity)
+            if available_capacity <= SCHEDULE_NUMBER_EPSILON:
+                continue
+            load_ratio = used_capacity / capacity_per_shift if capacity_per_shift > SCHEDULE_NUMBER_EPSILON else 1.0
+            sort_key = (
+                round(load_ratio, 8),
+                -available_capacity,
+                str(candidate.get("workshop_code") or ""),
+                str(candidate.get("line_code") or ""),
+            )
+            if best_sort_key is None or sort_key < best_sort_key:
+                best_sort_key = sort_key
+                best_candidate = candidate
+                best_available_capacity = available_capacity
+        return best_candidate, best_available_capacity
+
     def _estimate_required_shifts_for_process(
         self,
         *,
@@ -6558,7 +7214,8 @@ class AppService:
         if remaining_qty <= SCHEDULE_NUMBER_EPSILON:
             return 0
         slot_cursor = max(0, int(start_slot))
-        required_shifts = 0
+        occupied_slot_set: set[int] = set()
+        simulated_used_capacity: dict[tuple[Any, ...], float] = {}
         for loop_guard in range(SCHEDULE_SLOT_SEARCH_GUARD):
             if remaining_qty <= SCHEDULE_NUMBER_EPSILON:
                 break
@@ -6567,16 +7224,28 @@ class AppService:
                 planning_rules=planning_rules,
                 day_mode_cache=day_mode_cache,
             )
-            capacity_per_shift = self._resolve_effective_capacity_per_shift(
+            candidate_context, available_capacity = self._select_candidate_context_for_slot(
                 process_context=process_context,
+                slot_index=slot_index,
+                calendar_date=calendar_date,
+                used_capacity_by_slot=simulated_used_capacity,
+                capacity_resolver=capacity_resolver,
+            )
+            if candidate_context is None or available_capacity <= SCHEDULE_NUMBER_EPSILON:
+                slot_cursor = slot_index + 1
+                continue
+            usage_key = self._capacity_usage_key(
+                process_context=candidate_context,
+                slot_index=slot_index,
                 calendar_date=calendar_date,
                 capacity_resolver=capacity_resolver,
             )
-            slot_cursor = slot_index + 1
-            if capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
-                continue
-            remaining_qty -= capacity_per_shift
-            required_shifts += 1
+            used_capacity = _to_number(simulated_used_capacity.get(usage_key), 0)
+            planned_qty = min(remaining_qty, available_capacity)
+            simulated_used_capacity[usage_key] = used_capacity + planned_qty
+            remaining_qty -= planned_qty
+            occupied_slot_set.add(slot_index)
+            slot_cursor = slot_index if remaining_qty > SCHEDULE_NUMBER_EPSILON else slot_index + 1
         else:
             raise server_error(
                 code="SCHEDULE_REQUIRED_SHIFTS_ESTIMATION_EXCEEDED",
@@ -6587,7 +7256,7 @@ class AppService:
                     "required_qty": required_qty,
                 },
             )
-        return required_shifts
+        return len(occupied_slot_set)
 
     def _refresh_bom_children(self, parent_material_code: str) -> None:
         children = self.factory.material_gateway.fetch_bom_children(parent_material_code)
@@ -6770,41 +7439,45 @@ class AppService:
     def _best_capacity_row_by_process(
         self,
         capacity_rows: list[dict[str, Any]],
-    ) -> dict[str, dict[str, Any]]:
-        out: dict[str, dict[str, Any]] = {}
+    ) -> dict[str, list[dict[str, Any]]]:
+        out: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for row in capacity_rows:
             process_code = str(row.get("process_code") or "").strip().upper()
             if not process_code:
                 continue
-            current = out.get(process_code)
-            next_capacity = _to_number(row.get("capacity_qty"), 0)
-            if current is None:
-                out[process_code] = row
-                continue
-            current_capacity = _to_number(current.get("capacity_qty"), 0)
-            if next_capacity > current_capacity:
-                out[process_code] = row
+            out[process_code].append(row)
+        for process_code in list(out):
+            out[process_code] = sorted(
+                out[process_code],
+                key=lambda item: (
+                    -_to_number(item.get("capacity_qty"), 0),
+                    str(item.get("workshop_code") or ""),
+                    str(item.get("line_code") or ""),
+                ),
+            )
         return out
 
     def _enabled_topology_by_process(
         self,
         topology_rows: list[dict[str, Any]],
-    ) -> dict[str, dict[str, Any]]:
-        out: dict[str, dict[str, Any]] = {}
+    ) -> dict[str, list[dict[str, Any]]]:
+        out: dict[str, list[dict[str, Any]]] = defaultdict(list)
         for row in topology_rows:
             if int(_to_number(row.get("enabled_flag"), 0)) != 1:
                 continue
             process_code = str(row.get("process_code") or "").strip().upper()
             if not process_code:
                 continue
-            current = out.get(process_code)
-            next_capacity = _to_number(row.get("capacity_per_shift"), 0)
-            if current is None:
-                out[process_code] = row
-                continue
-            current_capacity = _to_number(current.get("capacity_per_shift"), 0)
-            if next_capacity > current_capacity:
-                out[process_code] = row
+            out[process_code].append(row)
+        for process_code in list(out):
+            out[process_code] = sorted(
+                out[process_code],
+                key=lambda item: (
+                    -_to_number(item.get("capacity_per_shift"), 0),
+                    str(item.get("workshop_code") or ""),
+                    str(item.get("line_code") or ""),
+                ),
+            )
         return out
 
     def _build_base_schedule_hints(self, version_no: str) -> dict[str, dict[str, Any]]:
@@ -6937,7 +7610,7 @@ class AppService:
         first_slot: int,
         planning_rules: dict[str, Any],
         day_mode_cache: dict[str, str],
-        used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+        used_capacity_by_slot: dict[tuple[Any, ...], float],
         capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
     ) -> tuple[list[dict[str, Any]], int]:
         remaining_qty = max(0.0, _to_number(required_qty, 0))
@@ -6945,8 +7618,6 @@ class AppService:
             return [], int(first_slot)
 
         process_code = str(process_context.get("process_code") or "").strip().upper()
-        workshop_code = str(process_context.get("workshop_code") or "").strip().upper()
-        line_code = str(process_context.get("line_code") or "").strip().upper()
         default_capacity_per_shift = _to_number(process_context.get("default_capacity_per_shift"), 0)
         if default_capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
             raise server_error(
@@ -6975,18 +7646,24 @@ class AppService:
                 planning_rules=planning_rules,
                 day_mode_cache=day_mode_cache,
             )
-            capacity_per_shift = self._resolve_effective_capacity_per_shift(
+            candidate_context, available_capacity = self._select_candidate_context_for_slot(
                 process_context=process_context,
+                slot_index=slot_index,
                 calendar_date=calendar_date,
+                used_capacity_by_slot=used_capacity_by_slot,
                 capacity_resolver=capacity_resolver,
             )
-            key = (slot_index, workshop_code, line_code, process_code)
-            used_capacity = _to_number(used_capacity_by_slot.get(key), 0)
-            available_capacity = max(0.0, capacity_per_shift - used_capacity)
-            if available_capacity <= SCHEDULE_NUMBER_EPSILON:
+            if candidate_context is None or available_capacity <= SCHEDULE_NUMBER_EPSILON:
                 slot_cursor = slot_index + 1
                 loop_guard += 1
                 continue
+            key = self._capacity_usage_key(
+                process_context=candidate_context,
+                slot_index=slot_index,
+                calendar_date=calendar_date,
+                capacity_resolver=capacity_resolver,
+            )
+            used_capacity = _to_number(used_capacity_by_slot.get(key), 0)
 
             planned_qty = min(remaining_qty, available_capacity)
             used_capacity_by_slot[key] = used_capacity + planned_qty
@@ -6994,15 +7671,107 @@ class AppService:
                 {
                     "calendar_date": calendar_date,
                     "shift_code": shift_code,
+                    "workshop_code": str(candidate_context.get("workshop_code") or "").strip().upper(),
+                    "line_code": str(candidate_context.get("line_code") or "").strip().upper(),
                     "plan_qty": planned_qty,
                 }
             )
             remaining_qty -= planned_qty
             last_slot = slot_index
-            slot_cursor = slot_index + 1
+            slot_cursor = slot_index if remaining_qty > SCHEDULE_NUMBER_EPSILON else slot_index + 1
             loop_guard += 1
 
         return allocations, last_slot
+
+    def _build_schedule_order_summary_map_from_generated_tasks(
+        self,
+        *,
+        tasks: list[tuple[Any, ...]],
+        order_rows: list[dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        order_row_by_no = {
+            str(row.get("production_order_no") or "").strip(): row for row in order_rows
+        }
+        out: dict[str, dict[str, Any]] = {}
+        for task in tasks:
+            if len(task) < 10:
+                continue
+            order_no = str(task[2] or "").strip()
+            if not order_no:
+                continue
+            base_row = order_row_by_no.get(order_no) or {}
+            current = out.get(order_no)
+            if current is None:
+                current = {
+                    "order_no": order_no,
+                    "material_code": str(base_row.get("material_code") or "").strip(),
+                    "material_name": str(
+                        base_row.get("material_name") or base_row.get("material_code") or ""
+                    ).strip(),
+                    "order_qty": _to_number(base_row.get("production_qty"), 0),
+                    "planned_ratio": 0.0,
+                    "planned_qty": 0.0,
+                }
+                out[order_no] = current
+            current["planned_qty"] += _to_number(task[9], 0)
+        for row in out.values():
+            order_qty = _to_number(row.get("order_qty"), 0)
+            row["planned_ratio"] = (
+                max(0.0, min(1.0, _to_number(row.get("planned_qty"), 0) / order_qty))
+                if order_qty > 0
+                else 0.0
+            )
+        return out
+
+    def _build_generated_schedule_material_shortages(
+        self,
+        *,
+        order_summary_map: dict[str, dict[str, Any]],
+    ) -> dict[str, Any]:
+        material_map = self._build_schedule_material_usage_map(
+            order_summary_map,
+            material_rows=self._list_schedule_material_rows(),
+        )
+        impacted_order_nos: set[str] = set()
+        items: list[dict[str, Any]] = []
+        for material_code in sorted(material_map):
+            current = material_map[material_code]
+            estimated_inventory_qty = _to_number(current.get("estimated_inventory_qty"), 0)
+            if estimated_inventory_qty >= 0:
+                continue
+            order_nos = sorted(
+                {
+                    str(order_no).strip()
+                    for order_no in current.get("order_nos", [])
+                    if str(order_no).strip()
+                }
+            )
+            impacted_order_nos.update(order_nos)
+            items.append(
+                {
+                    "material_code": material_code,
+                    "material_name": current.get("material_name"),
+                    "supply_type_name": current.get("supply_type_name"),
+                    "inventory_qty": _to_number(current.get("inventory_qty"), 0),
+                    "planned_consume_qty": _to_number(current.get("planned_consume_qty"), 0),
+                    "estimated_inventory_qty": estimated_inventory_qty,
+                    "shortage_qty": abs(estimated_inventory_qty),
+                    "order_nos": order_nos,
+                }
+            )
+        items.sort(
+            key=lambda item: (
+                -_to_number(item.get("shortage_qty"), 0),
+                str(item.get("material_code") or ""),
+            )
+        )
+        return {
+            "summary": {
+                "shortage_material_count": len(items),
+                "impacted_order_count": len(impacted_order_nos),
+            },
+            "items": items,
+        }
 
     def _sort_schedule_candidates(
         self,
@@ -7075,12 +7844,10 @@ class AppService:
         start_slot: int,
         planning_rules: dict[str, Any],
         day_mode_cache: dict[str, str],
-        used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+        used_capacity_by_slot: dict[tuple[Any, ...], float],
         capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
     ) -> int:
         process_code = str(process_context.get("process_code") or "").strip().upper()
-        workshop_code = str(process_context.get("workshop_code") or "").strip().upper()
-        line_code = str(process_context.get("line_code") or "").strip().upper()
         default_capacity_per_shift = _to_number(process_context.get("default_capacity_per_shift"), 0)
         if default_capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
             raise server_error(
@@ -7101,7 +7868,12 @@ class AppService:
                 calendar_date=calendar_date,
                 capacity_resolver=capacity_resolver,
             )
-            key = (slot_index, workshop_code, line_code, process_code)
+            key = self._capacity_usage_key(
+                process_context=process_context,
+                slot_index=slot_index,
+                calendar_date=calendar_date,
+                capacity_resolver=capacity_resolver,
+            )
             used_capacity = _to_number(used_capacity_by_slot.get(key), 0)
             available_capacity = max(0.0, capacity_per_shift - used_capacity)
             if available_capacity > SCHEDULE_NUMBER_EPSILON:
@@ -7119,7 +7891,7 @@ class AppService:
         candidate: dict[str, Any],
         planning_rules: dict[str, Any],
         day_mode_cache: dict[str, str],
-        used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+        used_capacity_by_slot: dict[tuple[Any, ...], float],
         capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
     ) -> dict[str, int]:
         process_contexts = candidate["process_contexts"]
@@ -7172,7 +7944,7 @@ class AppService:
         candidates: list[dict[str, Any]],
         planning_rules: dict[str, Any],
         day_mode_cache: dict[str, str],
-        used_capacity_by_slot: dict[tuple[int, str, str, str], float],
+        used_capacity_by_slot: dict[tuple[Any, ...], float],
         capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
     ) -> int:
         if len(candidates) == 0:

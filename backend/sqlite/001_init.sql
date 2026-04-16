@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS material_supply_cache (
 CREATE TABLE IF NOT EXISTS work_reports (
     report_id TEXT PRIMARY KEY,
     production_order_no TEXT,
+    report_scope TEXT NOT NULL DEFAULT 'ORDER',
     process_code TEXT,
     process_name TEXT,
     company_code TEXT,
@@ -245,6 +246,8 @@ CREATE TABLE IF NOT EXISTS schedule_tasks (
     production_order_no TEXT NOT NULL,
     process_code TEXT NOT NULL,
     process_name_cn TEXT,
+    workshop_code TEXT,
+    line_code TEXT,
     calendar_date TEXT NOT NULL,
     shift_code TEXT NOT NULL,
     plan_qty REAL NOT NULL,

@@ -382,6 +382,7 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
     _ensure_masterdata_process_routes_schema(connection)
     _ensure_reporting_resource_mappings_schema(connection)
     _ensure_work_reports_schema(connection)
+    _ensure_schedule_tasks_schema(connection)
     _ensure_reporting_import_files_schema(connection)
     _ensure_simulation_restore_snapshot_work_reports_schema(connection)
 
@@ -461,6 +462,7 @@ def _ensure_work_reports_schema(connection: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS work_reports (
             report_id TEXT PRIMARY KEY,
             production_order_no TEXT,
+            report_scope TEXT NOT NULL DEFAULT 'ORDER',
             process_code TEXT,
             process_name TEXT,
             company_code TEXT,
@@ -502,6 +504,8 @@ def _ensure_work_reports_schema(connection: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_work_reports_order_no
             ON work_reports (production_order_no, report_time DESC);
+        CREATE INDEX IF NOT EXISTS idx_work_reports_scope
+            ON work_reports (report_scope, report_time DESC);
         CREATE INDEX IF NOT EXISTS idx_work_reports_line_scope
             ON work_reports (company_code, workshop_code, line_code, process_code, report_time DESC);
         CREATE INDEX IF NOT EXISTS idx_work_reports_source_sheet
@@ -565,6 +569,7 @@ def _ensure_work_reports_schema(connection: sqlite3.Connection) -> None:
 
     columns = _table_columns(connection, "work_reports")
     extra_columns = {
+        "report_scope": "TEXT NOT NULL DEFAULT 'ORDER'",
         "company_code": "TEXT",
         "operator_code": "TEXT",
         "section_leader_name": "TEXT",
@@ -606,10 +611,35 @@ def _ensure_work_reports_schema(connection: sqlite3.Connection) -> None:
         """
         CREATE INDEX IF NOT EXISTS idx_work_reports_order_no
             ON work_reports (production_order_no, report_time DESC);
+        CREATE INDEX IF NOT EXISTS idx_work_reports_scope
+            ON work_reports (report_scope, report_time DESC);
         CREATE INDEX IF NOT EXISTS idx_work_reports_line_scope
             ON work_reports (company_code, workshop_code, line_code, process_code, report_time DESC);
         CREATE INDEX IF NOT EXISTS idx_work_reports_source_sheet
             ON work_reports (source_file_name, source_sheet_name, source_row_no);
+        """
+    )
+
+
+def _ensure_schedule_tasks_schema(connection: sqlite3.Connection) -> None:
+    columns = _table_columns(connection, "schedule_tasks")
+    extra_columns = {
+        "workshop_code": "TEXT",
+        "line_code": "TEXT",
+    }
+    for column_name, column_type in extra_columns.items():
+        if column_name in columns:
+            continue
+        connection.execute(
+            f"""
+            ALTER TABLE schedule_tasks
+            ADD COLUMN {column_name} {column_type}
+            """
+        )
+    connection.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_schedule_tasks_line_scope
+            ON schedule_tasks (version_no, workshop_code, line_code, process_code, calendar_date);
         """
     )
 
@@ -646,6 +676,7 @@ def _ensure_simulation_restore_snapshot_work_reports_schema(
 ) -> None:
     columns = _table_columns(connection, "simulation_restore_snapshot_work_reports")
     extra_columns = {
+        "report_scope": "TEXT NOT NULL DEFAULT 'ORDER'",
         "company_code": "TEXT",
         "operator_code": "TEXT",
         "section_leader_name": "TEXT",

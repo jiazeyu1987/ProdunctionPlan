@@ -54,14 +54,10 @@ def _pick_reference_schedule_version_no(connection: sqlite3.Connection) -> str |
         """
         SELECT version_no
         FROM schedule_versions
+        WHERE UPPER(TRIM(COALESCE(status, ''))) = 'PUBLISHED'
         ORDER BY
+            COALESCE(NULLIF(TRIM(COALESCE(published_at, '')), ''), created_at) DESC,
             created_at DESC,
-            CAST(
-                CASE
-                    WHEN INSTR(version_no, '-D') > 0 THEN SUBSTR(version_no, INSTR(version_no, '-D') + 2)
-                    ELSE '0'
-                END AS INTEGER
-            ) DESC,
             version_no DESC
         LIMIT 1
         """,

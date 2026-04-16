@@ -21,30 +21,37 @@ def get_app_service(
 
 @router.get("/order-pool")
 def list_order_pool(
+    version_no: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)],
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
-    return service.list_order_pool()
+    return service.list_order_pool(version_no=version_no)
 
 
 @router.get("/order-pool/{order_no}")
 def get_order_pool_item(
     order_no: str,
+    version_no: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)],
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
-    return service.get_order_pool_item(order_no)
+    return service.get_order_pool_item(order_no, version_no=version_no)
 
 
 @router.get("/order-pool/{order_no}/process-timeline")
 def get_order_pool_process_timeline(
     order_no: str,
     process_code: str | None = Query(default=None),
+    version_no: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)] = None,
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     assert service is not None
-    return service.get_order_pool_process_timeline(order_no, process_code=process_code)
+    return service.get_order_pool_process_timeline(
+        order_no,
+        process_code=process_code,
+        version_no=version_no,
+    )
 
 
 @router.get("/order-pool/{order_no}/materials")
@@ -183,6 +190,8 @@ def list_line_daily_capacity_audits(
     workshop_code: str | None = Query(default=None),
     line_code: str | None = Query(default=None),
     process_code: str | None = Query(default=None),
+    operator_keyword: str | None = Query(default=None),
+    changed_only: bool = Query(default=False),
     service: Annotated[AppService, Depends(get_app_service)] = None,
     current_user: Annotated[
         dict[str, Any],
@@ -195,6 +204,8 @@ def list_line_daily_capacity_audits(
         workshop_code=workshop_code,
         line_code=line_code,
         process_code=process_code,
+        operator_keyword=operator_keyword,
+        changed_only=changed_only,
         current_user=current_user,
     )
 

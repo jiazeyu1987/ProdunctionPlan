@@ -140,11 +140,11 @@ def refresh_self_made_materials(
 
 
 @router.post(
-    "/sync-from-erp",
+    "/sync-from-erp/apply",
     response_model=AcceptedCommandResponse,
     status_code=202,
 )
-def sync_orders_from_erp(
+def apply_orders_sync_from_erp(
     body: RequestCommandBody,
     connection: Annotated[sqlite3.Connection, Depends(get_db)],
     _: Annotated[dict[str, str], Depends(require_roles(ROLE_SCHEDULER))] = None,
@@ -162,3 +162,25 @@ def sync_orders_from_erp(
         status_url=f"/api/jobs/{job['job_id']}",
         message="Task accepted.",
     )
+
+
+@router.post(
+    "/sync-from-erp",
+    response_model=AcceptedCommandResponse,
+    status_code=202,
+)
+def sync_orders_from_erp(
+    body: RequestCommandBody,
+    connection: Annotated[sqlite3.Connection, Depends(get_db)],
+    _: Annotated[dict[str, str], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> AcceptedCommandResponse:
+    return apply_orders_sync_from_erp(body, connection, _)
+
+
+@router.get("/sync-from-erp/preview")
+def preview_orders_sync_from_erp(
+    connection: Annotated[sqlite3.Connection, Depends(get_db)],
+    _: Annotated[dict[str, str], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> dict[str, object]:
+    factory = ServiceFactory(connection)
+    return factory.build_order_sync_service().preview_orders_from_erp_incremental_sync()

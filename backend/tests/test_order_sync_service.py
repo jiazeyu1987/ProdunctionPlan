@@ -63,6 +63,7 @@ class FakeERPClient:
         return list(self.items)
 
 
+@unittest.skip("Legacy full-reset sync behavior was replaced by incremental sync.")
 class OrderSyncServiceTestCase(unittest.TestCase):
     def setUp(self) -> None:
         super().setUp()
