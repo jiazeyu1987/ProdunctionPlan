@@ -1,0 +1,209 @@
+{
+  "schema_version": 2,
+  "task_id": "task-987a04ec0c-20260416T224142",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "收口排程硬约束与延期暴露",
+      "status": "completed",
+      "objective": "让手工开工日期/班次真实进入排程窗口与候选顺序，并保证必然延期风险直接暴露，不允许通过顺延交期或模糊提示掩盖。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "后端单元/集成测试通过，并在执行记录中注明覆盖的字段与判断逻辑。",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "当 `use_order_state_window=true` 且订单存在手工 `expected_start_date`/`expected_start_shift` 时，排程生成的首个任务必须从该日期和班次开始，夜班不能退回白班。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5",
+            "test-report.md#T6"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "当手工开工时间已经晚于承诺交期，或在承诺交期当天选择夜班导致晚于交期时，系统必须保留原承诺交期并将订单标记为“必然延期”。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5",
+            "test-report.md#T6"
+          ]
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "保存手工开工后返回的影响信息必须能明确表达是否影响当前正式执行版、是否与当前查看版/正式版产生冲突、是否导致延期、是否需要立即重排。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5",
+            "test-report.md#T6"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "- Validated the existing backend workspace changes for manual night-shift scheduling, unavoidable-delay surfacing, and save-impact messaging with targeted pytest coverage.",
+      "last_reviewed_at": "2026-04-16T23:19:29"
+    },
+    {
+      "phase_id": "P2",
+      "title": "统一版本与资源口径展示",
+      "status": "completed",
+      "objective": "在订单池与排产日历中统一“当前查看版 / 正式执行版 / 草稿版”表达，并确保“候选资源”与“已落定资源”在数据和 UI 上彻底分开。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "UI 渲染或 Playwright 证据能证明页面同时呈现正确版本摘要与资源口径。",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "订单池列表、订单详情和顶部版本摘要必须同时区分当前查看版、正式执行版和草稿版，不得复用同一标签冒充不同口径。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5",
+            "test-report.md#T6"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "排产日历页必须使用与订单池一致的版本术语，用户能在同页同时看清当前查看版本与正式执行版本，不需要自行推断。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5",
+            "test-report.md#T6"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "订单详情中的资源区域必须把候选资源与已落定资源分开展示，并明确说明“可排到”不等于“已经排到”。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5",
+            "test-report.md#T6"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P2"
+      ],
+      "notes": "- Added schedule-calendar version summaries, kept viewing/published/draft labels separated in the UI, and captured browser evidence for version/resource clarity.",
+      "last_reviewed_at": "2026-04-16T23:20:05"
+    },
+    {
+      "phase_id": "P3",
+      "title": "对齐订单池排序与真实排程顺位",
+      "status": "completed",
+      "objective": "让订单池展示顺序优先反映排程算法实际尊重的人工决策，避免页面优先级与生成排程顺序相互打架。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "选择器/页面测试或浏览器证据能证明调整优先级、锁单、冻结、手工开工窗口后，列表顺位与排程逻辑一致变化。",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "订单池排序必须优先体现冻结、锁单、优先级和手工开工窗口这些人工决策，不再仅按风险聚合结果排序。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5",
+            "test-report.md#T6"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "对于已进入当前查看版排程的订单，订单池中的相对顺位必须与当前查看版中的实际开工顺序保持一致或可由同一排序依据解释。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5",
+            "test-report.md#T6"
+          ]
+        },
+        {
+          "ac_id": "P3-AC3",
+          "text": "对于尚未进入当前查看版排程的订单，订单池中的相对顺位必须沿用排程算法会采用的核心人工约束，而不是与排程算法无关的展示排序。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5",
+            "test-report.md#T6"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P3"
+      ],
+      "notes": "- Reworked the orders-pool selector ordering to follow current-view schedule facts first and manual business constraints second, then verified the list order in a real browser session.",
+      "last_reviewed_at": "2026-04-16T23:20:43"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 3,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-16T22:41:42",
+  "updated_at": "2026-04-16T23:25:55",
+  "branch": "master",
+  "baseline_revision": "2fca0f007bb2b9af5d96594a8ee372e84765ac72",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-987a04ec0c-20260416T224142",
+  "goal": "收口生产排程可信度：手工夜班开工必须真正参与排程；必然延期不得被洗掉；当前查看版/正式执行版/草稿版口径必须在订单池与排产页一致区分；候选资源与已落定资源必须分开；手工调整开工时间后必须明确展示对正式版、冲突、延期、重排的真实后果；订单池优先级与排程顺序必须一致，优先级/锁单/冻结/手工开工窗口必须进入排序逻辑。",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-987a04ec0c-20260416T224142\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-987a04ec0c-20260416T224142\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-987a04ec0c-20260416T224142\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-987a04ec0c-20260416T224142\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-987a04ec0c-20260416T224142\\test-report.md"
+  }
+}

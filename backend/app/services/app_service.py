@@ -304,6 +304,52 @@ def _signed_days_between(start_text: object, end_text: object) -> int | None:
     return (date.fromisoformat(end) - date.fromisoformat(start)).days
 
 
+def _parse_local_iso_datetime(value: object) -> datetime | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None or parsed.utcoffset() is None:
+        return None
+    return parsed.astimezone(LOCAL_TIMEZONE)
+
+
+def _due_deadline_datetime(date_text: object, clock_text: str = "18:00:00") -> datetime | None:
+    normalized = _normalize_date_text(date_text)
+    if not normalized:
+        return None
+    return _parse_local_iso_datetime(_iso_at(normalized, clock_text))
+
+
+def _event_datetime(value: object, default_clock_text: str = "18:00:00") -> datetime | None:
+    parsed = _parse_local_iso_datetime(value)
+    if parsed is not None:
+        return parsed
+    normalized_date = _normalize_date_text(value)
+    if not normalized_date:
+        return None
+    return _parse_local_iso_datetime(_iso_at(normalized_date, default_clock_text))
+
+
+def _signed_due_gap_days(
+    due_date_text: object,
+    event_value: object,
+    *,
+    event_default_clock_text: str = "18:00:00",
+) -> int | None:
+    due_deadline = _due_deadline_datetime(due_date_text)
+    event_time = _event_datetime(event_value, event_default_clock_text)
+    if due_deadline is None or event_time is None:
+        return None
+    day_gap = (event_time.date() - due_deadline.date()).days
+    if day_gap == 0 and event_time > due_deadline:
+        return 1
+    return day_gap
+
+
 def _days_from_today(date_text: object) -> int | None:
     normalized = _normalize_date_text(date_text)
     if normalized is None:
@@ -509,9 +555,26 @@ def _expected_start_shift_from_datetime_text(value: object) -> str:
     timestamp_text = str(value or "").strip().upper()
     if not timestamp_text:
         return "DAY"
-    if "T20:" in timestamp_text or "T21:" in timestamp_text or "T22:" in timestamp_text:
-        return "NIGHT"
+    if "T" in timestamp_text:
+        time_text = timestamp_text.split("T", 1)[1][:8]
+        try:
+            hour = int(time_text.split(":", 1)[0])
+        except (TypeError, ValueError):
+            hour = None
+        if hour is not None and (hour >= 20 or hour < 8):
+            return "NIGHT"
     return "DAY"
+
+
+def _schedule_version_status_label(status: object) -> str:
+    normalized = str(status or "").strip().upper()
+    if normalized == "PUBLISHED":
+        return "已发布"
+    if normalized == "DRAFT":
+        return "草稿"
+    if normalized == "ARCHIVED":
+        return "已归档"
+    return normalized or "-"
 
 
 class AppService:
@@ -532,6 +595,14 @@ class AppService:
         self._ensure_masterdata_seeded()
         reference_version_no = self._resolve_order_pool_version_no(version_no)
         reference_schedule_context = self._build_reference_schedule_context(reference_version_no)
+        published_version_no = self._pick_published_schedule_version_no()
+        published_schedule_context = (
+            reference_schedule_context
+            if published_version_no and published_version_no == reference_version_no
+            else self._build_reference_schedule_context(published_version_no)
+        )
+        draft_version_no = self._pick_latest_draft_schedule_version_no()
+        draft_version = self.get_schedule_version(draft_version_no) if draft_version_no else None
         shortage_analysis = self._build_schedule_shortage_analysis(reference_version_no)
         final_process_metrics_by_order = build_order_final_process_metrics(
             self.connection,
@@ -552,11 +623,45 @@ class AppService:
                 topology_by_process=topology_by_process,
                 reference_version=reference_schedule_context.get("version"),
                 schedule_fact=reference_schedule_context["order_map"].get(order_no),
+                published_version=published_schedule_context.get("version"),
+                published_schedule_fact=published_schedule_context["order_map"].get(order_no),
                 shortage_summary=shortage_analysis["order_map"].get(order_no),
                 final_process_metrics=final_process_metrics_by_order.get(order_no),
             )
             )
-        return {"reference_version_no": reference_version_no, "items": items}
+        reference_version = reference_schedule_context.get("version")
+        reference_version_status = str((reference_version or {}).get("status") or "").strip().upper() or None
+        reference_version_status_label = _schedule_version_status_label(reference_version_status)
+        published_version = published_schedule_context.get("version")
+        published_version_status = str((published_version or {}).get("status") or "").strip().upper() or None
+        return {
+            "reference_version_no": reference_version_no,
+            "current_view_version_no": reference_version_no,
+            "current_view_version_status": reference_version_status,
+            "current_view_version_status_label": reference_version_status_label,
+            "current_view_version_label": (
+                f"当前查看版 {reference_version_no}（{reference_version_status_label}）"
+                if reference_version_no
+                else "当前查看版：未选择"
+            ),
+            "published_version_no": published_version_no,
+            "published_version_status": published_version_status,
+            "published_version_status_label": _schedule_version_status_label(published_version_status),
+            "published_version_label": (
+                f"正式执行版 {published_version_no}"
+                if published_version_no
+                else "正式执行版：未发布"
+            ),
+            "draft_version_no": draft_version_no,
+            "draft_version_status": str((draft_version or {}).get("status") or "").strip().upper() or None,
+            "draft_version_status_label": _schedule_version_status_label((draft_version or {}).get("status")),
+            "draft_version_label": (
+                f"草稿版 {draft_version_no}"
+                if draft_version_no
+                else "草稿版：暂无"
+            ),
+            "items": items,
+        }
 
     def get_order_pool_item(self, order_no: str, *, version_no: str | None = None) -> dict[str, Any]:
         base_row = self._require_order(order_no)
@@ -565,6 +670,12 @@ class AppService:
         normalized_order_no = str(base_row["production_order_no"])
         reference_version_no = self._resolve_order_pool_version_no(version_no)
         reference_schedule_context = self._build_reference_schedule_context(reference_version_no)
+        published_version_no = self._pick_published_schedule_version_no()
+        published_schedule_context = (
+            reference_schedule_context
+            if published_version_no and published_version_no == reference_version_no
+            else self._build_reference_schedule_context(published_version_no)
+        )
         shortage_analysis = self._build_schedule_shortage_analysis(reference_version_no)
         final_process_metrics = build_order_final_process_metrics(
             self.connection,
@@ -584,6 +695,8 @@ class AppService:
             topology_by_process=topology_by_process,
             reference_version=reference_schedule_context.get("version"),
             schedule_fact=reference_schedule_context["order_map"].get(normalized_order_no),
+            published_version=published_schedule_context.get("version"),
+            published_schedule_fact=published_schedule_context["order_map"].get(normalized_order_no),
             shortage_summary=shortage_analysis["order_map"].get(normalized_order_no),
             final_process_metrics=final_process_metrics,
         )
@@ -802,7 +915,9 @@ class AppService:
 
         with transaction(self.connection):
             self._upsert_order_state(next_row)
-        return self.get_order_pool_item(order_no)
+        result = self.get_order_pool_item(order_no)
+        result["save_impact"] = self._build_expected_start_save_impact(result)
+        return result
 
     def delete_order_pool_order(self, order_no: str) -> dict[str, Any]:
         self._require_order(order_no)
@@ -2845,7 +2960,12 @@ class AppService:
                 version_no ASC
             """,
         )
-        return {"items": rows}
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["status_label"] = _schedule_version_status_label(row.get("status"))
+            items.append(item)
+        return {"items": items}
 
     def get_schedule_version(self, version_no: str) -> dict[str, Any]:
         row = fetch_one(
@@ -2863,7 +2983,9 @@ class AppService:
                 message="Schedule version does not exist.",
                 details={"version_no": version_no},
             )
-        return row
+        item = dict(row)
+        item["status_label"] = _schedule_version_status_label(row.get("status"))
+        return item
 
     def list_schedule_tasks(self, version_no: str) -> dict[str, Any]:
         self.get_schedule_version(version_no)
@@ -3054,6 +3176,41 @@ class AppService:
             self.get_schedule_version(normalized_version_no)
             return normalized_version_no
         return self._pick_reference_schedule_version_no()
+
+    def _pick_published_schedule_version_no(self) -> str | None:
+        row = fetch_one(
+            self.connection,
+            """
+            SELECT version_no
+            FROM schedule_versions
+            WHERE UPPER(TRIM(COALESCE(status, ''))) = 'PUBLISHED'
+            ORDER BY
+                COALESCE(NULLIF(TRIM(COALESCE(published_at, '')), ''), created_at) DESC,
+                created_at DESC,
+                version_no DESC
+            LIMIT 1
+            """,
+        )
+        if row is None:
+            return None
+        version_no = str(row.get("version_no") or "").strip()
+        return version_no or None
+
+    def _pick_latest_draft_schedule_version_no(self) -> str | None:
+        row = fetch_one(
+            self.connection,
+            """
+            SELECT version_no
+            FROM schedule_versions
+            WHERE UPPER(TRIM(COALESCE(status, ''))) = 'DRAFT'
+            ORDER BY created_at DESC, version_no DESC
+            LIMIT 1
+            """,
+        )
+        if row is None:
+            return None
+        version_no = str(row.get("version_no") or "").strip()
+        return version_no or None
 
     def _list_schedule_task_rows_by_version_order(
         self,
@@ -6868,6 +7025,8 @@ class AppService:
         topology_by_process: dict[str, list[dict[str, Any]]],
         reference_version: dict[str, Any] | None,
         schedule_fact: dict[str, Any] | None,
+        published_version: dict[str, Any] | None,
+        published_schedule_fact: dict[str, Any] | None,
         shortage_summary: dict[str, Any] | None,
         final_process_metrics: dict[str, Any] | None,
     ) -> dict[str, Any]:
@@ -6951,11 +7110,19 @@ class AppService:
         published_in_reference_version = (
             scheduled_in_reference_version and reference_version_status == "PUBLISHED"
         )
+        published_version_no = str((published_version or {}).get("version_no") or "").strip() or None
+        published_version_status = str((published_version or {}).get("status") or "").strip().upper() or None
+        scheduled_in_published_version = published_schedule_fact is not None
         scheduled_start_date = _normalize_date_text((schedule_fact or {}).get("scheduled_start_date"))
         scheduled_start_time = str((schedule_fact or {}).get("scheduled_start_time") or "").strip() or None
         scheduled_start_shift = str((schedule_fact or {}).get("scheduled_start_shift") or "").strip().upper() or None
         scheduled_finish_date = _normalize_date_text((schedule_fact or {}).get("scheduled_finish_date"))
         scheduled_finish_time = str((schedule_fact or {}).get("scheduled_finish_time") or "").strip() or None
+        published_scheduled_start_date = _normalize_date_text((published_schedule_fact or {}).get("scheduled_start_date"))
+        published_scheduled_start_time = str((published_schedule_fact or {}).get("scheduled_start_time") or "").strip() or None
+        published_scheduled_start_shift = str((published_schedule_fact or {}).get("scheduled_start_shift") or "").strip().upper() or None
+        published_scheduled_finish_date = _normalize_date_text((published_schedule_fact or {}).get("scheduled_finish_date"))
+        published_scheduled_finish_time = str((published_schedule_fact or {}).get("scheduled_finish_time") or "").strip() or None
         actual_workshop_codes = (
             schedule_fact.get("actual_workshop_codes")
             if isinstance(schedule_fact, dict) and isinstance(schedule_fact.get("actual_workshop_codes"), list)
@@ -6971,17 +7138,30 @@ class AppService:
             if isinstance(schedule_fact, dict) and isinstance(schedule_fact.get("actual_process_codes"), list)
             else []
         )
-        expected_start_due_gap_days = _signed_days_between(promised_due_date, expected_start_date)
+        expected_start_due_gap_days = _signed_due_gap_days(
+            promised_due_date,
+            expected_start_time,
+            event_default_clock_text="08:00:00",
+        )
         is_naturally_overdue = (
             expected_start_due_gap_days is not None and expected_start_due_gap_days > 0
         )
-        risk_finish_date = (
-            final_process_eta_date
-            or scheduled_finish_date
-            or _normalize_date_text(expected_finish_time)
+        order_window_finish_date = _normalize_date_text(expected_finish_time)
+        order_window_due_gap_days = _signed_due_gap_days(promised_due_date, expected_finish_time)
+        order_window_risk_level = "UNKNOWN"
+        if order_window_due_gap_days is not None:
+            if order_window_due_gap_days > 0:
+                order_window_risk_level = "OVERDUE"
+            elif order_window_due_gap_days >= -1:
+                order_window_risk_level = "TIGHT"
+            else:
+                order_window_risk_level = "SAFE"
+        final_process_due_gap_days = (
+            _signed_due_gap_days(promised_due_date, final_process_eta_date)
+            if final_process_eta_date
+            else None
         )
-        final_process_due_gap_days = _signed_days_between(promised_due_date, risk_finish_date)
-        scheduled_due_gap_days = _signed_days_between(promised_due_date, scheduled_finish_date)
+        scheduled_due_gap_days = _signed_due_gap_days(promised_due_date, scheduled_finish_time or scheduled_finish_date)
         final_process_risk_level = "UNKNOWN"
         if final_process_due_gap_days is not None:
             if final_process_due_gap_days > 0:
@@ -6990,6 +7170,14 @@ class AppService:
                 final_process_risk_level = "TIGHT"
             else:
                 final_process_risk_level = "SAFE"
+        scheduled_risk_level = "UNKNOWN"
+        if scheduled_due_gap_days is not None:
+            if scheduled_due_gap_days > 0:
+                scheduled_risk_level = "OVERDUE"
+            elif scheduled_due_gap_days >= -1:
+                scheduled_risk_level = "TIGHT"
+            else:
+                scheduled_risk_level = "SAFE"
         delay_risk_source = "UNKNOWN"
         if final_process_eta_date:
             delay_risk_source = "FINAL_PROCESS_ETA"
@@ -7012,6 +7200,30 @@ class AppService:
             priority_level=_normalize_priority_level((state_row or {}).get("priority_level"), PRIORITY_LEVEL_MAX),
             lock_flag=int((state_row or {}).get("lock_flag") or 0),
             frozen_flag=int((state_row or {}).get("frozen_flag") or 0),
+        )
+        reference_schedule_version_status_label = _schedule_version_status_label(
+            reference_version_status
+        )
+        published_schedule_version_status_label = _schedule_version_status_label(
+            published_version_status
+        )
+        if published_in_reference_version:
+            reference_schedule_version_label = f"正式发布版 {reference_version_no}"
+        elif scheduled_in_reference_version and reference_version_no:
+            reference_schedule_version_label = (
+                f"参考版 {reference_version_no}（{reference_schedule_version_status_label}）"
+            )
+        else:
+            reference_schedule_version_label = "未进入任何参考版本"
+        viewing_schedule_version_label = (
+            f"当前查看版 {reference_version_no}（{reference_schedule_version_status_label}）"
+            if reference_version_no
+            else "当前查看版：未选择"
+        )
+        published_schedule_version_label = (
+            f"正式执行版 {published_version_no}"
+            if published_version_no
+            else "正式执行版：未发布"
         )
         return {
             "order_no": base_row["production_order_no"],
@@ -7040,6 +7252,8 @@ class AppService:
             "scheduled_finish_time": scheduled_finish_time,
             "expected_start_due_gap_days": expected_start_due_gap_days,
             "is_naturally_overdue": is_naturally_overdue,
+            "order_window_due_gap_days": order_window_due_gap_days,
+            "order_window_risk_level": order_window_risk_level,
             "priority_level": _normalize_priority_level((state_row or {}).get("priority_level"), PRIORITY_LEVEL_MAX),
             "urgent_flag": _urgent_flag_from_priority_level((state_row or {}).get("priority_level")),
             "lock_flag": int((state_row or {}).get("lock_flag") or 0),
@@ -7056,13 +7270,31 @@ class AppService:
             "final_process_due_gap_days": final_process_due_gap_days,
             "scheduled_due_gap_days": scheduled_due_gap_days,
             "final_process_risk_level": final_process_risk_level,
+            "scheduled_risk_level": scheduled_risk_level,
             "delay_risk_source": delay_risk_source,
             "reference_version_no": reference_version_no,
             "reference_schedule_version_no": reference_version_no,
             "reference_schedule_version_status": reference_version_status,
+            "reference_schedule_version_status_label": reference_schedule_version_status_label,
+            "reference_schedule_version_label": reference_schedule_version_label,
+            "viewing_schedule_version_no": reference_version_no,
+            "viewing_schedule_version_status": reference_version_status,
+            "viewing_schedule_version_status_label": reference_schedule_version_status_label,
+            "viewing_schedule_version_label": viewing_schedule_version_label,
+            "published_schedule_version_no": published_version_no,
+            "published_schedule_version_status": published_version_status,
+            "published_schedule_version_status_label": published_schedule_version_status_label,
+            "published_schedule_version_label": published_schedule_version_label,
             "scheduled_in_reference_version": scheduled_in_reference_version,
+            "scheduled_in_viewing_version": scheduled_in_reference_version,
             "published_in_reference_version": published_in_reference_version,
+            "scheduled_in_published_version": scheduled_in_published_version,
             "current_schedule_version_no": reference_version_no if published_in_reference_version else None,
+            "published_scheduled_start_date": published_scheduled_start_date,
+            "published_scheduled_start_time": published_scheduled_start_time,
+            "published_scheduled_start_shift": published_scheduled_start_shift,
+            "published_scheduled_finish_date": published_scheduled_finish_date,
+            "published_scheduled_finish_time": published_scheduled_finish_time,
             "material_shortage_count": int((shortage_summary or {}).get("shortage_material_count") or 0),
             "material_shortage_summary": str((shortage_summary or {}).get("summary_text") or "").strip(),
             "material_shortage_start_date": _normalize_date_text(
@@ -7091,6 +7323,54 @@ class AppService:
             "manual_intervention_types": manual_intervention_types,
             "manual_intervention_count": len(manual_intervention_types),
             "process_contexts": process_contexts,
+        }
+
+    def _build_expected_start_save_impact(self, row: dict[str, Any]) -> dict[str, Any]:
+        expected_start_date = _normalize_date_text(row.get("expected_start_date"))
+        expected_start_shift = _normalize_shift_code(row.get("expected_start_shift"))
+        expected_start_text = (
+            f"{expected_start_date} {'夜班' if expected_start_shift == 'NIGHT' else '白班'}"
+            if expected_start_date
+            else "未设置"
+        )
+        viewing_version_no = str(row.get("viewing_schedule_version_no") or "").strip() or None
+        published_version_no = str(row.get("published_schedule_version_no") or "").strip() or None
+        impacts_viewing_version = bool(row.get("scheduled_in_viewing_version"))
+        impacts_published_version = bool(row.get("scheduled_in_published_version"))
+        viewing_conflict = impacts_viewing_version and (
+            _normalize_date_text(row.get("scheduled_start_date")) != expected_start_date
+            or _normalize_shift_code(row.get("scheduled_start_shift")) != expected_start_shift
+        )
+        published_conflict = impacts_published_version and (
+            _normalize_date_text(row.get("published_scheduled_start_date")) != expected_start_date
+            or _normalize_shift_code(row.get("published_scheduled_start_shift")) != expected_start_shift
+        )
+        has_schedule_conflict = viewing_conflict or published_conflict
+        causes_unavoidable_delay = bool(row.get("is_naturally_overdue"))
+        requires_reschedule = has_schedule_conflict
+        summary_items = [f"手工开工硬约束已设为 {expected_start_text}"]
+        if impacts_published_version and published_version_no:
+            summary_items.append(f"会影响正式执行版 {published_version_no}")
+        else:
+            summary_items.append("当前不直接改写正式执行版")
+        if impacts_viewing_version and viewing_version_no:
+            summary_items.append(f"会影响当前查看版 {viewing_version_no} 的判断口径")
+        if has_schedule_conflict:
+            summary_items.append("与现有排程事实冲突")
+        if causes_unavoidable_delay:
+            summary_items.append("该订单已必然延期")
+        if requires_reschedule:
+            summary_items.append("需要立即重排")
+        return {
+            "expected_start_text": expected_start_text,
+            "impacts_viewing_version": impacts_viewing_version,
+            "viewing_version_no": viewing_version_no,
+            "impacts_published_version": impacts_published_version,
+            "published_version_no": published_version_no,
+            "has_schedule_conflict": has_schedule_conflict,
+            "causes_unavoidable_delay": causes_unavoidable_delay,
+            "requires_reschedule": requires_reschedule,
+            "summary_items": summary_items,
         }
 
     def _build_reference_schedule_context(self, version_no: str | None) -> dict[str, Any]:

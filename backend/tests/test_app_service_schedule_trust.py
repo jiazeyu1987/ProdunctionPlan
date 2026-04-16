@@ -39,6 +39,24 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
         self.assertEqual(result["expected_start_date"], "2026-04-15")
         self.assertEqual(result["expected_start_time"], "2026-04-15T08:00:00+08:00")
         self.assertEqual(result["expected_finish_time"], "2026-04-20T18:00:00+08:00")
+        self.assertFalse(result["save_impact"]["causes_unavoidable_delay"])
+
+    def test_patch_expected_start_night_on_due_date_marks_unavoidable_delay(self) -> None:
+        self._seed_order("MO-PATCH-NIGHT-001", expected_start_date="2026-04-13")
+
+        result = self.service.patch_order_pool_order(
+            "MO-PATCH-NIGHT-001",
+            {
+                "expected_start_date": "2026-04-20",
+                "expected_start_shift": "NIGHT",
+            },
+        )
+
+        self.assertEqual(result["expected_start_time"], "2026-04-20T20:00:00+08:00")
+        self.assertTrue(result["is_naturally_overdue"])
+        self.assertEqual(result["expected_start_due_gap_days"], 1)
+        self.assertTrue(result["save_impact"]["causes_unavoidable_delay"])
+        self.assertIn("该订单已必然延期", result["save_impact"]["summary_items"])
 
     def test_generate_schedule_uses_manual_expected_start_date_when_enabled(self) -> None:
         self._seed_route_and_topology("MAT-STATE", "PROC-A", capacity_per_shift=10)
@@ -69,6 +87,37 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
             expected_start_date="2026-04-16",
             expected_start_shift="NIGHT",
         )
+
+        generated = self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+
+        tasks = self._list_schedule_tasks(str(generated["version_no"]))
+        self.assertEqual(tasks[0]["calendar_date"], "2026-04-16")
+        self.assertEqual(tasks[0]["shift_code"], "NIGHT")
+
+    def test_generate_schedule_treats_late_night_timestamp_as_night_shift(self) -> None:
+        self._seed_route_and_topology("MAT-NIGHT-LATE", "PROC-A", capacity_per_shift=10)
+        self._seed_order(
+            "MO-NIGHT-LATE-001",
+            material_code="MAT-NIGHT-LATE",
+            quantity=10,
+            expected_start_date="2026-04-16",
+            expected_start_shift="NIGHT",
+        )
+        self.connection.execute(
+            """
+            UPDATE order_pool_state
+            SET expected_start_time = ?
+            WHERE production_order_no = ?
+            """,
+            ("2026-04-16T23:00:00+08:00", "MO-NIGHT-LATE-001"),
+        )
+        self.connection.commit()
 
         generated = self.service.generate_schedule(
             {
