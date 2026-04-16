@@ -381,6 +381,18 @@ class AppServiceOrderPoolStatusTestCase(unittest.TestCase):
         payload = self.service.list_order_pool()
 
         self.assertEqual(payload["reference_version_no"], "V2026.04.15-D1")
+        self.assertEqual(
+            payload["items"][0]["reference_schedule_version_no"],
+            "V2026.04.15-D1",
+        )
+        self.assertEqual(
+            payload["items"][0]["reference_schedule_version_status"],
+            "PUBLISHED",
+        )
+        self.assertTrue(payload["items"][0]["scheduled_in_reference_version"])
+        self.assertTrue(payload["items"][0]["published_in_reference_version"])
+        self.assertEqual(payload["items"][0]["scheduled_start_date"], "2026-04-13")
+        self.assertEqual(payload["items"][0]["scheduled_finish_date"], "2026-04-13")
         self.assertEqual(payload["items"][0]["material_shortage_count"], 1)
         self.assertEqual(payload["items"][0]["material_shortage_first_material_code"], "RM-001")
         self.assertEqual(payload["items"][0]["material_shortage_start_date"], "2026-04-13")
@@ -593,3 +605,219 @@ class AppServiceOrderPoolStatusTestCase(unittest.TestCase):
 
         self.assertEqual(payload["items"][0]["material_shortage_count"], 1)
         self.assertEqual(payload["items"][0]["material_shortage_first_material_code"], "RM-CHILD-001")
+
+    def test_list_order_pool_marks_natural_overdue_and_final_eta_risk(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO production_orders (
+                production_order_no,
+                material_code,
+                material_name,
+                material_specification,
+                production_qty,
+                status,
+                planned_start_date,
+                planned_end_date,
+                source_bill_no,
+                material_list_no,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MO-RISK-001",
+                "MAT-RISK-001",
+                "测试风险订单",
+                "规格E",
+                10,
+                "2",
+                "2026-04-13",
+                "2026-04-15",
+                "SRC-RISK-001",
+                "ML-RISK-001",
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO order_pool_state (
+                production_order_no,
+                promised_due_date,
+                expected_start_date,
+                expected_start_time,
+                expected_finish_time,
+                priority_level,
+                urgent_flag,
+                lock_flag,
+                frozen_flag,
+                status,
+                order_status,
+                completed_qty,
+                remaining_qty,
+                progress_rate,
+                production_batch_no,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MO-RISK-001",
+                "2026-04-15",
+                "2026-04-17",
+                "2026-04-17T20:00:00+08:00",
+                "2026-04-18T18:00:00+08:00",
+                5,
+                0,
+                0,
+                0,
+                "OPEN",
+                "OPEN",
+                0,
+                10,
+                0,
+                "SRC-RISK-001-B1",
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.commit()
+
+        payload = self.service.list_order_pool()
+
+        self.assertTrue(payload["items"][0]["is_naturally_overdue"])
+        self.assertEqual(payload["items"][0]["expected_start_due_gap_days"], 2)
+        self.assertEqual(payload["items"][0]["final_process_risk_level"], "OVERDUE")
+
+    def test_list_order_pool_keeps_manual_window_separate_from_schedule_fact(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO production_orders (
+                production_order_no,
+                material_code,
+                material_name,
+                material_specification,
+                production_qty,
+                status,
+                planned_start_date,
+                planned_end_date,
+                source_bill_no,
+                material_list_no,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MO-MANUAL-001",
+                "MAT-MANUAL-001",
+                "人工干预订单",
+                "规格F",
+                10,
+                "2",
+                "2026-04-13",
+                "2026-04-15",
+                "SRC-MANUAL-001",
+                "ML-MANUAL-001",
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO order_pool_state (
+                production_order_no,
+                promised_due_date,
+                expected_start_date,
+                expected_start_time,
+                expected_finish_time,
+                priority_level,
+                urgent_flag,
+                lock_flag,
+                frozen_flag,
+                status,
+                order_status,
+                completed_qty,
+                remaining_qty,
+                progress_rate,
+                production_batch_no,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MO-MANUAL-001",
+                "2026-04-15",
+                "2026-04-14",
+                "2026-04-14T20:00:00+08:00",
+                "2026-04-16T18:00:00+08:00",
+                2,
+                1,
+                1,
+                0,
+                "OPEN",
+                "OPEN",
+                0,
+                10,
+                0,
+                "SRC-MANUAL-001-B1",
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO schedule_versions (
+                version_no,
+                status,
+                status_name_cn,
+                strategy_code,
+                created_at,
+                published_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "V2026.04.16-D1",
+                "PUBLISHED",
+                "已发布",
+                "KEY_ORDER_FIRST",
+                "2026-04-16T00:00:00+08:00",
+                "2026-04-16T01:00:00+08:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO schedule_tasks (
+                version_no,
+                task_no,
+                production_order_no,
+                process_code,
+                process_name_cn,
+                workshop_code,
+                line_code,
+                calendar_date,
+                shift_code,
+                plan_qty,
+                plan_start_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "V2026.04.16-D1",
+                1,
+                "MO-MANUAL-001",
+                "PROC-A",
+                "工序A",
+                "WS-01",
+                "LINE-01",
+                "2026-04-15",
+                "DAY",
+                10,
+                "2026-04-15T08:00:00+08:00",
+            ),
+        )
+        self.connection.commit()
+
+        payload = self.service.list_order_pool()
+        row = payload["items"][0]
+
+        self.assertEqual(row["expected_start_date"], "2026-04-14")
+        self.assertEqual(row["scheduled_start_date"], "2026-04-15")
+        self.assertTrue(row["manual_expected_start_override"])
+        self.assertEqual(row["manual_expected_start_shift"], "NIGHT")
+        self.assertEqual(row["scheduled_due_gap_days"], 0)
+        self.assertEqual(row["delay_risk_source"], "SCHEDULE_FACT")
+        self.assertEqual(row["manual_intervention_types"], ["EXPECTED_START", "PRIORITY", "LOCK"])
+        self.assertEqual(row["actual_workshop_codes"], ["WS-01"])
+        self.assertEqual(row["actual_line_codes"], ["LINE-01"])
+        self.assertEqual(row["actual_process_codes"], ["PROC-A"])

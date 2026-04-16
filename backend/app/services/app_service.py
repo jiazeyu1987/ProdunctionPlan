@@ -296,6 +296,14 @@ def _days_between(start_text: object, end_text: object) -> int:
     return max(0, (date.fromisoformat(end) - date.fromisoformat(start)).days)
 
 
+def _signed_days_between(start_text: object, end_text: object) -> int | None:
+    start = _normalize_date_text(start_text)
+    end = _normalize_date_text(end_text)
+    if not start or not end:
+        return None
+    return (date.fromisoformat(end) - date.fromisoformat(start)).days
+
+
 def _days_from_today(date_text: object) -> int | None:
     normalized = _normalize_date_text(date_text)
     if normalized is None:
@@ -523,6 +531,7 @@ class AppService:
         capacity_map = self._get_capacity_map(order_nos)
         self._ensure_masterdata_seeded()
         reference_version_no = self._resolve_order_pool_version_no(version_no)
+        reference_schedule_context = self._build_reference_schedule_context(reference_version_no)
         shortage_analysis = self._build_schedule_shortage_analysis(reference_version_no)
         final_process_metrics_by_order = build_order_final_process_metrics(
             self.connection,
@@ -541,7 +550,8 @@ class AppService:
                 capacity_rows=capacity_map.get(order_no, []),
                 route_rows=route_map.get(str(row["material_code"]), []),
                 topology_by_process=topology_by_process,
-                reference_version_no=reference_version_no,
+                reference_version=reference_schedule_context.get("version"),
+                schedule_fact=reference_schedule_context["order_map"].get(order_no),
                 shortage_summary=shortage_analysis["order_map"].get(order_no),
                 final_process_metrics=final_process_metrics_by_order.get(order_no),
             )
@@ -554,6 +564,7 @@ class AppService:
         self._ensure_masterdata_seeded()
         normalized_order_no = str(base_row["production_order_no"])
         reference_version_no = self._resolve_order_pool_version_no(version_no)
+        reference_schedule_context = self._build_reference_schedule_context(reference_version_no)
         shortage_analysis = self._build_schedule_shortage_analysis(reference_version_no)
         final_process_metrics = build_order_final_process_metrics(
             self.connection,
@@ -571,7 +582,8 @@ class AppService:
             capacity_rows=capacity_rows,
             route_rows=route_rows,
             topology_by_process=topology_by_process,
-            reference_version_no=reference_version_no,
+            reference_version=reference_schedule_context.get("version"),
+            schedule_fact=reference_schedule_context["order_map"].get(normalized_order_no),
             shortage_summary=shortage_analysis["order_map"].get(normalized_order_no),
             final_process_metrics=final_process_metrics,
         )
@@ -6854,7 +6866,8 @@ class AppService:
         capacity_rows: list[dict[str, Any]],
         route_rows: list[dict[str, Any]],
         topology_by_process: dict[str, list[dict[str, Any]]],
-        reference_version_no: str | None,
+        reference_version: dict[str, Any] | None,
+        schedule_fact: dict[str, Any] | None,
         shortage_summary: dict[str, Any] | None,
         final_process_metrics: dict[str, Any] | None,
     ) -> dict[str, Any]:
@@ -6873,16 +6886,32 @@ class AppService:
         promised_due_date = _normalize_date_text(
             (state_row or {}).get("promised_due_date") or base_row.get("planned_end_date")
         )
+        base_expected_start_date = _normalize_date_text(base_row.get("planned_start_date"))
         expected_start_date = _normalize_date_text(
-            (state_row or {}).get("expected_start_date") or base_row.get("planned_start_date")
+            (state_row or {}).get("expected_start_date") or base_expected_start_date
         )
+        base_expected_start_time = _iso_at(base_expected_start_date, "08:00:00")
         expected_start_time = (
             (state_row or {}).get("expected_start_time")
             or _iso_at(expected_start_date, "08:00:00")
         )
+        base_expected_finish_time = _iso_at(promised_due_date, "18:00:00")
         expected_finish_time = (
             (state_row or {}).get("expected_finish_time")
-            or _iso_at(promised_due_date, "18:00:00")
+            or base_expected_finish_time
+        )
+        manual_expected_start_date = _normalize_date_text((state_row or {}).get("expected_start_date"))
+        manual_expected_start_time = str((state_row or {}).get("expected_start_time") or "").strip() or None
+        manual_expected_start_shift = _expected_start_shift_from_datetime_text(manual_expected_start_time)
+        manual_expected_start_override = (
+            manual_expected_start_date is not None
+            and (
+                manual_expected_start_date != base_expected_start_date
+                or (
+                    manual_expected_start_time is not None
+                    and manual_expected_start_time != base_expected_start_time
+                )
+            )
         )
         base_status = str(base_row.get("status") or "").strip().upper()
         status = str(
@@ -6916,6 +6945,74 @@ class AppService:
             if isinstance(shortage_summary, dict) and isinstance(shortage_summary.get("items"), list)
             else []
         )
+        reference_version_no = str((reference_version or {}).get("version_no") or "").strip() or None
+        reference_version_status = str((reference_version or {}).get("status") or "").strip().upper() or None
+        scheduled_in_reference_version = schedule_fact is not None
+        published_in_reference_version = (
+            scheduled_in_reference_version and reference_version_status == "PUBLISHED"
+        )
+        scheduled_start_date = _normalize_date_text((schedule_fact or {}).get("scheduled_start_date"))
+        scheduled_start_time = str((schedule_fact or {}).get("scheduled_start_time") or "").strip() or None
+        scheduled_start_shift = str((schedule_fact or {}).get("scheduled_start_shift") or "").strip().upper() or None
+        scheduled_finish_date = _normalize_date_text((schedule_fact or {}).get("scheduled_finish_date"))
+        scheduled_finish_time = str((schedule_fact or {}).get("scheduled_finish_time") or "").strip() or None
+        actual_workshop_codes = (
+            schedule_fact.get("actual_workshop_codes")
+            if isinstance(schedule_fact, dict) and isinstance(schedule_fact.get("actual_workshop_codes"), list)
+            else []
+        )
+        actual_line_codes = (
+            schedule_fact.get("actual_line_codes")
+            if isinstance(schedule_fact, dict) and isinstance(schedule_fact.get("actual_line_codes"), list)
+            else []
+        )
+        actual_process_codes = (
+            schedule_fact.get("actual_process_codes")
+            if isinstance(schedule_fact, dict) and isinstance(schedule_fact.get("actual_process_codes"), list)
+            else []
+        )
+        expected_start_due_gap_days = _signed_days_between(promised_due_date, expected_start_date)
+        is_naturally_overdue = (
+            expected_start_due_gap_days is not None and expected_start_due_gap_days > 0
+        )
+        risk_finish_date = (
+            final_process_eta_date
+            or scheduled_finish_date
+            or _normalize_date_text(expected_finish_time)
+        )
+        final_process_due_gap_days = _signed_days_between(promised_due_date, risk_finish_date)
+        scheduled_due_gap_days = _signed_days_between(promised_due_date, scheduled_finish_date)
+        final_process_risk_level = "UNKNOWN"
+        if final_process_due_gap_days is not None:
+            if final_process_due_gap_days > 0:
+                final_process_risk_level = "OVERDUE"
+            elif final_process_due_gap_days >= -1:
+                final_process_risk_level = "TIGHT"
+            else:
+                final_process_risk_level = "SAFE"
+        delay_risk_source = "UNKNOWN"
+        if final_process_eta_date:
+            delay_risk_source = "FINAL_PROCESS_ETA"
+        elif scheduled_finish_date:
+            delay_risk_source = "SCHEDULE_FACT"
+        elif _normalize_date_text(expected_finish_time):
+            delay_risk_source = "ORDER_WINDOW"
+        process_contexts = self._merge_process_contexts_with_schedule_fact(
+            process_contexts=self._build_process_contexts(
+                order_no=str(base_row["production_order_no"]),
+                product_code=str(base_row["material_code"]),
+                capacity_rows=capacity_rows,
+                route_rows=route_rows,
+                topology_by_process=topology_by_process,
+            ),
+            schedule_fact=schedule_fact,
+        )
+        manual_intervention_types = self._build_manual_intervention_types(
+            manual_expected_start_override=manual_expected_start_override,
+            priority_level=_normalize_priority_level((state_row or {}).get("priority_level"), PRIORITY_LEVEL_MAX),
+            lock_flag=int((state_row or {}).get("lock_flag") or 0),
+            frozen_flag=int((state_row or {}).get("frozen_flag") or 0),
+        )
         return {
             "order_no": base_row["production_order_no"],
             "product_code": base_row["material_code"],
@@ -6932,6 +7029,17 @@ class AppService:
             "expected_start_shift": _expected_start_shift_from_datetime_text(expected_start_time),
             "expected_finish_time": expected_finish_time,
             "expected_start_date": expected_start_date,
+            "manual_expected_start_date": manual_expected_start_date,
+            "manual_expected_start_time": manual_expected_start_time,
+            "manual_expected_start_shift": manual_expected_start_shift,
+            "manual_expected_start_override": manual_expected_start_override,
+            "scheduled_start_date": scheduled_start_date,
+            "scheduled_start_time": scheduled_start_time,
+            "scheduled_start_shift": scheduled_start_shift,
+            "scheduled_finish_date": scheduled_finish_date,
+            "scheduled_finish_time": scheduled_finish_time,
+            "expected_start_due_gap_days": expected_start_due_gap_days,
+            "is_naturally_overdue": is_naturally_overdue,
             "priority_level": _normalize_priority_level((state_row or {}).get("priority_level"), PRIORITY_LEVEL_MAX),
             "urgent_flag": _urgent_flag_from_priority_level((state_row or {}).get("priority_level")),
             "lock_flag": int((state_row or {}).get("lock_flag") or 0),
@@ -6945,7 +7053,16 @@ class AppService:
             "final_process_name_cn": final_process_name_cn,
             "final_process_completed_qty": final_process_completed_qty,
             "final_process_eta_date": final_process_eta_date,
+            "final_process_due_gap_days": final_process_due_gap_days,
+            "scheduled_due_gap_days": scheduled_due_gap_days,
+            "final_process_risk_level": final_process_risk_level,
+            "delay_risk_source": delay_risk_source,
             "reference_version_no": reference_version_no,
+            "reference_schedule_version_no": reference_version_no,
+            "reference_schedule_version_status": reference_version_status,
+            "scheduled_in_reference_version": scheduled_in_reference_version,
+            "published_in_reference_version": published_in_reference_version,
+            "current_schedule_version_no": reference_version_no if published_in_reference_version else None,
             "material_shortage_count": int((shortage_summary or {}).get("shortage_material_count") or 0),
             "material_shortage_summary": str((shortage_summary or {}).get("summary_text") or "").strip(),
             "material_shortage_start_date": _normalize_date_text(
@@ -6968,14 +7085,155 @@ class AppService:
             ).strip()
             or None,
             "material_shortage_items": shortage_items,
-            "process_contexts": self._build_process_contexts(
-                order_no=str(base_row["production_order_no"]),
-                product_code=str(base_row["material_code"]),
-                capacity_rows=capacity_rows,
-                route_rows=route_rows,
-                topology_by_process=topology_by_process,
-            ),
+            "actual_workshop_codes": actual_workshop_codes,
+            "actual_line_codes": actual_line_codes,
+            "actual_process_codes": actual_process_codes,
+            "manual_intervention_types": manual_intervention_types,
+            "manual_intervention_count": len(manual_intervention_types),
+            "process_contexts": process_contexts,
         }
+
+    def _build_reference_schedule_context(self, version_no: str | None) -> dict[str, Any]:
+        if not version_no:
+            return {"version": None, "order_map": {}}
+        version = self.get_schedule_version(version_no)
+        task_rows = self._list_schedule_task_detail_rows(version_no)
+        order_map: dict[str, dict[str, Any]] = {}
+        for row in task_rows:
+            order_no = str(row.get("production_order_no") or "").strip()
+            calendar_date = _normalize_date_text(row.get("calendar_date"))
+            if not order_no or not calendar_date:
+                continue
+            shift_code = _normalize_shift_code(row.get("shift_code"))
+            start_slot = _slot_index_from_text(calendar_date, shift_code)
+            scheduled_finish_date = (
+                (date.fromisoformat(calendar_date) + timedelta(days=1)).isoformat()
+                if shift_code == "NIGHT"
+                else calendar_date
+            )
+            scheduled_start_time = str(row.get("plan_start_time") or "").strip() or _iso_at(
+                calendar_date,
+                "20:00:00" if shift_code == "NIGHT" else "08:00:00",
+            )
+            scheduled_finish_time = _iso_at(
+                scheduled_finish_date,
+                "08:00:00" if shift_code == "NIGHT" else "20:00:00",
+            )
+            current = order_map.get(order_no)
+            if current is None:
+                current = {
+                    "scheduled_start_slot": start_slot,
+                    "scheduled_start_date": calendar_date,
+                    "scheduled_start_time": scheduled_start_time,
+                    "scheduled_start_shift": shift_code,
+                    "scheduled_finish_slot": start_slot,
+                    "scheduled_finish_date": scheduled_finish_date,
+                    "scheduled_finish_time": scheduled_finish_time,
+                    "actual_workshop_codes": set(),
+                    "actual_line_codes": set(),
+                    "actual_process_codes": set(),
+                    "actual_process_map": {},
+                }
+                order_map[order_no] = current
+            if start_slot < int(current["scheduled_start_slot"]):
+                current["scheduled_start_slot"] = start_slot
+                current["scheduled_start_date"] = calendar_date
+                current["scheduled_start_time"] = scheduled_start_time
+                current["scheduled_start_shift"] = shift_code
+            if start_slot >= int(current["scheduled_finish_slot"]):
+                current["scheduled_finish_slot"] = start_slot
+                current["scheduled_finish_date"] = scheduled_finish_date
+                current["scheduled_finish_time"] = scheduled_finish_time
+
+            workshop_code = str(row.get("workshop_code") or "").strip().upper()
+            line_code = str(row.get("line_code") or "").strip().upper()
+            process_code = str(row.get("process_code") or "").strip().upper()
+            process_name_cn = str(row.get("process_name_cn") or process_code).strip() or process_code
+            if workshop_code:
+                current["actual_workshop_codes"].add(workshop_code)
+            if line_code:
+                current["actual_line_codes"].add(line_code)
+            if process_code:
+                current["actual_process_codes"].add(process_code)
+                process_item = current["actual_process_map"].get(process_code)
+                if process_item is None:
+                    process_item = {
+                        "process_code": process_code,
+                        "process_name_cn": process_name_cn,
+                        "actual_workshop_codes": set(),
+                        "actual_line_codes": set(),
+                    }
+                    current["actual_process_map"][process_code] = process_item
+                if workshop_code:
+                    process_item["actual_workshop_codes"].add(workshop_code)
+                if line_code:
+                    process_item["actual_line_codes"].add(line_code)
+
+        normalized_order_map: dict[str, dict[str, Any]] = {}
+        for order_no, item in order_map.items():
+            normalized_order_map[order_no] = {
+                "scheduled_start_date": item["scheduled_start_date"],
+                "scheduled_start_time": item["scheduled_start_time"],
+                "scheduled_start_shift": item["scheduled_start_shift"],
+                "scheduled_finish_date": item["scheduled_finish_date"],
+                "scheduled_finish_time": item["scheduled_finish_time"],
+                "actual_workshop_codes": sorted(item["actual_workshop_codes"]),
+                "actual_line_codes": sorted(item["actual_line_codes"]),
+                "actual_process_codes": sorted(item["actual_process_codes"]),
+                "actual_process_map": {
+                    process_code: {
+                        "process_code": process_code,
+                        "process_name_cn": process_item["process_name_cn"],
+                        "actual_workshop_codes": sorted(process_item["actual_workshop_codes"]),
+                        "actual_line_codes": sorted(process_item["actual_line_codes"]),
+                    }
+                    for process_code, process_item in item["actual_process_map"].items()
+                },
+            }
+        return {"version": version, "order_map": normalized_order_map}
+
+    def _merge_process_contexts_with_schedule_fact(
+        self,
+        *,
+        process_contexts: list[dict[str, Any]],
+        schedule_fact: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        actual_process_map = (
+            schedule_fact.get("actual_process_map")
+            if isinstance(schedule_fact, dict) and isinstance(schedule_fact.get("actual_process_map"), dict)
+            else {}
+        )
+        merged: list[dict[str, Any]] = []
+        for context in process_contexts:
+            process_code = str(context.get("process_code") or "").strip().upper()
+            actual_process_item = actual_process_map.get(process_code, {})
+            merged.append(
+                {
+                    **context,
+                    "actual_workshop_codes": actual_process_item.get("actual_workshop_codes", []),
+                    "actual_line_codes": actual_process_item.get("actual_line_codes", []),
+                }
+            )
+        return merged
+
+    def _build_manual_intervention_types(
+        self,
+        *,
+        manual_expected_start_override: bool,
+        priority_level: int,
+        lock_flag: int,
+        frozen_flag: int,
+    ) -> list[str]:
+        items: list[str] = []
+        if manual_expected_start_override:
+            items.append("EXPECTED_START")
+        if priority_level < PRIORITY_LEVEL_MAX:
+            items.append("PRIORITY")
+        if lock_flag == 1:
+            items.append("LOCK")
+        if frozen_flag == 1:
+            items.append("FREEZE")
+        return items
 
     def _build_process_contexts(
         self,
