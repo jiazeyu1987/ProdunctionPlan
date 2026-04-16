@@ -60,6 +60,62 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
         tasks = self._list_schedule_tasks(str(generated["version_no"]))
         self.assertEqual(tasks[0]["calendar_date"], "2026-04-16")
 
+    def test_generate_schedule_uses_manual_expected_start_shift_when_enabled(self) -> None:
+        self._seed_route_and_topology("MAT-NIGHT", "PROC-A", capacity_per_shift=10)
+        self._seed_order(
+            "MO-NIGHT-001",
+            material_code="MAT-NIGHT",
+            quantity=10,
+            expected_start_date="2026-04-16",
+            expected_start_shift="NIGHT",
+        )
+
+        generated = self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+
+        tasks = self._list_schedule_tasks(str(generated["version_no"]))
+        self.assertEqual(tasks[0]["calendar_date"], "2026-04-16")
+        self.assertEqual(tasks[0]["shift_code"], "NIGHT")
+
+    def test_generate_schedule_preserves_due_date_earlier_than_start_date(self) -> None:
+        self._seed_route_and_topology("MAT-LATE", "PROC-A", capacity_per_shift=10)
+        self._seed_order(
+            "MO-LATE-001",
+            material_code="MAT-LATE",
+            quantity=10,
+            expected_start_date="2026-04-16",
+            promised_due_date="2026-04-14",
+        )
+
+        captured_candidates: list[dict[str, object]] = []
+        original_sort_schedule_candidates = self.service._sort_schedule_candidates
+
+        def capture_candidates(*, strategy_code, candidates):
+            captured_candidates[:] = list(candidates)
+            return original_sort_schedule_candidates(
+                strategy_code=strategy_code,
+                candidates=candidates,
+            )
+
+        self.service._sort_schedule_candidates = capture_candidates  # type: ignore[method-assign]
+        self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+        self.assertEqual(len(captured_candidates), 1)
+        self.assertEqual(
+            captured_candidates[0]["due_date"].isoformat(),
+            "2026-04-14",
+        )
+
     def test_generate_schedule_limits_daily_capacity_across_shifts(self) -> None:
         self._seed_route_and_topology("MAT-DAY", "PROC-A", capacity_per_shift=10)
         self._seed_order(
@@ -183,6 +239,119 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
             0,
         )
 
+    def test_generate_schedule_blocks_self_made_child_material_shortage(self) -> None:
+        self._seed_route_and_topology("MAT-SELF", "PROC-A", capacity_per_shift=10)
+        self._seed_order(
+            "MO-SELF-001",
+            material_code="MAT-SELF",
+            quantity=10,
+            expected_start_date="2026-04-13",
+        )
+        self.connection.execute(
+            """
+            INSERT INTO material_issue_items (
+                production_order_no,
+                child_material_code,
+                child_material_name,
+                spec_model,
+                issue_qty,
+                supply_type_code,
+                supply_type_name,
+                inventory_qty,
+                inventory_status,
+                usage_numerator,
+                usage_denominator,
+                child_unit,
+                expandable,
+                display_order,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MO-SELF-001",
+                "SUB-001",
+                "SelfMade-1",
+                "Spec",
+                2,
+                "SELF_MADE",
+                "自制",
+                0,
+                "LOW",
+                1,
+                1,
+                "PCS",
+                1,
+                1,
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO bom_children (
+                parent_material_code,
+                child_material_code,
+                child_material_name,
+                child_specification,
+                usage_numerator,
+                usage_denominator,
+                child_unit,
+                supply_type_code,
+                supply_type_name,
+                inventory_qty,
+                inventory_status,
+                expandable,
+                display_order,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "SUB-001",
+                "RM-CHILD-001",
+                "Child-Raw-1",
+                "Spec",
+                3,
+                1,
+                "PCS",
+                "PURCHASED",
+                "采购",
+                0,
+                "KNOWN",
+                0,
+                1,
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO inventory_cache (
+                material_code,
+                inventory_qty,
+                inventory_status,
+                snapshot_time,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "RM-CHILD-001",
+                1,
+                "KNOWN",
+                "2026-04-13T00:00:00+00:00",
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.commit()
+
+        with self.assertRaises(AppError) as ctx:
+            self.service.generate_schedule(
+                {
+                    "strategy_code": "KEY_ORDER_FIRST",
+                    "capacity_source_mode": "DEFAULT",
+                    "use_order_state_window": True,
+                }
+            )
+
+        self.assertEqual(ctx.exception.code, "SCHEDULE_MATERIAL_SHORTAGE_BLOCKED")
+
     def test_reference_version_defaults_to_published_version(self) -> None:
         self._seed_order("MO-REF-001", material_code="MAT-REF", quantity=10, expected_start_date="2026-04-13")
         self._seed_schedule_version("V-PUB-001", status="PUBLISHED", created_at="2026-04-13T00:00:00+00:00")
@@ -201,7 +370,14 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
         material_code: str = "MAT-001",
         quantity: float = 10,
         expected_start_date: str,
+        expected_start_shift: str = "DAY",
+        promised_due_date: str = "2026-04-20",
     ) -> None:
+        start_time = (
+            f"{expected_start_date}T20:00:00+08:00"
+            if expected_start_shift == "NIGHT"
+            else f"{expected_start_date}T08:00:00+08:00"
+        )
         self.connection.execute(
             """
             INSERT INTO production_orders (
@@ -226,7 +402,7 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
                 quantity,
                 "OPEN",
                 "2026-04-13",
-                "2026-04-20",
+                promised_due_date,
                 f"SRC-{order_no}",
                 f"ML-{order_no}",
                 "2026-04-13T00:00:00+00:00",
@@ -255,10 +431,10 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
             """,
             (
                 order_no,
-                "2026-04-20",
+                promised_due_date,
                 expected_start_date,
-                f"{expected_start_date}T08:00:00+08:00",
-                "2026-04-20T18:00:00+08:00",
+                start_time,
+                f"{promised_due_date}T18:00:00+08:00",
                 5,
                 0,
                 0,

@@ -497,6 +497,15 @@ def _material_row(row: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _expected_start_shift_from_datetime_text(value: object) -> str:
+    timestamp_text = str(value or "").strip().upper()
+    if not timestamp_text:
+        return "DAY"
+    if "T20:" in timestamp_text or "T21:" in timestamp_text or "T22:" in timestamp_text:
+        return "NIGHT"
+    return "DAY"
+
+
 class AppService:
     def __init__(self, connection: sqlite3.Connection) -> None:
         self.connection = connection
@@ -3863,8 +3872,10 @@ class AppService:
                 mi.child_material_code,
                 mi.child_material_name,
                 mi.issue_qty,
+                COALESCE(sc.supply_type_code, mi.supply_type_code, '') AS supply_type_code,
                 COALESCE(sc.supply_type_name, mi.supply_type_name, '-') AS supply_type_name,
-                COALESCE(ic.inventory_qty, mi.inventory_qty, 0) AS inventory_qty
+                COALESCE(ic.inventory_qty, mi.inventory_qty, 0) AS inventory_qty,
+                mi.expandable
             FROM material_issue_items mi
             LEFT JOIN inventory_cache ic
               ON ic.material_code = mi.child_material_code
@@ -3873,13 +3884,131 @@ class AppService:
             """
         )
 
+    def _list_schedule_bom_child_rows(self, parent_material_code: str) -> list[dict[str, Any]]:
+        return fetch_all(
+            self.connection,
+            """
+            SELECT
+                bc.parent_material_code,
+                bc.child_material_code,
+                bc.child_material_name,
+                bc.usage_numerator,
+                bc.usage_denominator,
+                COALESCE(sc.supply_type_code, bc.supply_type_code, '') AS supply_type_code,
+                COALESCE(sc.supply_type_name, bc.supply_type_name, '-') AS supply_type_name,
+                COALESCE(ic.inventory_qty, bc.inventory_qty, 0) AS inventory_qty,
+                bc.expandable
+            FROM bom_children bc
+            LEFT JOIN inventory_cache ic
+              ON ic.material_code = bc.child_material_code
+            LEFT JOIN material_supply_cache sc
+              ON sc.material_code = bc.child_material_code
+            WHERE bc.parent_material_code = ?
+            ORDER BY bc.display_order, bc.child_material_code
+            """,
+            (parent_material_code,),
+        )
+
+    def _expand_schedule_material_children(
+        self,
+        *,
+        production_order_no: str,
+        parent_material_code: str,
+        parent_issue_qty: float,
+        bom_child_cache: dict[str, list[dict[str, Any]]],
+        lineage: tuple[str, ...],
+    ) -> list[dict[str, Any]]:
+        normalized_parent_code = str(parent_material_code or "").strip().upper()
+        if not normalized_parent_code or parent_issue_qty <= SCHEDULE_NUMBER_EPSILON:
+            return []
+        child_rows = bom_child_cache.get(normalized_parent_code)
+        if child_rows is None:
+            child_rows = self._list_schedule_bom_child_rows(normalized_parent_code)
+            bom_child_cache[normalized_parent_code] = child_rows
+        if not child_rows:
+            return []
+
+        out: list[dict[str, Any]] = []
+        for child_row in child_rows:
+            child_material_code = str(child_row.get("child_material_code") or "").strip().upper()
+            if not child_material_code:
+                continue
+            if child_material_code in lineage:
+                raise server_error(
+                    code="BOM_CHILDREN_CYCLE_DETECTED",
+                    message="BOM children contain a cycle and cannot be used for shortage analysis.",
+                    details={
+                        "parent_material_code": normalized_parent_code,
+                        "child_material_code": child_material_code,
+                        "lineage": list(lineage),
+                    },
+                )
+
+            usage_denominator = _to_number(child_row.get("usage_denominator"), 0)
+            usage_numerator = _to_number(child_row.get("usage_numerator"), 0)
+            if usage_denominator <= SCHEDULE_NUMBER_EPSILON or usage_numerator <= SCHEDULE_NUMBER_EPSILON:
+                continue
+
+            child_issue_qty = parent_issue_qty * usage_numerator / usage_denominator
+            if child_issue_qty <= SCHEDULE_NUMBER_EPSILON:
+                continue
+
+            derived_row = {
+                "production_order_no": production_order_no,
+                "child_material_code": child_material_code,
+                "child_material_name": child_row.get("child_material_name"),
+                "issue_qty": child_issue_qty,
+                "supply_type_code": child_row.get("supply_type_code"),
+                "supply_type_name": child_row.get("supply_type_name"),
+                "inventory_qty": child_row.get("inventory_qty"),
+                "expandable": child_row.get("expandable"),
+            }
+            out.append(derived_row)
+
+            supply_type_code = str(child_row.get("supply_type_code") or "").strip().upper()
+            is_expandable = supply_type_code == "SELF_MADE" or int(child_row.get("expandable") or 0) == 1
+            if is_expandable:
+                out.extend(
+                    self._expand_schedule_material_children(
+                        production_order_no=production_order_no,
+                        parent_material_code=child_material_code,
+                        parent_issue_qty=child_issue_qty,
+                        bom_child_cache=bom_child_cache,
+                        lineage=(*lineage, child_material_code),
+                    )
+                )
+        return out
+
+    def _list_expanded_schedule_material_rows(self) -> list[dict[str, Any]]:
+        root_rows = self._list_schedule_material_rows()
+        bom_child_cache: dict[str, list[dict[str, Any]]] = {}
+        expanded_rows = list(root_rows)
+        for row in root_rows:
+            production_order_no = str(row.get("production_order_no") or "").strip()
+            parent_material_code = str(row.get("child_material_code") or "").strip().upper()
+            parent_issue_qty = _to_number(row.get("issue_qty"), 0)
+            supply_type_code = str(row.get("supply_type_code") or "").strip().upper()
+            is_expandable = supply_type_code == "SELF_MADE" or int(row.get("expandable") or 0) == 1
+            if not production_order_no or not parent_material_code or not is_expandable:
+                continue
+            expanded_rows.extend(
+                self._expand_schedule_material_children(
+                    production_order_no=production_order_no,
+                    parent_material_code=parent_material_code,
+                    parent_issue_qty=parent_issue_qty,
+                    bom_child_cache=bom_child_cache,
+                    lineage=(parent_material_code,),
+                )
+            )
+        return expanded_rows
+
     def _build_schedule_material_usage_map(
         self,
         order_map: dict[str, dict[str, Any]],
         *,
         material_rows: list[dict[str, Any]] | None = None,
     ) -> dict[str, dict[str, Any]]:
-        source_rows = material_rows if material_rows is not None else self._list_schedule_material_rows()
+        source_rows = material_rows if material_rows is not None else self._list_expanded_schedule_material_rows()
         out: dict[str, dict[str, Any]] = {}
         for row in source_rows:
             order_no = str(row.get("production_order_no") or "").strip()
@@ -3892,11 +4021,15 @@ class AppService:
             material_code = str(row.get("child_material_code") or "").strip().upper()
             if not material_code:
                 continue
+            supply_type_code = str(row.get("supply_type_code") or "").strip().upper()
+            if supply_type_code == "SELF_MADE":
+                continue
             current = out.get(material_code)
             if current is None:
                 current = {
                     "material_code": material_code,
                     "material_name": str(row.get("child_material_name") or material_code).strip() or material_code,
+                    "supply_type_code": supply_type_code,
                     "supply_type_name": str(row.get("supply_type_name") or "-").strip() or "-",
                     "inventory_qty": _to_number(row.get("inventory_qty"), 0),
                     "planned_consume_qty": 0.0,
@@ -3942,7 +4075,7 @@ class AppService:
 
         material_map = self._build_schedule_material_usage_map(
             current_orders,
-            material_rows=self._list_schedule_material_rows(),
+            material_rows=self._list_expanded_schedule_material_rows(),
         )
         impacted_order_nos: set[str] = set()
         items: list[dict[str, Any]] = []
@@ -4081,7 +4214,7 @@ class AppService:
         current_orders: dict[str, dict[str, Any]],
         compare_orders: dict[str, dict[str, Any]],
     ) -> dict[str, Any]:
-        material_rows = self._list_schedule_material_rows()
+        material_rows = self._list_expanded_schedule_material_rows()
         current_map = self._build_schedule_material_usage_map(
             current_orders,
             material_rows=material_rows,
@@ -4801,11 +4934,12 @@ class AppService:
                 due_date_source = order_row.get("planned_end_date") or start_date_source
             start_date = _parse_date_or_today(start_date_source)
             due_date = _parse_date_or_today(due_date_source)
-            if due_date < start_date:
-                due_date = start_date
 
             priority_level = _normalize_priority_level(state_row.get("priority_level"), PRIORITY_LEVEL_MAX)
-            start_slot = _slot_index_for(start_date, "DAY")
+            expected_start_shift = _expected_start_shift_from_datetime_text(
+                state_row.get("expected_start_time")
+            )
+            start_slot = _slot_index_for(start_date, expected_start_shift)
 
             required_shifts = 0
             min_capacity = None
@@ -6795,9 +6929,7 @@ class AppService:
             "promised_due_date": promised_due_date,
             "due_in_days": _days_from_today(promised_due_date),
             "expected_start_time": expected_start_time,
-            "expected_start_shift": (
-                "NIGHT" if str(expected_start_time or "").strip().endswith("20:00:00+08:00") else "DAY"
-            ),
+            "expected_start_shift": _expected_start_shift_from_datetime_text(expected_start_time),
             "expected_finish_time": expected_finish_time,
             "expected_start_date": expected_start_date,
             "priority_level": _normalize_priority_level((state_row or {}).get("priority_level"), PRIORITY_LEVEL_MAX),
@@ -7223,6 +7355,7 @@ class AppService:
                 start_slot=slot_cursor,
                 planning_rules=planning_rules,
                 day_mode_cache=day_mode_cache,
+                allow_exact_start_slot=slot_cursor == max(0, int(start_slot)),
             )
             candidate_context, available_capacity = self._select_candidate_context_for_slot(
                 process_context=process_context,
@@ -7582,11 +7715,14 @@ class AppService:
         start_slot: int,
         planning_rules: dict[str, Any],
         day_mode_cache: dict[str, str],
+        allow_exact_start_slot: bool = False,
     ) -> tuple[int, str, str]:
         slot_cursor = max(0, int(start_slot))
         for _ in range(SCHEDULE_SLOT_SEARCH_GUARD):
             day_value, shift_code = _slot_to_date_shift(slot_cursor)
             date_text = day_value.isoformat()
+            if allow_exact_start_slot and slot_cursor == max(0, int(start_slot)):
+                return slot_cursor, date_text, shift_code
             day_mode = self._resolve_day_shift_mode(
                 date_text=date_text,
                 planning_rules=planning_rules,
@@ -7645,6 +7781,7 @@ class AppService:
                 start_slot=slot_cursor,
                 planning_rules=planning_rules,
                 day_mode_cache=day_mode_cache,
+                allow_exact_start_slot=slot_cursor == max(0, int(first_slot)),
             )
             candidate_context, available_capacity = self._select_candidate_context_for_slot(
                 process_context=process_context,
@@ -7730,7 +7867,7 @@ class AppService:
     ) -> dict[str, Any]:
         material_map = self._build_schedule_material_usage_map(
             order_summary_map,
-            material_rows=self._list_schedule_material_rows(),
+            material_rows=self._list_expanded_schedule_material_rows(),
         )
         impacted_order_nos: set[str] = set()
         items: list[dict[str, Any]] = []
@@ -7862,6 +7999,7 @@ class AppService:
                 start_slot=slot_cursor,
                 planning_rules=planning_rules,
                 day_mode_cache=day_mode_cache,
+                allow_exact_start_slot=slot_cursor == max(0, int(start_slot)),
             )
             capacity_per_shift = self._resolve_effective_capacity_per_shift(
                 process_context=process_context,
