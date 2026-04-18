@@ -47,7 +47,7 @@ def enqueue_command_job(
         success=True,
         job_id=str(job["job_id"]),
         status_url=f"/api/jobs/{job['job_id']}",
-        message="Task accepted.",
+        message="任务已受理。",
     )
 
 
@@ -341,6 +341,41 @@ def publish_schedule_version(
     )
 
 
+@router.post("/schedules/current/save", status_code=202)
+def save_current_schedule_version(
+    payload: dict[str, Any] = Body(default_factory=dict),
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    return enqueue_command_job(
+        connection,
+        job_type="LEGACY_SCHEDULE_SAVE_CURRENT",
+        target_type="SCHEDULE_VERSION",
+        target_key="CURRENT",
+        request_id=str(payload.get("request_id") or "").strip() or None,
+        payload=payload,
+    )
+
+
+@router.post("/schedules/{version_no}/load", status_code=202)
+def load_saved_schedule_version(
+    version_no: str,
+    payload: dict[str, Any] = Body(default_factory=dict),
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    return enqueue_command_job(
+        connection,
+        job_type="LEGACY_SCHEDULE_LOAD_SAVED",
+        target_type="SCHEDULE_VERSION",
+        target_key=version_no,
+        request_id=str(payload.get("request_id") or "").strip() or None,
+        payload={"version_no": version_no, **payload},
+    )
+
+
 @router.post("/simulation/manual/advance-day", status_code=202)
 def advance_simulation_one_day(
     payload: dict[str, Any] = Body(default_factory=dict),
@@ -416,7 +451,7 @@ def import_reportings_xlsx_upload(
     if not filename.lower().endswith(".xlsx"):
         raise bad_request(
             code="REPORTING_IMPORT_FILE_TYPE_INVALID",
-            message="Only .xlsx files are supported.",
+            message="仅支持上传 .xlsx 文件。",
             details={"file_name": filename},
         )
 
@@ -537,6 +572,23 @@ def generate_schedule(
         job_type="LEGACY_SCHEDULE_GENERATE",
         target_type="SCHEDULE_VERSION",
         target_key=str(payload.get("base_version_no") or "NEW"),
+        request_id=str(payload.get("request_id") or "").strip() or None,
+        payload=payload,
+    )
+
+
+@router.post("/schedules/fact-replan", status_code=202)
+def generate_schedule_by_fact(
+    payload: dict[str, Any] = Body(default_factory=dict),
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    return enqueue_command_job(
+        connection,
+        job_type="FACT_SCHEDULE_GENERATE",
+        target_type="SCHEDULE_VERSION",
+        target_key=str(payload.get("capacity_source_mode") or "FACT"),
         request_id=str(payload.get("request_id") or "").strip() or None,
         payload=payload,
     )

@@ -30,5 +30,5 @@ def refresh_inventory(
         success=True,
         job_id=str(job["job_id"]),
         status_url=f"/api/jobs/{job['job_id']}",
-        message="Task accepted.",
+        message="任务已受理。",
     )

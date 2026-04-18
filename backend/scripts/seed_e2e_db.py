@@ -584,6 +584,7 @@ def seed_capacity_baseline(connection: sqlite3.Connection) -> None:
         previous_plan_rows.append(
             (
                 PREVIOUS_DATE,
+                "DAY",
                 topology["company_code"],
                 topology["workshop_code"],
                 topology["line_code"],
@@ -600,6 +601,7 @@ def seed_capacity_baseline(connection: sqlite3.Connection) -> None:
             """
             INSERT INTO daily_line_capacity_plan (
                 calendar_date,
+                shift_code,
                 company_code,
                 workshop_code,
                 line_code,
@@ -609,7 +611,7 @@ def seed_capacity_baseline(connection: sqlite3.Connection) -> None:
                 machine_count,
                 source_note,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             previous_plan_rows,
         )

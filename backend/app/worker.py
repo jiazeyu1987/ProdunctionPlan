@@ -57,12 +57,23 @@ class JobWorker:
                 repository.ensure_exists(job)
             repository.mark_succeeded(str(job["job_id"]), result)
 
-    def _mark_job_failed(self, job: dict[str, object], error_code: str, error_message: str) -> None:
+    def _mark_job_failed(
+        self,
+        job: dict[str, object],
+        error_code: str,
+        error_message: str,
+        error_details: dict[str, object] | None = None,
+    ) -> None:
         with managed_connection() as connection:
             repository = JobRepository(connection)
             if self._job_requires_connectionless_dispatch(job):
                 repository.ensure_exists(job)
-            repository.mark_failed(str(job["job_id"]), error_code, error_message)
+            repository.mark_failed(
+                str(job["job_id"]),
+                error_code,
+                error_message,
+                error_details,
+            )
 
     def _parse_timestamp(self, value: str) -> datetime:
         normalized = value.strip()
@@ -124,7 +135,7 @@ class JobWorker:
                     result = dispatcher.dispatch(job)
             self._mark_job_succeeded(job, result)
         except AppError as exc:
-            self._mark_job_failed(job, exc.code, exc.message)
+            self._mark_job_failed(job, exc.code, exc.message, exc.details)
         except Exception as exc:
             self._mark_job_failed(job, "UNEXPECTED_ERROR", str(exc))
 

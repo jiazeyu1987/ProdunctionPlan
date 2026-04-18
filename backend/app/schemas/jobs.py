@@ -44,6 +44,7 @@ class JobRecord(BaseModel):
     result: dict[str, Any] | None = None
     error_code: str | None = None
     error_message: str | None = None
+    error_details: dict[str, Any] | None = None
     created_at: str
     started_at: str | None = None
     finished_at: str | None = None

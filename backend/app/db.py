@@ -380,11 +380,25 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
         """
     )
     _ensure_masterdata_process_routes_schema(connection)
+    _ensure_jobs_schema(connection)
+    _ensure_schedule_versions_schema(connection)
     _ensure_reporting_resource_mappings_schema(connection)
     _ensure_work_reports_schema(connection)
     _ensure_schedule_tasks_schema(connection)
+    _ensure_shift_capacity_schema(connection)
     _ensure_reporting_import_files_schema(connection)
     _ensure_simulation_restore_snapshot_work_reports_schema(connection)
+
+
+def _ensure_jobs_schema(connection: sqlite3.Connection) -> None:
+    columns = _table_columns(connection, "jobs")
+    if "error_details_json" not in columns:
+        connection.execute(
+            """
+            ALTER TABLE jobs
+            ADD COLUMN error_details_json TEXT
+            """
+        )
 
 
 def _ensure_masterdata_process_routes_schema(connection: sqlite3.Connection) -> None:
@@ -405,6 +419,22 @@ def _ensure_masterdata_process_routes_schema(connection: sqlite3.Connection) -> 
         END
         """
     )
+
+
+def _ensure_schedule_versions_schema(connection: sqlite3.Connection) -> None:
+    columns = _table_columns(connection, "schedule_versions")
+    for column_name, column_type in {
+        "result_status": "TEXT NOT NULL DEFAULT 'FEASIBLE'",
+        "result_summary": "TEXT",
+    }.items():
+        if column_name in columns:
+            continue
+        connection.execute(
+            f"""
+            ALTER TABLE schedule_versions
+            ADD COLUMN {column_name} {column_type}
+            """
+        )
     connection.execute(
         """
         UPDATE masterdata_process_routes
@@ -424,6 +454,46 @@ def _ensure_masterdata_process_routes_schema(connection: sqlite3.Connection) -> 
         )
         """
     )
+    _normalize_schedule_version_statuses(connection)
+
+
+def _normalize_schedule_version_statuses(connection: sqlite3.Connection) -> None:
+    rows = fetch_all(
+        connection,
+        """
+        SELECT version_no, status, created_at, published_at
+        FROM schedule_versions
+        ORDER BY
+            COALESCE(NULLIF(TRIM(COALESCE(published_at, '')), ''), created_at) DESC,
+            created_at DESC,
+            version_no DESC
+        """,
+    )
+    if not rows:
+        return
+
+    current_rows = [
+        row for row in rows if str(row.get("status") or "").strip().upper() == "CURRENT"
+    ]
+    if current_rows:
+        keep_current_version_no = str(current_rows[0].get("version_no") or "").strip()
+    else:
+        keep_current_version_no = str(rows[0].get("version_no") or "").strip()
+
+    for row in rows:
+        version_no = str(row.get("version_no") or "").strip()
+        if not version_no:
+            continue
+        target_status = "CURRENT" if version_no == keep_current_version_no else "SAVED"
+        target_label = "当前方案" if target_status == "CURRENT" else "已保存"
+        connection.execute(
+            """
+            UPDATE schedule_versions
+            SET status = ?, status_name_cn = ?
+            WHERE version_no = ?
+            """,
+            (target_status, target_label, version_no),
+        )
 
 
 def _ensure_reporting_resource_mappings_schema(connection: sqlite3.Connection) -> None:
@@ -642,6 +712,465 @@ def _ensure_schedule_tasks_schema(connection: sqlite3.Connection) -> None:
             ON schedule_tasks (version_no, workshop_code, line_code, process_code, calendar_date);
         """
     )
+
+
+def _rebuild_table_with_shift_capacity(
+    connection: sqlite3.Connection,
+    *,
+    table_name: str,
+    create_sql: str,
+    copy_sql: str,
+    index_sql: str = "",
+) -> None:
+    columns = _table_columns(connection, table_name)
+    if "shift_code" in columns:
+        return
+    legacy_table_name = f"{table_name}__legacy_shift_upgrade"
+    connection.execute(f"ALTER TABLE {table_name} RENAME TO {legacy_table_name}")
+    connection.executescript(create_sql)
+    connection.execute(copy_sql.replace("{legacy_table_name}", legacy_table_name))
+    connection.execute(f"DROP TABLE {legacy_table_name}")
+    if index_sql:
+        connection.executescript(index_sql)
+
+
+def _ensure_shift_capacity_schema(connection: sqlite3.Connection) -> None:
+    _rebuild_table_with_shift_capacity(
+        connection,
+        table_name="daily_line_capacity_plan",
+        create_sql="""
+        CREATE TABLE IF NOT EXISTS daily_line_capacity_plan (
+            calendar_date TEXT NOT NULL,
+            shift_code TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            planned_capacity_qty REAL NOT NULL,
+            worker_count INTEGER,
+            machine_count INTEGER,
+            split_rule TEXT NOT NULL DEFAULT 'DAY_ONLY',
+            split_day_ratio REAL,
+            split_night_ratio REAL,
+            capacity_change_type TEXT,
+            capacity_change_reason TEXT,
+            source_note TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (calendar_date, shift_code, company_code, workshop_code, line_code, process_code)
+        );
+        """,
+        copy_sql="""
+        INSERT INTO daily_line_capacity_plan (
+            calendar_date,
+            shift_code,
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+            planned_capacity_qty,
+            worker_count,
+            machine_count,
+            split_rule,
+            split_day_ratio,
+            split_night_ratio,
+            capacity_change_type,
+            capacity_change_reason,
+            source_note,
+            updated_at
+        )
+        SELECT
+            legacy.calendar_date,
+            'DAY',
+            legacy.company_code,
+            legacy.workshop_code,
+            legacy.line_code,
+            legacy.process_code,
+            legacy.planned_capacity_qty,
+            legacy.worker_count,
+            legacy.machine_count,
+            'DAY_ONLY',
+            1.0,
+            0.0,
+            NULL,
+            NULL,
+            legacy.source_note,
+            legacy.updated_at
+        FROM {legacy_table_name} legacy
+        """,
+        index_sql="""
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_date
+            ON daily_line_capacity_plan (calendar_date, shift_code, workshop_code, line_code, process_code);
+        """,
+    )
+    for column_name, column_type in {
+        "split_rule": "TEXT NOT NULL DEFAULT 'DAY_ONLY'",
+        "split_day_ratio": "REAL",
+        "split_night_ratio": "REAL",
+        "capacity_change_type": "TEXT",
+        "capacity_change_reason": "TEXT",
+    }.items():
+        if column_name not in _table_columns(connection, "daily_line_capacity_plan"):
+            connection.execute(
+                f"ALTER TABLE daily_line_capacity_plan ADD COLUMN {column_name} {column_type}"
+            )
+    connection.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_date
+            ON daily_line_capacity_plan (calendar_date, shift_code, workshop_code, line_code, process_code);
+        """
+    )
+
+    _rebuild_table_with_shift_capacity(
+        connection,
+        table_name="daily_line_capacity_actual",
+        create_sql="""
+        CREATE TABLE IF NOT EXISTS daily_line_capacity_actual (
+            calendar_date TEXT NOT NULL,
+            shift_code TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            actual_capacity_qty REAL NOT NULL,
+            report_count INTEGER NOT NULL DEFAULT 0,
+            last_report_time TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (calendar_date, shift_code, company_code, workshop_code, line_code, process_code)
+        );
+        """,
+        copy_sql="""
+        INSERT INTO daily_line_capacity_actual (
+            calendar_date,
+            shift_code,
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+            actual_capacity_qty,
+            report_count,
+            last_report_time,
+            updated_at
+        )
+        SELECT
+            calendar_date,
+            'DAY',
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+            actual_capacity_qty,
+            report_count,
+            last_report_time,
+            updated_at
+        FROM {legacy_table_name}
+        """,
+        index_sql="""
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_actual_date
+            ON daily_line_capacity_actual (calendar_date, shift_code, workshop_code, line_code, process_code);
+        """,
+    )
+    connection.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_actual_date
+            ON daily_line_capacity_actual (calendar_date, shift_code, workshop_code, line_code, process_code);
+        """
+    )
+
+    _rebuild_table_with_shift_capacity(
+        connection,
+        table_name="daily_line_capacity_plan_audit",
+        create_sql="""
+        CREATE TABLE IF NOT EXISTS daily_line_capacity_plan_audit (
+            audit_id TEXT PRIMARY KEY,
+            calendar_date TEXT NOT NULL,
+            shift_code TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            old_planned_capacity_qty REAL,
+            new_planned_capacity_qty REAL,
+            old_worker_count INTEGER,
+            new_worker_count INTEGER,
+            old_machine_count INTEGER,
+            new_machine_count INTEGER,
+            capacity_change_type TEXT,
+            capacity_change_reason TEXT,
+            operator_user_id TEXT,
+            operator_username TEXT,
+            operator_display_name TEXT,
+            changed_at TEXT NOT NULL,
+            FOREIGN KEY (operator_user_id) REFERENCES app_users(user_id)
+        );
+        """,
+        copy_sql="""
+        INSERT INTO daily_line_capacity_plan_audit (
+            audit_id,
+            calendar_date,
+            shift_code,
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+            old_planned_capacity_qty,
+            new_planned_capacity_qty,
+            old_worker_count,
+            new_worker_count,
+            old_machine_count,
+            new_machine_count,
+            capacity_change_type,
+            capacity_change_reason,
+            operator_user_id,
+            operator_username,
+            operator_display_name,
+            changed_at
+        )
+        SELECT
+            audit_id,
+            calendar_date,
+            'DAY',
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+            old_planned_capacity_qty,
+            new_planned_capacity_qty,
+            old_worker_count,
+            new_worker_count,
+            old_machine_count,
+            new_machine_count,
+            NULL,
+            NULL,
+            operator_user_id,
+            operator_username,
+            operator_display_name,
+            changed_at
+        FROM {legacy_table_name}
+        """,
+        index_sql="""
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_audit_date
+            ON daily_line_capacity_plan_audit (calendar_date, shift_code, changed_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_audit_line
+            ON daily_line_capacity_plan_audit (workshop_code, line_code, process_code, shift_code, changed_at DESC);
+        """,
+    )
+    for column_name, column_type in {
+        "capacity_change_type": "TEXT",
+        "capacity_change_reason": "TEXT",
+    }.items():
+        if column_name not in _table_columns(connection, "daily_line_capacity_plan_audit"):
+            connection.execute(
+                f"ALTER TABLE daily_line_capacity_plan_audit ADD COLUMN {column_name} {column_type}"
+            )
+    connection.executescript(
+        """
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_audit_date
+            ON daily_line_capacity_plan_audit (calendar_date, shift_code, changed_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_daily_line_capacity_plan_audit_line
+            ON daily_line_capacity_plan_audit (workshop_code, line_code, process_code, shift_code, changed_at DESC);
+        """
+    )
+
+    _rebuild_table_with_shift_capacity(
+        connection,
+        table_name="simulation_restore_snapshot_daily_line_capacity_plan",
+        create_sql="""
+        CREATE TABLE IF NOT EXISTS simulation_restore_snapshot_daily_line_capacity_plan (
+            calendar_date TEXT NOT NULL,
+            shift_code TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            planned_capacity_qty REAL NOT NULL,
+            worker_count INTEGER,
+            machine_count INTEGER,
+            split_rule TEXT NOT NULL DEFAULT 'DAY_ONLY',
+            split_day_ratio REAL,
+            split_night_ratio REAL,
+            capacity_change_type TEXT,
+            capacity_change_reason TEXT,
+            source_note TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (calendar_date, shift_code, company_code, workshop_code, line_code, process_code)
+        );
+        """,
+        copy_sql="""
+        INSERT INTO simulation_restore_snapshot_daily_line_capacity_plan (
+            calendar_date,
+            shift_code,
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+            planned_capacity_qty,
+            worker_count,
+            machine_count,
+            split_rule,
+            split_day_ratio,
+            split_night_ratio,
+            capacity_change_type,
+            capacity_change_reason,
+            source_note,
+            updated_at
+        )
+        SELECT
+            calendar_date,
+            'DAY',
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+            planned_capacity_qty,
+            worker_count,
+            machine_count,
+            'DAY_ONLY',
+            1.0,
+            0.0,
+            NULL,
+            NULL,
+            source_note,
+            updated_at
+        FROM {legacy_table_name}
+        """,
+    )
+    for column_name, column_type in {
+        "split_rule": "TEXT NOT NULL DEFAULT 'DAY_ONLY'",
+        "split_day_ratio": "REAL",
+        "split_night_ratio": "REAL",
+        "capacity_change_type": "TEXT",
+        "capacity_change_reason": "TEXT",
+    }.items():
+        if column_name not in _table_columns(connection, "simulation_restore_snapshot_daily_line_capacity_plan"):
+            connection.execute(
+                f"ALTER TABLE simulation_restore_snapshot_daily_line_capacity_plan ADD COLUMN {column_name} {column_type}"
+            )
+
+    _rebuild_table_with_shift_capacity(
+        connection,
+        table_name="simulation_restore_snapshot_daily_line_capacity_actual",
+        create_sql="""
+        CREATE TABLE IF NOT EXISTS simulation_restore_snapshot_daily_line_capacity_actual (
+            calendar_date TEXT NOT NULL,
+            shift_code TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            actual_capacity_qty REAL NOT NULL,
+            report_count INTEGER NOT NULL DEFAULT 0,
+            last_report_time TEXT,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (calendar_date, shift_code, company_code, workshop_code, line_code, process_code)
+        );
+        """,
+        copy_sql="""
+        INSERT INTO simulation_restore_snapshot_daily_line_capacity_actual (
+            calendar_date,
+            shift_code,
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+            actual_capacity_qty,
+            report_count,
+            last_report_time,
+            updated_at
+        )
+        SELECT
+            calendar_date,
+            'DAY',
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+            actual_capacity_qty,
+            report_count,
+            last_report_time,
+            updated_at
+        FROM {legacy_table_name}
+        """,
+    )
+
+    _rebuild_table_with_shift_capacity(
+        connection,
+        table_name="simulation_restore_snapshot_daily_line_capacity_plan_audit",
+        create_sql="""
+        CREATE TABLE IF NOT EXISTS simulation_restore_snapshot_daily_line_capacity_plan_audit (
+            audit_id TEXT PRIMARY KEY,
+            calendar_date TEXT NOT NULL,
+            shift_code TEXT NOT NULL,
+            company_code TEXT NOT NULL,
+            workshop_code TEXT NOT NULL,
+            line_code TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            old_planned_capacity_qty REAL,
+            new_planned_capacity_qty REAL,
+            old_worker_count INTEGER,
+            new_worker_count INTEGER,
+            old_machine_count INTEGER,
+            new_machine_count INTEGER,
+            capacity_change_type TEXT,
+            capacity_change_reason TEXT,
+            operator_user_id TEXT,
+            operator_username TEXT,
+            operator_display_name TEXT,
+            changed_at TEXT NOT NULL
+        );
+        """,
+        copy_sql="""
+        INSERT INTO simulation_restore_snapshot_daily_line_capacity_plan_audit (
+            audit_id,
+            calendar_date,
+            shift_code,
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+            old_planned_capacity_qty,
+            new_planned_capacity_qty,
+            old_worker_count,
+            new_worker_count,
+            old_machine_count,
+            new_machine_count,
+            capacity_change_type,
+            capacity_change_reason,
+            operator_user_id,
+            operator_username,
+            operator_display_name,
+            changed_at
+        )
+        SELECT
+            audit_id,
+            calendar_date,
+            'DAY',
+            company_code,
+            workshop_code,
+            line_code,
+            process_code,
+            old_planned_capacity_qty,
+            new_planned_capacity_qty,
+            old_worker_count,
+            new_worker_count,
+            old_machine_count,
+            new_machine_count,
+            NULL,
+            NULL,
+            operator_user_id,
+            operator_username,
+            operator_display_name,
+            changed_at
+        FROM {legacy_table_name}
+        """,
+    )
+    for column_name, column_type in {
+        "capacity_change_type": "TEXT",
+        "capacity_change_reason": "TEXT",
+    }.items():
+        if column_name not in _table_columns(connection, "simulation_restore_snapshot_daily_line_capacity_plan_audit"):
+            connection.execute(
+                f"ALTER TABLE simulation_restore_snapshot_daily_line_capacity_plan_audit ADD COLUMN {column_name} {column_type}"
+            )
 
 
 def _ensure_reporting_import_files_schema(connection: sqlite3.Connection) -> None:

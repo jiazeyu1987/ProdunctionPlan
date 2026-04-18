@@ -21,8 +21,8 @@ def get_app_service(
 
 @router.get("/order-pool")
 def list_order_pool(
-    version_no: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)],
+    version_no: str | None = Query(default=None),
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.list_order_pool(version_no=version_no)
@@ -31,8 +31,8 @@ def list_order_pool(
 @router.get("/order-pool/{order_no}")
 def get_order_pool_item(
     order_no: str,
-    version_no: str | None = Query(default=None),
     service: Annotated[AppService, Depends(get_app_service)],
+    version_no: str | None = Query(default=None),
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.get_order_pool_item(order_no, version_no=version_no)
@@ -41,12 +41,11 @@ def get_order_pool_item(
 @router.get("/order-pool/{order_no}/process-timeline")
 def get_order_pool_process_timeline(
     order_no: str,
+    service: Annotated[AppService, Depends(get_app_service)],
     process_code: str | None = Query(default=None),
     version_no: str | None = Query(default=None),
-    service: Annotated[AppService, Depends(get_app_service)] = None,
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
-    assert service is not None
     return service.get_order_pool_process_timeline(
         order_no,
         process_code=process_code,
@@ -112,11 +111,10 @@ def get_schedule_algorithm(
 @router.get("/schedules/{version_no}/diff")
 def get_schedule_diff(
     version_no: str,
+    service: Annotated[AppService, Depends(get_app_service)],
     compare_with: str | None = Query(default=None),
-    service: Annotated[AppService, Depends(get_app_service)] = None,
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
-    assert service is not None
     return service.get_schedule_diff(version_no, compare_with)
 
 
@@ -164,17 +162,16 @@ def list_process_routes(
 
 @router.get("/masterdata/line-capacity/daily")
 def list_line_daily_capacity(
+    service: Annotated[AppService, Depends(get_app_service)],
     calendar_date: str = Query(...),
     workshop_code: str | None = Query(default=None),
     line_code: str | None = Query(default=None),
     process_code: str | None = Query(default=None),
-    service: Annotated[AppService, Depends(get_app_service)] = None,
     current_user: Annotated[
         dict[str, Any],
         Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
     ] = None,
 ) -> dict[str, Any]:
-    assert service is not None
     return service.list_line_daily_capacity(
         calendar_date,
         workshop_code=workshop_code,
@@ -186,19 +183,18 @@ def list_line_daily_capacity(
 
 @router.get("/masterdata/line-capacity/daily/audits")
 def list_line_daily_capacity_audits(
+    service: Annotated[AppService, Depends(get_app_service)],
     calendar_date: str = Query(...),
     workshop_code: str | None = Query(default=None),
     line_code: str | None = Query(default=None),
     process_code: str | None = Query(default=None),
     operator_keyword: str | None = Query(default=None),
     changed_only: bool = Query(default=False),
-    service: Annotated[AppService, Depends(get_app_service)] = None,
     current_user: Annotated[
         dict[str, Any],
         Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
     ] = None,
 ) -> dict[str, Any]:
-    assert service is not None
     return service.list_line_daily_capacity_audits(
         calendar_date,
         workshop_code=workshop_code,
@@ -212,15 +208,14 @@ def list_line_daily_capacity_audits(
 
 @router.get("/reportings")
 def list_mes_reportings(
+    service: Annotated[AppService, Depends(get_app_service)],
     start_time: str | None = Query(default=None),
     end_time: str | None = Query(default=None),
-    service: Annotated[AppService, Depends(get_app_service)] = None,
     current_user: Annotated[
         dict[str, Any],
         Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
     ] = None,
 ) -> dict[str, Any]:
-    assert service is not None
     return service.list_mes_reportings(
         start_time=start_time,
         end_time=end_time,
@@ -230,26 +225,24 @@ def list_mes_reportings(
 
 @router.get("/reportings/import-files")
 def list_reporting_import_files(
-    limit: int = Query(default=50, ge=1, le=200),
     service: Annotated[AppService, Depends(get_app_service)] = None,
+    limit: int = Query(default=50, ge=1, le=200),
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
-    assert service is not None
     return service.list_reporting_import_files(limit=limit)
 
 
 @router.get("/order-summary")
 def get_order_summary(
+    service: Annotated[AppService, Depends(get_app_service)],
     start_date: str = Query(...),
     end_date: str = Query(...),
     workshop_manager_user_id: str | None = Query(default=None),
-    service: Annotated[AppService, Depends(get_app_service)] = None,
     current_user: Annotated[
         dict[str, Any],
         Depends(require_roles(ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER)),
     ] = None,
 ) -> dict[str, Any]:
-    assert service is not None
     return service.get_order_summary(
         start_date=start_date,
         end_date=end_date,
@@ -260,28 +253,26 @@ def get_order_summary(
 
 @router.get("/order-summary/workshop-managers")
 def list_order_summary_workshop_managers(
-    service: Annotated[AppService, Depends(get_app_service)] = None,
+    service: Annotated[AppService, Depends(get_app_service)],
     current_user: Annotated[
         dict[str, Any],
         Depends(require_roles(ROLE_SCHEDULER)),
     ] = None,
 ) -> dict[str, Any]:
-    assert service is not None
     return service.list_order_summary_workshop_managers(current_user=current_user)
 
 
 @router.get("/dashboard/scheduler")
 def get_scheduler_dashboard(
+    service: Annotated[AppService, Depends(get_app_service)],
     start_date: str = Query(...),
     end_date: str = Query(...),
     top_n: int = Query(default=8),
-    service: Annotated[AppService, Depends(get_app_service)] = None,
     current_user: Annotated[
         dict[str, Any],
         Depends(require_roles(ROLE_SCHEDULER)),
     ] = None,
 ) -> dict[str, Any]:
-    assert service is not None
     return service.get_scheduler_dashboard(
         start_date=start_date,
         end_date=end_date,

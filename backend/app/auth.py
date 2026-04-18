@@ -52,7 +52,7 @@ def _normalize_role_code(value: object) -> str:
     if role_code not in SUPPORTED_ROLE_CODES:
         raise bad_request(
             code="ROLE_CODE_INVALID",
-            message="role_code is invalid.",
+            message="角色编码无效。",
             details={"supported": sorted(SUPPORTED_ROLE_CODES)},
         )
     return role_code
@@ -63,7 +63,7 @@ def _normalize_password(value: object) -> str:
     if len(password) < 6:
         raise bad_request(
             code="PASSWORD_TOO_SHORT",
-            message="password must be at least 6 characters.",
+            message="密码长度不能少于 6 个字符。",
         )
     return password
 
@@ -71,11 +71,11 @@ def _normalize_password(value: object) -> str:
 def _normalize_username(value: object) -> str:
     username = str(value or "").strip().lower()
     if not username:
-        raise bad_request(code="USERNAME_REQUIRED", message="username is required.")
+        raise bad_request(code="USERNAME_REQUIRED", message="用户名不能为空。")
     if len(username) < 3:
         raise bad_request(
             code="USERNAME_TOO_SHORT",
-            message="username must be at least 3 characters.",
+            message="用户名长度不能少于 3 个字符。",
         )
     return username
 
@@ -105,7 +105,7 @@ def register_user(connection: sqlite3.Connection, payload: dict[str, Any]) -> di
     if exists is not None:
         raise bad_request(
             code="USERNAME_ALREADY_EXISTS",
-            message="username already exists.",
+            message="用户名已存在。",
             details={"username": username},
         )
     user_id = f"USR-{uuid4().hex[:10].upper()}"
@@ -154,12 +154,12 @@ def create_session(connection: sqlite3.Connection, payload: dict[str, Any]) -> d
     if user is None:
         raise unauthorized(
             code="LOGIN_INVALID",
-            message="username or password is invalid.",
+            message="用户名或密码不正确。",
         )
     if int(user.get("enabled_flag") or 0) != 1:
         raise forbidden(
             code="USER_DISABLED",
-            message="user is disabled.",
+            message="当前用户已被禁用。",
             details={"username": username},
         )
     expected_hash = str(user.get("password_hash") or "")
@@ -167,7 +167,7 @@ def create_session(connection: sqlite3.Connection, payload: dict[str, Any]) -> d
     if not hmac.compare_digest(expected_hash, actual_hash):
         raise unauthorized(
             code="LOGIN_INVALID",
-            message="username or password is invalid.",
+            message="用户名或密码不正确。",
         )
     now_value = _now_utc()
     token = uuid4().hex + uuid4().hex
@@ -212,12 +212,12 @@ def revoke_session(connection: sqlite3.Connection, session_token: str) -> None:
 def _parse_bearer_token(authorization: str | None) -> str:
     text = str(authorization or "").strip()
     if not text:
-        raise unauthorized(code="AUTH_REQUIRED", message="Authorization is required.")
+        raise unauthorized(code="AUTH_REQUIRED", message="缺少登录凭证。")
     if not text.lower().startswith("bearer "):
-        raise unauthorized(code="AUTH_INVALID", message="Authorization header is invalid.")
+        raise unauthorized(code="AUTH_INVALID", message="登录凭证格式无效。")
     token = text[7:].strip()
     if not token:
-        raise unauthorized(code="AUTH_INVALID", message="Authorization header is invalid.")
+        raise unauthorized(code="AUTH_INVALID", message="登录凭证格式无效。")
     return token
 
 
@@ -247,20 +247,20 @@ def get_current_user(
         (token,),
     )
     if session_row is None:
-        raise unauthorized(code="AUTH_INVALID", message="Session is invalid.")
+        raise unauthorized(code="AUTH_INVALID", message="登录会话无效。")
     if session_row.get("revoked_at"):
-        raise unauthorized(code="AUTH_EXPIRED", message="Session has expired.")
+        raise unauthorized(code="AUTH_EXPIRED", message="登录会话已失效，请重新登录。")
     expires_at = str(session_row.get("expires_at") or "")
     if not expires_at:
-        raise unauthorized(code="AUTH_EXPIRED", message="Session has expired.")
+        raise unauthorized(code="AUTH_EXPIRED", message="登录会话已失效，请重新登录。")
     try:
         expires_value = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise unauthorized(code="AUTH_EXPIRED", message="Session has expired.") from exc
+        raise unauthorized(code="AUTH_EXPIRED", message="登录会话已失效，请重新登录。") from exc
     if expires_value <= _now_utc():
-        raise unauthorized(code="AUTH_EXPIRED", message="Session has expired.")
+        raise unauthorized(code="AUTH_EXPIRED", message="登录会话已失效，请重新登录。")
     if int(session_row.get("enabled_flag") or 0) != 1:
-        raise forbidden(code="USER_DISABLED", message="user is disabled.")
+        raise forbidden(code="USER_DISABLED", message="当前用户已被禁用。")
     return _public_user(session_row) | {"session_token": token}
 
 
@@ -274,7 +274,7 @@ def require_roles(*role_codes: str) -> Callable[[dict[str, Any]], dict[str, Any]
         if role_code not in allowed:
             raise forbidden(
                 code="ROLE_FORBIDDEN",
-                message="Current user role is not allowed to access this resource.",
+                message="当前用户角色无权访问该资源。",
                 details={
                     "role_code": role_code,
                     "allowed_roles": sorted(allowed),

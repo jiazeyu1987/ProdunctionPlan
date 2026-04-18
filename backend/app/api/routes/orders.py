@@ -104,7 +104,7 @@ def refresh_order_materials(
         success=True,
         job_id=str(job["job_id"]),
         status_url=f"/api/jobs/{job['job_id']}",
-        message="Task accepted.",
+        message="任务已受理。",
     )
 
 
@@ -135,7 +135,7 @@ def refresh_self_made_materials(
         success=True,
         job_id=str(job["job_id"]),
         status_url=f"/api/jobs/{job['job_id']}",
-        message="Task accepted.",
+        message="任务已受理。",
     )
 
 
@@ -160,7 +160,7 @@ def apply_orders_sync_from_erp(
         success=True,
         job_id=str(job["job_id"]),
         status_url=f"/api/jobs/{job['job_id']}",
-        message="Task accepted.",
+        message="任务已受理。",
     )
 
 

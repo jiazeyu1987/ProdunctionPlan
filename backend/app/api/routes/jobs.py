@@ -41,7 +41,7 @@ def _assert_job_visible_to_user(
 
     raise forbidden(
         code="JOB_ACCESS_FORBIDDEN",
-        message="Current user cannot access this job.",
+        message="当前用户无权查看该任务。",
         details={"job_id": str(job.get("job_id") or "")},
     )
 
@@ -74,7 +74,7 @@ def get_job(
     if item is None:
         raise not_found(
             code="JOB_NOT_FOUND",
-            message="Job does not exist.",
+            message="任务不存在。",
             details={"job_id": job_id},
         )
     _assert_job_visible_to_user(item, current_user)

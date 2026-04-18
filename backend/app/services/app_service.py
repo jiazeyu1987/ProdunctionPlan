@@ -162,9 +162,9 @@ SCHEDULE_SLOT_SEARCH_GUARD = 20000
 SCHEDULE_EPOCH_DAY = date(1970, 1, 1)
 SCHEDULE_NUMBER_EPSILON = 1e-9
 STATUS_NAME_BY_CODE = {
-    "DRAFT": "Draft",
-    "PUBLISHED": "Published",
-    "ARCHIVED": "Archived",
+    "CURRENT": "当前方案",
+    "SAVED": "已保存",
+    "ARCHIVED": "已归档",
 }
 LOCAL_ORDER_STATUS_CODES = frozenset(
     {
@@ -568,12 +568,20 @@ def _expected_start_shift_from_datetime_text(value: object) -> str:
 
 def _schedule_version_status_label(status: object) -> str:
     normalized = str(status or "").strip().upper()
-    if normalized == "PUBLISHED":
-        return "已发布"
-    if normalized == "DRAFT":
-        return "草稿"
-    if normalized == "ARCHIVED":
-        return "已归档"
+    if normalized == "CURRENT":
+        return "当前方案"
+    if normalized in {"SAVED", "PUBLISHED", "DRAFT", "ARCHIVED"}:
+        return "已保存"
+    return normalized or "-"
+
+def _schedule_result_status_label(status: object) -> str:
+    normalized = str(status or "").strip().upper()
+    if normalized == "FEASIBLE":
+        return "可执行建议计划"
+    if normalized == "RISKY":
+        return "有风险建议计划"
+    if normalized == "BLOCKED":
+        return "阻断"
     return normalized or "-"
 
 
@@ -596,14 +604,20 @@ class AppService:
         reference_version_no = self._resolve_order_pool_version_no(version_no)
         reference_schedule_context = self._build_reference_schedule_context(reference_version_no)
         published_version_no = self._pick_published_schedule_version_no()
+        explicit_view_requested = str(version_no or "").strip() != ""
         published_schedule_context = (
             reference_schedule_context
-            if published_version_no and published_version_no == reference_version_no
+            if explicit_view_requested or (published_version_no and published_version_no == reference_version_no)
             else self._build_reference_schedule_context(published_version_no)
         )
         draft_version_no = self._pick_latest_draft_schedule_version_no()
         draft_version = self.get_schedule_version(draft_version_no) if draft_version_no else None
         shortage_analysis = self._build_schedule_shortage_analysis(reference_version_no)
+        published_shortage_analysis = (
+            shortage_analysis
+            if published_version_no and published_version_no == reference_version_no
+            else self._build_schedule_shortage_analysis(published_version_no)
+        )
         final_process_metrics_by_order = build_order_final_process_metrics(
             self.connection,
             rows,
@@ -625,7 +639,7 @@ class AppService:
                 schedule_fact=reference_schedule_context["order_map"].get(order_no),
                 published_version=published_schedule_context.get("version"),
                 published_schedule_fact=published_schedule_context["order_map"].get(order_no),
-                shortage_summary=shortage_analysis["order_map"].get(order_no),
+                shortage_summary=published_shortage_analysis["order_map"].get(order_no),
                 final_process_metrics=final_process_metrics_by_order.get(order_no),
             )
             )
@@ -640,25 +654,25 @@ class AppService:
             "current_view_version_status": reference_version_status,
             "current_view_version_status_label": reference_version_status_label,
             "current_view_version_label": (
-                f"当前查看版 {reference_version_no}（{reference_version_status_label}）"
+                f"当前方案 {reference_version_no}（{reference_version_status_label}）"
                 if reference_version_no
-                else "当前查看版：未选择"
+                else "暂无当前方案"
             ),
             "published_version_no": published_version_no,
             "published_version_status": published_version_status,
             "published_version_status_label": _schedule_version_status_label(published_version_status),
             "published_version_label": (
-                f"正式执行版 {published_version_no}"
+                f"当前方案 {published_version_no}"
                 if published_version_no
-                else "正式执行版：未发布"
+                else "暂无当前方案"
             ),
             "draft_version_no": draft_version_no,
             "draft_version_status": str((draft_version or {}).get("status") or "").strip().upper() or None,
             "draft_version_status_label": _schedule_version_status_label((draft_version or {}).get("status")),
             "draft_version_label": (
-                f"草稿版 {draft_version_no}"
+                f"最近存档 {draft_version_no}"
                 if draft_version_no
-                else "草稿版：暂无"
+                else "暂无已保存存档"
             ),
             "items": items,
         }
@@ -671,12 +685,18 @@ class AppService:
         reference_version_no = self._resolve_order_pool_version_no(version_no)
         reference_schedule_context = self._build_reference_schedule_context(reference_version_no)
         published_version_no = self._pick_published_schedule_version_no()
+        explicit_view_requested = str(version_no or "").strip() != ""
         published_schedule_context = (
             reference_schedule_context
-            if published_version_no and published_version_no == reference_version_no
+            if explicit_view_requested or (published_version_no and published_version_no == reference_version_no)
             else self._build_reference_schedule_context(published_version_no)
         )
         shortage_analysis = self._build_schedule_shortage_analysis(reference_version_no)
+        published_shortage_analysis = (
+            shortage_analysis
+            if published_version_no and published_version_no == reference_version_no
+            else self._build_schedule_shortage_analysis(published_version_no)
+        )
         final_process_metrics = build_order_final_process_metrics(
             self.connection,
             [base_row],
@@ -697,7 +717,7 @@ class AppService:
             schedule_fact=reference_schedule_context["order_map"].get(normalized_order_no),
             published_version=published_schedule_context.get("version"),
             published_schedule_fact=published_schedule_context["order_map"].get(normalized_order_no),
-            shortage_summary=shortage_analysis["order_map"].get(normalized_order_no),
+            shortage_summary=published_shortage_analysis["order_map"].get(normalized_order_no),
             final_process_metrics=final_process_metrics,
         )
 
@@ -2077,6 +2097,7 @@ class AppService:
                 INSERT INTO work_reports (
                     report_id,
                     production_order_no,
+                    report_scope,
                     process_code,
                     process_name,
                     workshop_code,
@@ -2947,23 +2968,28 @@ class AppService:
         rows = fetch_all(
             self.connection,
             """
-            SELECT version_no, status, status_name_cn, strategy_code, created_at, published_at
+            SELECT version_no, status, status_name_cn, strategy_code, created_at, published_at, result_status, result_summary
             FROM schedule_versions
             ORDER BY
-                created_at ASC,
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(status, ''))) = 'CURRENT' THEN 0
+                    ELSE 1
+                END ASC,
+                created_at DESC,
                 CAST(
                     CASE
                         WHEN INSTR(version_no, '-D') > 0 THEN SUBSTR(version_no, INSTR(version_no, '-D') + 2)
                         ELSE '0'
                     END AS INTEGER
-                ) ASC,
-                version_no ASC
+                ) DESC,
+                version_no DESC
             """,
         )
         items: list[dict[str, Any]] = []
         for row in rows:
             item = dict(row)
             item["status_label"] = _schedule_version_status_label(row.get("status"))
+            item["result_status_label"] = _schedule_result_status_label(row.get("result_status"))
             items.append(item)
         return {"items": items}
 
@@ -2971,7 +2997,7 @@ class AppService:
         row = fetch_one(
             self.connection,
             """
-            SELECT version_no, status, status_name_cn, strategy_code, created_at, published_at
+            SELECT version_no, status, status_name_cn, strategy_code, created_at, published_at, result_status, result_summary
             FROM schedule_versions
             WHERE version_no = ?
             """,
@@ -2985,6 +3011,7 @@ class AppService:
             )
         item = dict(row)
         item["status_label"] = _schedule_version_status_label(row.get("status"))
+        item["result_status_label"] = _schedule_result_status_label(row.get("result_status"))
         return item
 
     def list_schedule_tasks(self, version_no: str) -> dict[str, Any]:
@@ -3123,44 +3150,164 @@ class AppService:
             "items": shortage_analysis["items"],
         }
 
-    def _pick_reference_schedule_version_no(self) -> str | None:
+    def _clone_schedule_version(
+        self,
+        source_version_no: str,
+        *,
+        target_status: str,
+        created_at: str | None = None,
+    ) -> dict[str, Any]:
+        source_version = self.get_schedule_version(source_version_no)
+        source_tasks = self._list_schedule_task_rows_by_version(source_version_no)
+        target_version_no = self._next_schedule_version_no()
+        target_created_at = created_at or utc_now()
+        status = str(target_status or "").strip().upper()
+        if status not in {"CURRENT", "SAVED"}:
+            raise bad_request(
+                code="SCHEDULE_VERSION_STATUS_INVALID",
+                message="排产方案状态无效。",
+                details={"status": target_status},
+            )
+        with transaction(self.connection):
+            if status == "CURRENT":
+                self.connection.execute(
+                    """
+                    UPDATE schedule_versions
+                    SET status = 'SAVED',
+                        status_name_cn = ?
+                    WHERE UPPER(TRIM(COALESCE(status, ''))) = 'CURRENT'
+                    """,
+                    (_status_name("SAVED"),),
+                )
+            self.connection.execute(
+                """
+                INSERT INTO schedule_versions (
+                    version_no,
+                    status,
+                    status_name_cn,
+                    strategy_code,
+                    result_status,
+                    result_summary,
+                    created_at,
+                    published_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    target_version_no,
+                    status,
+                    _status_name(status),
+                    str(source_version.get("strategy_code") or ""),
+                    str(source_version.get("result_status") or "FEASIBLE"),
+                    source_version.get("result_summary"),
+                    target_created_at,
+                    None,
+                ),
+            )
+            if source_tasks:
+                self.connection.executemany(
+                    """
+                    INSERT INTO schedule_tasks (
+                        version_no,
+                        task_no,
+                        production_order_no,
+                        process_code,
+                        process_name_cn,
+                        workshop_code,
+                        line_code,
+                        calendar_date,
+                        shift_code,
+                        plan_qty,
+                        plan_start_time
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            target_version_no,
+                            int(row.get("task_no") or 0),
+                            row.get("production_order_no"),
+                            row.get("process_code"),
+                            row.get("process_name_cn"),
+                            row.get("workshop_code"),
+                            row.get("line_code"),
+                            row.get("calendar_date"),
+                            row.get("shift_code"),
+                            row.get("plan_qty"),
+                            row.get("plan_start_time"),
+                        )
+                        for row in source_tasks
+                    ],
+                )
+        return {
+            "version_no": target_version_no,
+            "source_version_no": source_version_no,
+            "status": status,
+            "status_label": _schedule_version_status_label(status),
+        }
+
+    def save_current_schedule_version(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        current_version_no = self._pick_current_schedule_version_no()
+        if not current_version_no:
+            raise bad_request(
+                code="SCHEDULE_CURRENT_VERSION_REQUIRED",
+                message="当前没有可保存的排产方案，请先执行排产。",
+            )
+        snapshot = self._clone_schedule_version(current_version_no, target_status="SAVED")
+        return {
+            "version_no": snapshot["version_no"],
+            "saved_from_version_no": current_version_no,
+            "status": "SAVED",
+            "status_label": _schedule_version_status_label("SAVED"),
+        }
+
+    def load_saved_schedule_version(self, version_no: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        selected_version = self.get_schedule_version(version_no)
+        selected_status = str(selected_version.get("status") or "").strip().upper()
+        if selected_status == "CURRENT":
+            return {
+                "version_no": version_no,
+                "status": "CURRENT",
+                "status_label": _schedule_version_status_label("CURRENT"),
+                "loaded_from_version_no": version_no,
+                "auto_saved_version_no": None,
+            }
+
+        current_version_no = self._pick_current_schedule_version_no()
+        auto_saved_version_no = None
+        if current_version_no:
+            with transaction(self.connection):
+                self.connection.execute(
+                    """
+                    UPDATE schedule_versions
+                    SET status = 'SAVED',
+                        status_name_cn = ?
+                    WHERE version_no = ?
+                    """,
+                    (_status_name("SAVED"), current_version_no),
+                )
+            auto_saved_version_no = current_version_no
+        loaded = self._clone_schedule_version(version_no, target_status="CURRENT")
+        return {
+            "version_no": loaded["version_no"],
+            "status": "CURRENT",
+            "status_label": _schedule_version_status_label("CURRENT"),
+            "loaded_from_version_no": version_no,
+            "auto_saved_version_no": auto_saved_version_no,
+        }
+
+    def _pick_current_schedule_version_no(self) -> str | None:
         row = fetch_one(
             self.connection,
             """
             SELECT version_no
             FROM schedule_versions
-            WHERE UPPER(TRIM(COALESCE(status, ''))) = 'PUBLISHED'
+            WHERE UPPER(TRIM(COALESCE(status, ''))) IN ('CURRENT', 'PUBLISHED')
             ORDER BY
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(status, ''))) = 'CURRENT' THEN 0
+                    ELSE 1
+                END,
                 COALESCE(NULLIF(TRIM(COALESCE(published_at, '')), ''), created_at) DESC,
                 created_at DESC,
-                CAST(
-                    CASE
-                        WHEN INSTR(version_no, '-D') > 0 THEN SUBSTR(version_no, INSTR(version_no, '-D') + 2)
-                        ELSE '0'
-                    END AS INTEGER
-                ) DESC,
-                version_no DESC
-            LIMIT 1
-            """,
-        )
-        if row is not None:
-            version_no = str(row.get("version_no") or "").strip()
-            if version_no:
-                return version_no
-
-        row = fetch_one(
-            self.connection,
-            """
-            SELECT version_no
-            FROM schedule_versions
-            ORDER BY
-                created_at DESC,
-                CAST(
-                    CASE
-                        WHEN INSTR(version_no, '-D') > 0 THEN SUBSTR(version_no, INSTR(version_no, '-D') + 2)
-                        ELSE '0'
-                    END AS INTEGER
-                ) DESC,
                 version_no DESC
             LIMIT 1
             """,
@@ -3169,6 +3316,9 @@ class AppService:
             return None
         version_no = str(row.get("version_no") or "").strip()
         return version_no or None
+
+    def _pick_reference_schedule_version_no(self) -> str | None:
+        return self._pick_current_schedule_version_no()
 
     def _resolve_order_pool_version_no(self, version_no: str | None) -> str | None:
         normalized_version_no = str(version_no or "").strip()
@@ -3178,23 +3328,7 @@ class AppService:
         return self._pick_reference_schedule_version_no()
 
     def _pick_published_schedule_version_no(self) -> str | None:
-        row = fetch_one(
-            self.connection,
-            """
-            SELECT version_no
-            FROM schedule_versions
-            WHERE UPPER(TRIM(COALESCE(status, ''))) = 'PUBLISHED'
-            ORDER BY
-                COALESCE(NULLIF(TRIM(COALESCE(published_at, '')), ''), created_at) DESC,
-                created_at DESC,
-                version_no DESC
-            LIMIT 1
-            """,
-        )
-        if row is None:
-            return None
-        version_no = str(row.get("version_no") or "").strip()
-        return version_no or None
+        return self._pick_current_schedule_version_no()
 
     def _pick_latest_draft_schedule_version_no(self) -> str | None:
         row = fetch_one(
@@ -3202,7 +3336,7 @@ class AppService:
             """
             SELECT version_no
             FROM schedule_versions
-            WHERE UPPER(TRIM(COALESCE(status, ''))) = 'DRAFT'
+            WHERE UPPER(TRIM(COALESCE(status, ''))) IN ('SAVED', 'DRAFT')
             ORDER BY created_at DESC, version_no DESC
             LIMIT 1
             """,
@@ -3740,16 +3874,24 @@ class AppService:
             SELECT version_no, status, status_name_cn, strategy_code, created_at, published_at
             FROM schedule_versions
             WHERE version_no <> ?
-            ORDER BY created_at ASC, version_no ASC
+            ORDER BY
+                CASE
+                    WHEN UPPER(TRIM(COALESCE(status, ''))) = 'CURRENT' THEN 0
+                    ELSE 1
+                END ASC,
+                created_at DESC,
+                version_no DESC
             """,
             (version_no,),
         )
         if not rows:
             return None
-        published = [row for row in rows if str(row.get("status") or "").strip().upper() == "PUBLISHED"]
-        if published:
-            return published[-1]
-        return rows[-1]
+        saved_rows = [
+            row for row in rows if str(row.get("status") or "").strip().upper() == "SAVED"
+        ]
+        if saved_rows:
+            return saved_rows[0]
+        return rows[0]
 
     def _list_schedule_task_detail_rows(self, version_no: str) -> list[dict[str, Any]]:
         return fetch_all(
@@ -5020,6 +5162,7 @@ class AppService:
             self.get_schedule_version(base_version_no)
             base_schedule_hints = self._build_base_schedule_hints(base_version_no)
         planning_rules = self._build_planning_rules_from_current_config()
+        current_version_no = self._pick_current_schedule_version_no()
         version_no = self._next_schedule_version_no()
         order_rows = self._list_order_rows()
         route_rows_by_product = self._group_routes_by_product(self._list_route_rows())
@@ -5117,6 +5260,7 @@ class AppService:
                 capacity_per_shift = self._resolve_effective_capacity_per_shift(
                     process_context=context,
                     calendar_date=start_date.isoformat(),
+                    shift_code=expected_start_shift,
                     capacity_resolver=capacity_resolver,
                 )
                 required_shifts += self._estimate_required_shifts_for_process(
@@ -5306,6 +5450,7 @@ class AppService:
                     },
                     slot_index=slot_index,
                     calendar_date=calendar_date,
+                    shift_code=shift_code,
                     capacity_resolver=capacity_resolver,
                 )
                 used_capacity_by_slot[key] = _to_number(used_capacity_by_slot.get(key), 0) + plan_qty
@@ -5374,7 +5519,7 @@ class AppService:
         shortage_result = self._build_generated_schedule_material_shortages(
             order_summary_map=order_summary_map,
         )
-        if shortage_result["items"]:
+        if False and shortage_result["items"]:
             preview = ", ".join(
                 f"{item['material_code']}(-{round(_to_number(item.get('shortage_qty'), 0), 4)})"
                 for item in shortage_result["items"][:3]
@@ -5389,8 +5534,25 @@ class AppService:
                 details=shortage_result,
             )
 
+        result_status = "RISKY" if shortage_result["items"] else "FEASIBLE"
+        result_summary = (
+            f"存在 {shortage_result['summary']['shortage_material_count']} 项物料短缺风险，"
+            f"影响 {shortage_result['summary']['impacted_order_count']} 张订单。"
+            if shortage_result["items"]
+            else "已生成班次级建议计划。"
+        )
         created_at = utc_now()
         with transaction(self.connection):
+            if current_version_no:
+                self.connection.execute(
+                    """
+                    UPDATE schedule_versions
+                    SET status = 'SAVED',
+                        status_name_cn = ?
+                    WHERE version_no = ?
+                    """,
+                    (_status_name("SAVED"), current_version_no),
+                )
             self.connection.execute(
                 """
                 INSERT INTO schedule_versions (
@@ -5398,15 +5560,19 @@ class AppService:
                     status,
                     status_name_cn,
                     strategy_code,
+                    result_status,
+                    result_summary,
                     created_at,
                     published_at
-                ) VALUES (?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     version_no,
-                    "DRAFT",
-                    _status_name("DRAFT"),
+                    "CURRENT",
+                    _status_name("CURRENT"),
                     strategy_code,
+                    result_status,
+                    result_summary,
                     created_at,
                     None,
                 ),
@@ -5435,34 +5601,340 @@ class AppService:
                     order_rows=order_rows,
                     states=states,
                 )
-        return {"version_no": version_no, "capacity_source_mode": capacity_source_mode}
+        return {
+            "version_no": version_no,
+            "auto_saved_version_no": current_version_no,
+            "capacity_source_mode": capacity_source_mode,
+            "result_status": result_status,
+            "result_status_label": _schedule_result_status_label(result_status),
+            "result_summary": result_summary,
+            "material_shortages": shortage_result,
+        }
+
+    def generate_schedule_by_fact(self, payload: dict[str, Any]) -> dict[str, Any]:
+        self.factory.build_inventory_refresh_service().refresh_inventory([])
+        self._ensure_masterdata_seeded()
+        if str(payload.get("base_version_no") or "").strip():
+            raise bad_request(
+                code="FACT_SCHEDULE_BASE_VERSION_FORBIDDEN",
+                message="Fact replan does not accept base_version_no.",
+            )
+        strategy_code = self._normalize_strategy_code(payload.get("strategy_code"))
+        capacity_source_mode = self._normalize_fact_replan_capacity_source_mode(
+            payload.get("capacity_source_mode")
+        )
+        use_order_state_window = self._normalize_use_order_state_window(
+            payload.get("use_order_state_window")
+        )
+        planning_rules = self._build_planning_rules_from_current_config()
+        current_version_no = self._pick_current_schedule_version_no()
+        version_no = self._next_schedule_version_no()
+        order_rows = self._list_order_rows()
+        route_rows_by_product = self._group_routes_by_product(self._list_route_rows())
+        capacity_map = self._get_capacity_map(
+            [str(row["production_order_no"]) for row in order_rows]
+        )
+        states = self._get_order_state_map(
+            [str(row["production_order_no"]) for row in order_rows]
+        )
+        topology_by_process = self._enabled_topology_by_process(
+            self._list_line_topology_rows()
+        )
+        capacity_resolver = self._build_schedule_capacity_resolver(
+            capacity_source_mode=capacity_source_mode
+        )
+        simulation_state = self._get_simulation_state()
+        simulation_start = _parse_date_or_today(simulation_state.get("current_date"))
+        fact_boundary = self._build_fact_replan_boundary(simulation_start=simulation_start)
+
+        schedule_candidates: list[dict[str, Any]] = []
+        day_mode_cache: dict[str, str] = {}
+        for order_row in order_rows:
+            order_no = str(order_row["production_order_no"])
+            state_row = states.get(order_no) or {}
+            status = str(
+                state_row.get("order_status")
+                or state_row.get("status")
+                or order_row.get("status")
+                or ""
+            ).strip().upper()
+            if status == "DONE":
+                continue
+
+            remaining_qty = state_row.get("remaining_qty")
+            if remaining_qty is None:
+                production_qty = _to_number(order_row.get("production_qty"), 0)
+                completed_qty = _to_number(state_row.get("completed_qty"), 0)
+                remaining_qty = max(0.0, production_qty - completed_qty)
+            remaining_qty_value = max(0.0, _to_number(remaining_qty, 0))
+            if remaining_qty_value <= SCHEDULE_NUMBER_EPSILON:
+                continue
+
+            lock_flag = int(_to_number(state_row.get("lock_flag"), 0))
+            frozen_flag = int(_to_number(state_row.get("frozen_flag"), 0))
+            if lock_flag == 1 or frozen_flag == 1:
+                continue
+
+            process_contexts = self._build_schedule_process_contexts(
+                order_no=order_no,
+                product_code=str(order_row["material_code"]),
+                capacity_rows=capacity_map.get(order_no, []),
+                route_rows=route_rows_by_product.get(str(order_row["material_code"]), []),
+                topology_by_process=topology_by_process,
+                capacity_resolver=capacity_resolver,
+            )
+
+            if use_order_state_window:
+                start_date_source = (
+                    state_row.get("expected_start_date")
+                    or order_row.get("planned_start_date")
+                    or simulation_start.isoformat()
+                )
+                due_date_source = (
+                    state_row.get("promised_due_date")
+                    or order_row.get("planned_end_date")
+                    or start_date_source
+                )
+            else:
+                start_date_source = (
+                    order_row.get("planned_start_date") or simulation_start.isoformat()
+                )
+                due_date_source = order_row.get("planned_end_date") or start_date_source
+            start_date = _parse_date_or_today(start_date_source)
+            due_date = _parse_date_or_today(due_date_source)
+
+            priority_level = _normalize_priority_level(
+                state_row.get("priority_level"),
+                PRIORITY_LEVEL_MAX,
+            )
+            expected_start_shift = _expected_start_shift_from_datetime_text(
+                state_row.get("expected_start_time")
+            )
+            start_slot = max(
+                _slot_index_for(start_date, expected_start_shift),
+                int(fact_boundary["next_slot"]),
+            )
+            effective_start_date, effective_start_shift = _slot_to_date_shift(start_slot)
+
+            required_shifts = 0
+            min_capacity = None
+            total_capacity = 0.0
+            for context in process_contexts:
+                capacity_per_shift = self._resolve_effective_capacity_per_shift(
+                    process_context=context,
+                    calendar_date=effective_start_date.isoformat(),
+                    shift_code=effective_start_shift,
+                    capacity_resolver=capacity_resolver,
+                )
+                required_shifts += self._estimate_required_shifts_for_process(
+                    process_context=context,
+                    required_qty=remaining_qty_value,
+                    start_slot=start_slot,
+                    planning_rules=planning_rules,
+                    day_mode_cache=day_mode_cache,
+                    capacity_resolver=capacity_resolver,
+                )
+                min_capacity = (
+                    capacity_per_shift
+                    if min_capacity is None
+                    else min(min_capacity, capacity_per_shift)
+                )
+                total_capacity += capacity_per_shift
+            slack_days = (due_date - effective_start_date).days - required_shifts
+
+            schedule_candidates.append(
+                {
+                    "order_no": order_no,
+                    "product_code": str(order_row["material_code"]),
+                    "remaining_qty": remaining_qty_value,
+                    "start_date": effective_start_date,
+                    "due_date": due_date,
+                    "start_slot": start_slot,
+                    "priority_level": priority_level,
+                    "lock_flag": 0,
+                    "frozen_flag": 0,
+                    "updated_at": str(order_row.get("updated_at") or ""),
+                    "process_contexts": process_contexts,
+                    "required_shifts": required_shifts,
+                    "slack_days": slack_days,
+                    "min_capacity_per_shift": _to_number(min_capacity, 0),
+                    "total_capacity_per_shift": total_capacity,
+                    "base_first_task_no": 10**9,
+                    "base_process_first_slot": {},
+                }
+            )
+
+        pending_candidates = self._sort_schedule_candidates(
+            strategy_code=strategy_code,
+            candidates=schedule_candidates,
+        )
+
+        tasks = self._build_fact_locked_task_rows(
+            current_version_no=current_version_no,
+            version_no=version_no,
+            reported_slot=fact_boundary.get("reported_slot"),
+        )
+        used_capacity_by_slot: dict[tuple[Any, ...], float] = {}
+        for task in tasks:
+            workshop_code = str(task[5] or "").strip().upper()
+            line_code = str(task[6] or "").strip().upper()
+            process_code = str(task[3] or "").strip().upper()
+            calendar_date = _normalize_date_text(task[7])
+            if not workshop_code or not line_code or not process_code or not calendar_date:
+                continue
+            shift_code = _normalize_shift_code(task[8])
+            slot_index = _slot_index_from_text(calendar_date, shift_code)
+            key = self._capacity_usage_key(
+                process_context={
+                    "company_code": DEFAULT_COMPANY_CODE,
+                    "workshop_code": workshop_code,
+                    "line_code": line_code,
+                    "process_code": process_code,
+                },
+                slot_index=slot_index,
+                calendar_date=calendar_date,
+                shift_code=shift_code,
+                capacity_resolver=capacity_resolver,
+            )
+            used_capacity_by_slot[key] = (
+                _to_number(used_capacity_by_slot.get(key), 0) + _to_number(task[9], 0)
+            )
+
+        task_no = len(tasks) + 1
+        while pending_candidates:
+            selected_index = self._select_next_candidate_index(
+                strategy_code=strategy_code,
+                candidates=pending_candidates,
+                planning_rules=planning_rules,
+                day_mode_cache=day_mode_cache,
+                used_capacity_by_slot=used_capacity_by_slot,
+                capacity_resolver=capacity_resolver,
+            )
+            candidate = pending_candidates.pop(selected_index)
+            order_no = str(candidate["order_no"])
+            next_start_slot = int(candidate["start_slot"])
+            for context in candidate["process_contexts"]:
+                allocations, last_slot = self._allocate_process_tasks(
+                    order_no=order_no,
+                    process_context=context,
+                    required_qty=_to_number(candidate["remaining_qty"], 0),
+                    first_slot=next_start_slot,
+                    planning_rules=planning_rules,
+                    day_mode_cache=day_mode_cache,
+                    used_capacity_by_slot=used_capacity_by_slot,
+                    capacity_resolver=capacity_resolver,
+                )
+                process_code = str(context["process_code"])
+                for allocation in allocations:
+                    calendar_date = allocation["calendar_date"]
+                    shift_code = allocation["shift_code"]
+                    tasks.append(
+                        (
+                            version_no,
+                            task_no,
+                            order_no,
+                            process_code,
+                            str(context["process_name_cn"]),
+                            allocation.get("workshop_code"),
+                            allocation.get("line_code"),
+                            calendar_date,
+                            shift_code,
+                            allocation["plan_qty"],
+                            _iso_at(
+                                calendar_date,
+                                "08:00:00" if shift_code == "DAY" else "20:00:00",
+                            ),
+                        )
+                    )
+                    task_no += 1
+                next_start_slot = last_slot + 1
+
+        order_summary_map = self._build_schedule_order_summary_map_from_generated_tasks(
+            tasks=tasks,
+            order_rows=order_rows,
+        )
+        shortage_result = self._build_generated_schedule_material_shortages(
+            order_summary_map=order_summary_map,
+        )
+        result_status = "RISKY" if shortage_result["items"] else "FEASIBLE"
+        result_summary = (
+            f"瀛樺湪 {shortage_result['summary']['shortage_material_count']} 椤圭墿鏂欑煭缂洪闄╋紝"
+            f"褰卞搷 {shortage_result['summary']['impacted_order_count']} 寮犺鍗曘€?"
+            if shortage_result["items"]
+            else "宸叉寜浜嬪疄杈圭晫鐢熸垚鍚庣画鐝鎺掍骇銆?"
+        )
+        created_at = utc_now()
+        with transaction(self.connection):
+            if current_version_no:
+                self.connection.execute(
+                    """
+                    UPDATE schedule_versions
+                    SET status = 'SAVED',
+                        status_name_cn = ?
+                    WHERE version_no = ?
+                    """,
+                    (_status_name("SAVED"), current_version_no),
+                )
+            self.connection.execute(
+                """
+                INSERT INTO schedule_versions (
+                    version_no,
+                    status,
+                    status_name_cn,
+                    strategy_code,
+                    result_status,
+                    result_summary,
+                    created_at,
+                    published_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    version_no,
+                    "CURRENT",
+                    _status_name("CURRENT"),
+                    strategy_code,
+                    result_status,
+                    result_summary,
+                    created_at,
+                    None,
+                ),
+            )
+            if tasks:
+                self.connection.executemany(
+                    """
+                    INSERT INTO schedule_tasks (
+                        version_no,
+                        task_no,
+                        production_order_no,
+                        process_code,
+                        process_name_cn,
+                        workshop_code,
+                        line_code,
+                        calendar_date,
+                        shift_code,
+                        plan_qty,
+                        plan_start_time
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    tasks,
+                )
+                self._sync_order_pool_state_schedule_window_from_tasks(
+                    tasks=tasks,
+                    order_rows=order_rows,
+                    states=states,
+                )
+        return {
+            "version_no": version_no,
+            "auto_saved_version_no": current_version_no,
+            "capacity_source_mode": capacity_source_mode,
+            "result_status": result_status,
+            "result_status_label": _schedule_result_status_label(result_status),
+            "result_summary": result_summary,
+            "material_shortages": shortage_result,
+        }
 
     def publish_schedule_version(self, version_no: str) -> dict[str, Any]:
-        self.get_schedule_version(version_no)
-        published_at = utc_now()
-        with transaction(self.connection):
-            self.connection.execute(
-                """
-                UPDATE schedule_versions
-                SET status = 'ARCHIVED',
-                    status_name_cn = ?,
-                    published_at = COALESCE(published_at, ?)
-                WHERE status = 'PUBLISHED'
-                  AND version_no <> ?
-                """,
-                (_status_name("ARCHIVED"), published_at, version_no),
-            )
-            self.connection.execute(
-                """
-                UPDATE schedule_versions
-                SET status = 'PUBLISHED',
-                    status_name_cn = ?,
-                    published_at = ?
-                WHERE version_no = ?
-                """,
-                (_status_name("PUBLISHED"), published_at, version_no),
-            )
-        return {"ok": True}
+        return self.load_saved_schedule_version(version_no, {})
 
     def create_dispatch_command(self, payload: dict[str, Any]) -> dict[str, Any]:
         order_no = str(payload.get("target_order_no") or "").strip()
@@ -7162,6 +7634,10 @@ class AppService:
             else None
         )
         scheduled_due_gap_days = _signed_due_gap_days(promised_due_date, scheduled_finish_time or scheduled_finish_date)
+        published_scheduled_due_gap_days = _signed_due_gap_days(
+            promised_due_date,
+            published_scheduled_finish_time or published_scheduled_finish_date,
+        )
         final_process_risk_level = "UNKNOWN"
         if final_process_due_gap_days is not None:
             if final_process_due_gap_days > 0:
@@ -7178,6 +7654,14 @@ class AppService:
                 scheduled_risk_level = "TIGHT"
             else:
                 scheduled_risk_level = "SAFE"
+        published_scheduled_risk_level = "UNKNOWN"
+        if published_scheduled_due_gap_days is not None:
+            if published_scheduled_due_gap_days > 0:
+                published_scheduled_risk_level = "OVERDUE"
+            elif published_scheduled_due_gap_days >= -1:
+                published_scheduled_risk_level = "TIGHT"
+            else:
+                published_scheduled_risk_level = "SAFE"
         delay_risk_source = "UNKNOWN"
         if final_process_eta_date:
             delay_risk_source = "FINAL_PROCESS_ETA"
@@ -7208,22 +7692,22 @@ class AppService:
             published_version_status
         )
         if published_in_reference_version:
-            reference_schedule_version_label = f"正式发布版 {reference_version_no}"
+            reference_schedule_version_label = f"当前方案 {reference_version_no}"
         elif scheduled_in_reference_version and reference_version_no:
             reference_schedule_version_label = (
-                f"参考版 {reference_version_no}（{reference_schedule_version_status_label}）"
+                f"参考排程 {reference_version_no}（{reference_schedule_version_status_label}）"
             )
         else:
-            reference_schedule_version_label = "未进入任何参考版本"
+            reference_schedule_version_label = "未进入排程"
         viewing_schedule_version_label = (
-            f"当前查看版 {reference_version_no}（{reference_schedule_version_status_label}）"
+            f"当前方案 {reference_version_no}（{reference_schedule_version_status_label}）"
             if reference_version_no
-            else "当前查看版：未选择"
+            else "暂无当前方案"
         )
         published_schedule_version_label = (
-            f"正式执行版 {published_version_no}"
+            f"当前方案 {published_version_no}"
             if published_version_no
-            else "正式执行版：未发布"
+            else "暂无当前方案"
         )
         return {
             "order_no": base_row["production_order_no"],
@@ -7266,11 +7750,14 @@ class AppService:
             "final_process_code": final_process_code,
             "final_process_name_cn": final_process_name_cn,
             "final_process_completed_qty": final_process_completed_qty,
+            "final_process_last_report_date": (final_process_metrics or {}).get("final_process_last_report_date"),
             "final_process_eta_date": final_process_eta_date,
             "final_process_due_gap_days": final_process_due_gap_days,
             "scheduled_due_gap_days": scheduled_due_gap_days,
             "final_process_risk_level": final_process_risk_level,
             "scheduled_risk_level": scheduled_risk_level,
+            "published_scheduled_due_gap_days": published_scheduled_due_gap_days,
+            "published_scheduled_risk_level": published_scheduled_risk_level,
             "delay_risk_source": delay_risk_source,
             "reference_version_no": reference_version_no,
             "reference_schedule_version_no": reference_version_no,
@@ -7348,13 +7835,13 @@ class AppService:
         has_schedule_conflict = viewing_conflict or published_conflict
         causes_unavoidable_delay = bool(row.get("is_naturally_overdue"))
         requires_reschedule = has_schedule_conflict
-        summary_items = [f"手工开工硬约束已设为 {expected_start_text}"]
+        summary_items = [f"手工开工硬约束已设为：{expected_start_text}"]
         if impacts_published_version and published_version_no:
-            summary_items.append(f"会影响正式执行版 {published_version_no}")
+            summary_items.append(f"会影响当前方案 {published_version_no}")
         else:
-            summary_items.append("当前不直接改写正式执行版")
+            summary_items.append("当前不会直接改写当前方案")
         if impacts_viewing_version and viewing_version_no:
-            summary_items.append(f"会影响当前查看版 {viewing_version_no} 的判断口径")
+            summary_items.append(f"会影响当前排程口径 {viewing_version_no} 的判断")
         if has_schedule_conflict:
             summary_items.append("与现有排程事实冲突")
         if causes_unavoidable_delay:
@@ -7522,8 +8009,15 @@ class AppService:
         product_code: str,
         capacity_rows: list[dict[str, Any]],
         route_rows: list[dict[str, Any]],
-        topology_by_process: dict[str, list[dict[str, Any]]],
+        topology_by_process: dict[str, dict[str, Any]] | dict[str, list[dict[str, Any]]],
     ) -> list[dict[str, Any]]:
+        def normalize_candidate_rows(value: Any) -> list[dict[str, Any]]:
+            if isinstance(value, list):
+                return [item for item in value if isinstance(item, dict)]
+            if isinstance(value, dict):
+                return [value]
+            return []
+
         capacity_rows_by_process = self._best_capacity_row_by_process(capacity_rows)
 
         if route_rows:
@@ -7532,7 +8026,9 @@ class AppService:
                 process_code = str(row.get("process_code") or "").strip().upper()
                 if not process_code:
                     continue
-                candidate_rows = capacity_rows_by_process.get(process_code) or topology_by_process.get(process_code) or []
+                candidate_rows = normalize_candidate_rows(
+                    capacity_rows_by_process.get(process_code) or topology_by_process.get(process_code)
+                )
                 candidate_contexts = self._build_candidate_process_contexts(
                     process_code=process_code,
                     process_name_cn=str(row.get("process_name_cn") or process_code).strip() or process_code,
@@ -7651,7 +8147,7 @@ class AppService:
         if len(route_rows) == 0:
             raise server_error(
                 code="SCHEDULE_ROUTE_REQUIRED",
-                message="Process route is required for schedule generation.",
+                message="生成排程前必须先维护工艺路线。",
                 details={"order_no": order_no, "product_code": product_code},
             )
 
@@ -7665,7 +8161,7 @@ class AppService:
         if len(contexts) == 0:
             raise server_error(
                 code="SCHEDULE_PROCESS_CONTEXTS_EMPTY",
-                message="No process contexts available for schedule generation.",
+                message="当前订单没有可用于排程的工序上下文，请检查工艺路线和产线配置。",
                 details={"order_no": order_no, "product_code": product_code},
             )
 
@@ -7684,13 +8180,13 @@ class AppService:
             if not process_code:
                 raise server_error(
                     code="SCHEDULE_PROCESS_CODE_REQUIRED",
-                    message="Process code is missing in schedule process context.",
+                    message="排程工序上下文缺少工序编码。",
                     details={"order_no": order_no, "product_code": product_code},
                 )
             if len(candidate_contexts) == 0:
                 raise server_error(
                     code="SCHEDULE_PROCESS_CANDIDATE_LINES_EMPTY",
-                    message="No candidate workshop/line exists for scheduled process.",
+                    message="当前工序没有可用的候选车间或产线，无法生成排程。",
                     details={
                         "order_no": order_no,
                         "product_code": product_code,
@@ -7700,7 +8196,7 @@ class AppService:
             if default_capacity_per_shift <= SCHEDULE_NUMBER_EPSILON:
                 raise server_error(
                     code="SCHEDULE_CAPACITY_PER_SHIFT_INVALID",
-                    message="capacity_per_shift must be greater than 0 for all scheduled processes.",
+                    message="排程涉及的工序产能必须大于 0。",
                     details={
                         "order_no": order_no,
                         "product_code": product_code,
@@ -7722,14 +8218,15 @@ class AppService:
         *,
         capacity_source_mode: str,
     ) -> dict[str, dict[tuple[str, str, str, str, str], float]]:
-        planned_map: dict[tuple[str, str, str, str, str], float] = {}
-        actual_map: dict[tuple[str, str, str, str, str], float] = {}
+        planned_map: dict[tuple[str, str, str, str, str, str], float] = {}
+        actual_map: dict[tuple[str, str, str, str, str, str], float] = {}
         if capacity_source_mode in {"PLANNED", "ACTUAL"}:
             for row in fetch_all(
                 self.connection,
                 """
                 SELECT
                     calendar_date,
+                    shift_code,
                     company_code,
                     workshop_code,
                     line_code,
@@ -7740,6 +8237,7 @@ class AppService:
             ):
                 key = (
                     str(row.get("calendar_date") or "").strip(),
+                    _normalize_shift_code(row.get("shift_code")),
                     str(row.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN",
                     str(row.get("workshop_code") or "").strip().upper(),
                     str(row.get("line_code") or "").strip().upper(),
@@ -7752,6 +8250,7 @@ class AppService:
                 """
                 SELECT
                     calendar_date,
+                    shift_code,
                     company_code,
                     workshop_code,
                     line_code,
@@ -7762,6 +8261,7 @@ class AppService:
             ):
                 key = (
                     str(row.get("calendar_date") or "").strip(),
+                    _normalize_shift_code(row.get("shift_code")),
                     str(row.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN",
                     str(row.get("workshop_code") or "").strip().upper(),
                     str(row.get("line_code") or "").strip().upper(),
@@ -7775,7 +8275,8 @@ class AppService:
         *,
         process_context: dict[str, Any],
         calendar_date: str,
-        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
+        shift_code: str,
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str, str], float]],
     ) -> float:
         company_code = str(process_context.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
         workshop_code = str(process_context.get("workshop_code") or "").strip().upper()
@@ -7783,6 +8284,7 @@ class AppService:
         process_code = str(process_context.get("process_code") or "").strip().upper()
         lookup_key = (
             str(calendar_date or "").strip(),
+            _normalize_shift_code(shift_code),
             company_code,
             workshop_code,
             line_code,
@@ -7802,7 +8304,8 @@ class AppService:
         process_context: dict[str, Any],
         slot_index: int,
         calendar_date: str,
-        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
+        shift_code: str,
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str, str], float]],
     ) -> tuple[Any, ...]:
         company_code = str(process_context.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper() or DEFAULT_COMPANY_CODE
         workshop_code = str(process_context.get("workshop_code") or "").strip().upper()
@@ -7810,16 +8313,13 @@ class AppService:
         process_code = str(process_context.get("process_code") or "").strip().upper()
         lookup_key = (
             str(calendar_date or "").strip(),
+            _normalize_shift_code(shift_code),
             company_code,
             workshop_code,
             line_code,
             process_code,
         )
-        actual_map = capacity_resolver.get("actual") or {}
-        planned_map = capacity_resolver.get("planned") or {}
-        if lookup_key in actual_map or lookup_key in planned_map:
-            return ("DAY_TOTAL", *lookup_key)
-        return ("SHIFT", int(slot_index), workshop_code, line_code, process_code)
+        return ("SHIFT", int(slot_index), *lookup_key)
 
     def _select_candidate_context_for_slot(
         self,
@@ -7828,7 +8328,7 @@ class AppService:
         slot_index: int,
         calendar_date: str,
         used_capacity_by_slot: dict[tuple[Any, ...], float],
-        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str], float]],
+        capacity_resolver: dict[str, dict[tuple[str, str, str, str, str, str], float]],
     ) -> tuple[dict[str, Any] | None, float]:
         candidate_contexts = (
             process_context.get("candidate_contexts")
@@ -7841,16 +8341,19 @@ class AppService:
         best_candidate: dict[str, Any] | None = None
         best_available_capacity = 0.0
         best_sort_key: tuple[float, float, str, str] | None = None
+        _, derived_shift_code = _slot_to_date_shift(slot_index)
         for candidate in candidate_contexts:
             capacity_per_shift = self._resolve_effective_capacity_per_shift(
                 process_context=candidate,
                 calendar_date=calendar_date,
+                shift_code=derived_shift_code,
                 capacity_resolver=capacity_resolver,
             )
             usage_key = self._capacity_usage_key(
                 process_context=candidate,
                 slot_index=slot_index,
                 calendar_date=calendar_date,
+                shift_code=derived_shift_code,
                 capacity_resolver=capacity_resolver,
             )
             used_capacity = _to_number(used_capacity_by_slot.get(usage_key), 0)
@@ -7909,6 +8412,7 @@ class AppService:
                 process_context=candidate_context,
                 slot_index=slot_index,
                 calendar_date=calendar_date,
+                shift_code=_slot_to_date_shift(slot_index)[1],
                 capacity_resolver=capacity_resolver,
             )
             used_capacity = _to_number(simulated_used_capacity.get(usage_key), 0)
@@ -8024,6 +8528,19 @@ class AppService:
                 details={
                     "capacity_source_mode": normalized,
                     "supported": sorted(SUPPORTED_CAPACITY_SOURCE_MODES),
+                },
+            )
+        return normalized
+
+    def _normalize_fact_replan_capacity_source_mode(self, value: object) -> str:
+        normalized = self._normalize_capacity_source_mode(value)
+        if normalized not in {"ACTUAL", "PLANNED"}:
+            raise bad_request(
+                code="FACT_SCHEDULE_CAPACITY_SOURCE_MODE_INVALID",
+                message="Fact replan capacity_source_mode must be ACTUAL or PLANNED.",
+                details={
+                    "capacity_source_mode": normalized,
+                    "supported": ["ACTUAL", "PLANNED"],
                 },
             )
         return normalized
@@ -8199,6 +8716,98 @@ class AppService:
                 process_first_slot[process_code] = slot_index
         return hints
 
+    def _build_fact_replan_boundary(self, *, simulation_start: date) -> dict[str, Any]:
+        latest_report_row = fetch_one(
+            self.connection,
+            """
+            SELECT report_time
+            FROM work_reports
+            ORDER BY report_time DESC, report_id DESC
+            LIMIT 1
+            """,
+        )
+        reported_slot = None
+        report_time_text = str((latest_report_row or {}).get("report_time") or "").strip()
+        if report_time_text:
+            report_date = _normalize_date_text(
+                datetime.fromisoformat(report_time_text)
+                .astimezone(LOCAL_TIMEZONE)
+                .date()
+                .isoformat()
+            )
+            if report_date is not None:
+                reported_slot = _slot_index_from_text(
+                    report_date,
+                    _expected_start_shift_from_datetime_text(report_time_text),
+                )
+
+        simulation_slot = _slot_index_for(simulation_start, "DAY")
+        next_slot = simulation_slot if reported_slot is None else max(simulation_slot, reported_slot + 1)
+        boundary_date, boundary_shift = _slot_to_date_shift(next_slot)
+        return {
+            "reported_slot": reported_slot,
+            "next_slot": next_slot,
+            "next_date": boundary_date.isoformat(),
+            "next_shift_code": boundary_shift,
+        }
+
+    def _build_fact_locked_task_rows(
+        self,
+        *,
+        current_version_no: str | None,
+        version_no: str,
+        reported_slot: int | None,
+    ) -> list[tuple[Any, ...]]:
+        if not current_version_no or reported_slot is None:
+            return []
+        rows = fetch_all(
+            self.connection,
+            """
+            SELECT
+                task_no,
+                production_order_no,
+                process_code,
+                process_name_cn,
+                workshop_code,
+                line_code,
+                calendar_date,
+                shift_code,
+                plan_qty,
+                plan_start_time
+            FROM schedule_tasks
+            WHERE version_no = ?
+            ORDER BY task_no ASC
+            """,
+            (current_version_no,),
+        )
+        tasks: list[tuple[Any, ...]] = []
+        next_task_no = 1
+        for row in rows:
+            calendar_date = _normalize_date_text(row.get("calendar_date"))
+            if calendar_date is None:
+                continue
+            shift_code = _normalize_shift_code(row.get("shift_code"))
+            slot_index = _slot_index_from_text(calendar_date, shift_code)
+            if slot_index > reported_slot:
+                continue
+            tasks.append(
+                (
+                    version_no,
+                    next_task_no,
+                    str(row.get("production_order_no") or "").strip(),
+                    str(row.get("process_code") or "").strip().upper(),
+                    str(row.get("process_name_cn") or row.get("process_code") or "").strip(),
+                    str(row.get("workshop_code") or "").strip().upper() or None,
+                    str(row.get("line_code") or "").strip().upper() or None,
+                    calendar_date,
+                    shift_code,
+                    _to_number(row.get("plan_qty"), 0),
+                    row.get("plan_start_time"),
+                )
+            )
+            next_task_no += 1
+        return tasks
+
     def _resolve_day_shift_mode(
         self,
         *,
@@ -8336,6 +8945,7 @@ class AppService:
                 process_context=candidate_context,
                 slot_index=slot_index,
                 calendar_date=calendar_date,
+                shift_code=shift_code,
                 capacity_resolver=capacity_resolver,
             )
             used_capacity = _to_number(used_capacity_by_slot.get(key), 0)
@@ -8542,12 +9152,14 @@ class AppService:
             capacity_per_shift = self._resolve_effective_capacity_per_shift(
                 process_context=process_context,
                 calendar_date=calendar_date,
+                shift_code=_slot_to_date_shift(slot_index)[1],
                 capacity_resolver=capacity_resolver,
             )
             key = self._capacity_usage_key(
                 process_context=process_context,
                 slot_index=slot_index,
                 calendar_date=calendar_date,
+                shift_code=_slot_to_date_shift(slot_index)[1],
                 capacity_resolver=capacity_resolver,
             )
             used_capacity = _to_number(used_capacity_by_slot.get(key), 0)

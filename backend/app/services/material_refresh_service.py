@@ -35,7 +35,7 @@ class MaterialRefreshService:
         if self.order_repository.get(order_no) is None:
             raise not_found(
                 code="ORDER_NOT_FOUND",
-                message="Order does not exist.",
+                message="生产订单不存在。",
                 details={"order_no": order_no},
             )
 
@@ -54,7 +54,7 @@ class MaterialRefreshService:
             if not supply_type_code or not supply_type_name:
                 raise server_error(
                     code="SUPPLY_TYPE_MISSING",
-                    message="Supply type is missing in ERP refresh result.",
+                    message="ERP 刷新结果缺少物料供应方式，无法刷新用料。",
                     details={"material_code": material_code},
                 )
 
@@ -94,7 +94,7 @@ class MaterialRefreshService:
             self.material_issue_repository.replace_for_order(order_no, rows_to_store)
 
         return {
-            "message": f"Refreshed {len(rows_to_store)} root material rows.",
+            "message": f"已刷新 {len(rows_to_store)} 条根层用料。",
             "order_no": order_no,
             "row_count": len(rows_to_store),
         }
@@ -107,7 +107,7 @@ class MaterialRefreshService:
         if self.order_repository.get(order_no) is None:
             raise not_found(
                 code="ORDER_NOT_FOUND",
-                message="Order does not exist.",
+                message="生产订单不存在。",
                 details={"order_no": order_no},
             )
 
@@ -139,7 +139,7 @@ class MaterialRefreshService:
                 if not supply_type_code or not supply_type_name:
                     raise server_error(
                         code="SUPPLY_TYPE_MISSING",
-                        message="Supply type is missing in ERP BOM refresh result.",
+                        message="ERP BOM 刷新结果缺少物料供应方式，无法刷新自制子料。",
                         details={"material_code": material_code},
                     )
 
@@ -169,7 +169,7 @@ class MaterialRefreshService:
                 self.bom_children_repository.replace_for_parent(parent_code, rows)
 
         return {
-            "message": f"Refreshed {len(unique_parent_codes)} self-made parent nodes.",
+            "message": f"已刷新 {len(unique_parent_codes)} 个自制父项节点。",
             "order_no": order_no,
             "parent_count": len(unique_parent_codes),
             "row_count": sum(len(rows) for rows in rows_by_parent.values()),

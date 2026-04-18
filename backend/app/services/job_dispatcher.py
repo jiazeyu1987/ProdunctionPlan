@@ -163,8 +163,18 @@ class JobDispatcher:
             )
         if job_type == "LEGACY_SCHEDULE_GENERATE":
             return self._dispatch_app_service("generate_schedule", payload)
+        if job_type == "FACT_SCHEDULE_GENERATE":
+            return self._dispatch_app_service("generate_schedule_by_fact", payload)
         if job_type == "LEGACY_SCHEDULE_PUBLISH":
             return self._dispatch_app_service("publish_schedule_version", str(payload["version_no"]))
+        if job_type == "LEGACY_SCHEDULE_SAVE_CURRENT":
+            return self._dispatch_app_service("save_current_schedule_version", payload)
+        if job_type == "LEGACY_SCHEDULE_LOAD_SAVED":
+            return self._dispatch_app_service(
+                "load_saved_schedule_version",
+                str(payload["version_no"]),
+                payload,
+            )
         if job_type == "LEGACY_CALENDAR_RULES_SAVE":
             return self._dispatch_app_service("save_schedule_calendar_rules", payload)
         if job_type == "LEGACY_MASTERDATA_CONFIG_SAVE":

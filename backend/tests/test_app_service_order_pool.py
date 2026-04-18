@@ -817,10 +817,10 @@ class AppServiceOrderPoolStatusTestCase(unittest.TestCase):
         self.assertTrue(row["manual_expected_start_override"])
         self.assertEqual(row["manual_expected_start_shift"], "NIGHT")
         self.assertEqual(row["scheduled_due_gap_days"], 1)
-        self.assertEqual(row["reference_schedule_version_status_label"], "已发布")
-        self.assertEqual(row["reference_schedule_version_label"], "正式发布版 V2026.04.16-D1")
-        self.assertEqual(row["viewing_schedule_version_label"], "当前查看版 V2026.04.16-D1（已发布）")
-        self.assertEqual(row["published_schedule_version_label"], "正式执行版 V2026.04.16-D1")
+        self.assertEqual(row["reference_schedule_version_status_label"], "已保存")
+        self.assertEqual(row["reference_schedule_version_label"], "当前方案 V2026.04.16-D1")
+        self.assertEqual(row["viewing_schedule_version_label"], "当前方案 V2026.04.16-D1（已保存）")
+        self.assertEqual(row["published_schedule_version_label"], "当前方案 V2026.04.16-D1")
         self.assertTrue(row["scheduled_in_published_version"])
         self.assertEqual(row["delay_risk_source"], "SCHEDULE_FACT")
         self.assertEqual(row["manual_intervention_types"], ["EXPECTED_START", "PRIORITY", "LOCK"])
@@ -979,10 +979,213 @@ class AppServiceOrderPoolStatusTestCase(unittest.TestCase):
         row = self.service.get_order_pool_item("MO-VERSION-001", version_no="V2026.04.17-D1")
 
         self.assertEqual(row["viewing_schedule_version_no"], "V2026.04.17-D1")
-        self.assertEqual(row["viewing_schedule_version_label"], "当前查看版 V2026.04.17-D1（草稿）")
-        self.assertEqual(row["published_schedule_version_no"], "V2026.04.16-D1")
-        self.assertEqual(row["published_schedule_version_label"], "正式执行版 V2026.04.16-D1")
+        self.assertEqual(row["viewing_schedule_version_label"], "当前方案 V2026.04.17-D1（已保存）")
+        self.assertEqual(row["published_schedule_version_no"], "V2026.04.17-D1")
+        self.assertEqual(row["published_schedule_version_label"], "当前方案 V2026.04.17-D1")
         self.assertTrue(row["scheduled_in_reference_version"])
         self.assertTrue(row["scheduled_in_published_version"])
         self.assertEqual(row["scheduled_start_shift"], "NIGHT")
-        self.assertEqual(row["published_scheduled_start_shift"], "DAY")
+        self.assertEqual(row["published_scheduled_start_shift"], "NIGHT")
+
+    def test_list_order_pool_keeps_draft_view_but_execution_risk_uses_published_version(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO production_orders (
+                production_order_no,
+                material_code,
+                material_name,
+                material_specification,
+                production_qty,
+                status,
+                planned_start_date,
+                planned_end_date,
+                source_bill_no,
+                material_list_no,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MO-RISK-SCOPE-001",
+                "MAT-RISK-SCOPE-001",
+                "版本口径风险订单",
+                "规格H",
+                10,
+                "2",
+                "2026-04-13",
+                "2026-04-15",
+                "SRC-RISK-SCOPE-001",
+                "ML-RISK-SCOPE-001",
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO order_pool_state (
+                production_order_no,
+                promised_due_date,
+                expected_start_date,
+                expected_start_time,
+                expected_finish_time,
+                priority_level,
+                urgent_flag,
+                lock_flag,
+                frozen_flag,
+                status,
+                order_status,
+                completed_qty,
+                remaining_qty,
+                progress_rate,
+                production_batch_no,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MO-RISK-SCOPE-001",
+                "2026-04-15",
+                "2026-04-13",
+                "2026-04-13T08:00:00+08:00",
+                "2026-04-15T18:00:00+08:00",
+                5,
+                0,
+                0,
+                0,
+                "OPEN",
+                "OPEN",
+                0,
+                10,
+                0,
+                "SRC-RISK-SCOPE-001-B1",
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.executemany(
+            """
+            INSERT INTO schedule_versions (
+                version_no,
+                status,
+                status_name_cn,
+                strategy_code,
+                created_at,
+                published_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "V2026.04.16-D1",
+                    "PUBLISHED",
+                    "已发布",
+                    "KEY_ORDER_FIRST",
+                    "2026-04-16T00:00:00+08:00",
+                    "2026-04-16T01:00:00+08:00",
+                ),
+                (
+                    "V2026.04.17-D1",
+                    "DRAFT",
+                    "草稿",
+                    "KEY_ORDER_FIRST",
+                    "2026-04-17T00:00:00+08:00",
+                    None,
+                ),
+            ],
+        )
+        self.connection.executemany(
+            """
+            INSERT INTO schedule_tasks (
+                version_no,
+                task_no,
+                production_order_no,
+                process_code,
+                process_name_cn,
+                workshop_code,
+                line_code,
+                calendar_date,
+                shift_code,
+                plan_qty,
+                plan_start_time
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    "V2026.04.16-D1",
+                    1,
+                    "MO-RISK-SCOPE-001",
+                    "PROC-A",
+                    "工序A",
+                    "WS-01",
+                    "LINE-01",
+                    "2026-04-14",
+                    "DAY",
+                    10,
+                    "2026-04-14T08:00:00+08:00",
+                ),
+                (
+                    "V2026.04.17-D1",
+                    1,
+                    "MO-RISK-SCOPE-001",
+                    "PROC-A",
+                    "工序A",
+                    "WS-02",
+                    "LINE-02",
+                    "2026-04-16",
+                    "DAY",
+                    10,
+                    "2026-04-16T08:00:00+08:00",
+                ),
+            ],
+        )
+        self.connection.execute(
+            """
+            INSERT INTO material_issue_items (
+                production_order_no,
+                child_material_code,
+                child_material_name,
+                issue_qty,
+                supply_type_code,
+                supply_type_name,
+                inventory_qty,
+                inventory_status,
+                child_unit,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MO-RISK-SCOPE-001",
+                "RM-RISK-001",
+                "风险物料",
+                10,
+                "PURCHASED",
+                "外购",
+                0,
+                "KNOWN",
+                "PCS",
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO inventory_cache (
+                material_code,
+                inventory_qty,
+                inventory_status,
+                snapshot_time,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                "RM-RISK-001",
+                10,
+                "KNOWN",
+                "2026-04-13T00:00:00+00:00",
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.commit()
+
+        row = self.service.list_order_pool(version_no="V2026.04.17-D1")["items"][0]
+
+        self.assertEqual(row["viewing_schedule_version_no"], "V2026.04.17-D1")
+        self.assertEqual(row["published_schedule_version_no"], "V2026.04.17-D1")
+        self.assertEqual(row["scheduled_due_gap_days"], 1)
+        self.assertEqual(row["published_scheduled_due_gap_days"], 1)
+        self.assertEqual(row["published_scheduled_risk_level"], "OVERDUE")
+        self.assertEqual(row["material_shortage_count"], 0)

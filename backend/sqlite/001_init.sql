@@ -194,6 +194,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     result_json TEXT,
     error_code TEXT,
     error_message TEXT,
+    error_details_json TEXT,
     created_at TEXT NOT NULL,
     started_at TEXT,
     finished_at TEXT

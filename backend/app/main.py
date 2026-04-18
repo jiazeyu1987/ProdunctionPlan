@@ -38,6 +38,8 @@ app.add_middleware(
     allow_origins=[
         "http://127.0.0.1:2798",
         "http://localhost:2798",
+        "http://127.0.0.1:2799",
+        "http://localhost:2799",
         "http://172.30.30.59:2798",
         "http://127.0.0.1:3000",
         "http://localhost:3000",

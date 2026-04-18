@@ -27,7 +27,7 @@ class MaterialQueryService:
         if self.order_repository.get(order_no) is None:
             raise not_found(
                 code="ORDER_NOT_FOUND",
-                message="Order does not exist.",
+                message="生产订单不存在。",
                 details={"order_no": order_no},
             )
         rows = self.material_issue_repository.list_by_order(order_no)
@@ -58,7 +58,7 @@ class MaterialQueryService:
             if not supply_type_code or not supply_type_name:
                 raise server_error(
                     code="SUPPLY_TYPE_MISSING",
-                    message="Supply type cache is missing for material.",
+                    message="物料缺少供应方式缓存，无法展示用料清单。",
                     details={"material_code": material_code},
                 )
 

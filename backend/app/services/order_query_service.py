@@ -38,7 +38,7 @@ class OrderQueryService:
         if item is None:
             raise not_found(
                 code="ORDER_NOT_FOUND",
-                message="Order does not exist.",
+                message="生产订单不存在。",
                 details={"order_no": order_no},
             )
         metrics_by_order = build_order_final_process_metrics(

@@ -1,0 +1,234 @@
+{
+  "schema_version": 2,
+  "task_id": "task-9a33f950da-20260417T225748",
+  "mode": "full",
+  "status": "ready_for_execution",
+  "current_phase": "P5",
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "统一术语与边界模型",
+      "status": "completed",
+      "objective": "把“事实”“人工约束”“排程结果”三类来源从概念上拆开，形成后续改造的统一术语和边界。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "`prd.md` 中存在清晰的模型拆分与入口语义说明，且 `task-state.json` 已同步出对应 phase 和 acceptance ids。",
+      "evidence": [],
+      "notes": "P1 已在 PRD 中补齐术语定义、字段映射、入口分流和口径漂移清单。",
+      "last_reviewed_at": "2026-04-17T23:21:46.5301953+08:00",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "计划文档必须明确给出“事实”“人工约束”“排程结果”三类来源的定义，并把当前系统中的关键表和字段映射到其中一类，不允许同一字段同时扮演多类角色而不被指出。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P1 术语定义",
+            "prd.md: P1 现状字段映射与问题归类"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "计划文档必须明确指出当前“初始排产”和“重排”入口的真实差异，包括 `base_version_no = null` 与 `base_version_no = selectedVersionNo` 的行为分叉。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P1 入口真实差异"
+          ]
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "计划文档必须明确列出当前口径漂移点，包括 `CURRENT/SAVED` 与旧 `PUBLISHED/DRAFT` 的混用，以及订单池、排程页、后端状态之间的差异。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P1 口径漂移清单",
+            "prd.md: P1 旧术语到新术语映射"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P2",
+      "title": "拆分数据职责并停止结果污染约束字段",
+      "status": "completed",
+      "objective": "先从数据职责上切断“排程结果回写到人工约束字段”的耦合，为事实重排创造干净输入。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "`prd.md` 的 P2 节包含字段职责拆分、迁移边界和兼容策略，不留“后续再看”的关键空白。",
+      "evidence": [],
+      "notes": "P2 已在 PRD 中补齐字段职责拆分、迁移边界、数据库/服务层改造顺序与兼容期策略。",
+      "last_reviewed_at": "2026-04-17T23:27:00.6821601+08:00",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "计划文档必须把“人工排程窗口字段”和“排程结果导出字段”拆成两个职责集合，并明确指出当前 `_sync_order_pool_state_schedule_window_from_tasks` 是需要收口的耦合点。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P2 字段职责拆分方案"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "计划文档必须给出数据库和服务层的改造顺序，先拆字段职责，再改算法入口，不允许直接在旧字段上堆条件分支。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P2 数据库与服务层改造顺序",
+            "prd.md: P2 迁移边界"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "计划文档必须定义兼容期策略，说明 legacy 页面和 legacy 接口在迁移中如何继续工作，以及哪些字段需要临时双读或双写。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P2 兼容期策略"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P3",
+      "title": "新增“按事实从当天重排”管线",
+      "status": "completed",
+      "objective": "在不破坏 legacy 重排的前提下，新增一条不依赖 `base_version_no` 的事实驱动重排管线。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "`prd.md` 的 P3 节给出新旧两条管线的边界和文件级落点，测试计划至少有一个 case 专门验证入口分流。",
+      "evidence": [],
+      "notes": "P3 已在 PRD 中补齐事实重排入口定义、事实输入集合、输入构造器拆分方案与双管线共存边界。",
+      "last_reviewed_at": "2026-04-17T23:32:10.3653046+08:00",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "计划文档必须定义一条新的“按事实从当天重排”管线，明确该管线不依赖 `base_version_no`，也不复制旧任务表作为固定订单。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P3 新入口定义"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "计划文档必须列出新管线直接消费的事实来源，至少覆盖模拟当前日、报工、剩余量、计划/实际产能、工艺和拓扑。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P3 新管线直接消费的事实来源"
+          ]
+        },
+        {
+          "ac_id": "P3-AC3",
+          "text": "计划文档必须明确 legacy 重排管线继续保留，并说明两条管线只在输入构造层分开，后半段分配核心尽量复用。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P3 输入构造器拆分设计",
+            "prd.md: P3 新旧两条管线的共存边界",
+            "prd.md: P3 与测试计划的绑定"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P4",
+      "title": "重定义锁定与冻结在新模式下的语义",
+      "status": "completed",
+      "objective": "为新模式定义锁定与冻结的精确行为，明确哪些是硬事实、哪些是未来约束、哪些条件下必须阻断。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "`prd.md` 的 P4 节包含规则矩阵和冲突测试处理策略，测试计划存在覆盖阻断与非阻断分支的用例。",
+      "evidence": [],
+      "notes": "P4 已在 PRD 中补齐锁定/冻结规则矩阵、阻断条件、错误文案策略与冲突测试清理方案。",
+      "last_reviewed_at": "2026-04-17T23:36:48.5442751+08:00",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P4-AC1",
+          "text": "计划文档必须明确锁定与冻结在新模式下不能再默认解释为“保持旧排位”，除非系统拥有明确锚点信息。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P4 规则矩阵"
+          ]
+        },
+        {
+          "ac_id": "P4-AC2",
+          "text": "计划文档必须定义哪些情况下新模式应当阻断，且阻断原因必须来自明确缺失的业务前提，而不是继续复用“未出现在基准版本中”这种旧语义。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P4 阻断条件清单",
+            "prd.md: P4 错误文案与用户解释策略"
+          ]
+        },
+        {
+          "ac_id": "P4-AC3",
+          "text": "计划文档必须指出现有冲突测试需要被清理或重写，并说明清理依据来自新的规则矩阵，而不是临时让某条测试绿掉。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P4 冲突测试清理方案"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P5",
+      "title": "回归验证、迁移策略与上线切换",
+      "status": "completed",
+      "objective": "让新模式具备真实可验证性，并给出从 legacy 模式迁移到双模式共存、再到默认模式切换的上线步骤。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "`test-plan.md` 覆盖所有 acceptance ids，且 `prd.md` 中有清晰的发布与回滚策略。",
+      "evidence": [],
+      "notes": "P5 已在 PRD 中补齐验证命令、迁移顺序、发布前检查清单与回滚原则。",
+      "last_reviewed_at": "2026-04-17T23:41:53.4951347+08:00",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P5-AC1",
+          "text": "计划文档必须列出后端窄回归、前端静态检查和真实浏览器 E2E 三类验证命令，且每类都有明确 success signal。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P5 验证命令与 success signal"
+          ]
+        },
+        {
+          "ac_id": "P5-AC2",
+          "text": "计划文档必须给出迁移顺序，至少覆盖“文档和术语统一 -> 数据职责拆分 -> 新管线落地 -> 规则切换 -> 默认入口切换”。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P5 迁移顺序"
+          ]
+        },
+        {
+          "ac_id": "P5-AC3",
+          "text": "计划文档必须给出发布前检查和回滚原则，确保新模式上线后出现语义错误时可以回退到 legacy 重排，而不是引入 fallback 混跑。",
+          "status": "completed",
+          "evidence": [
+            "prd.md: P5 发布前检查清单",
+            "prd.md: P5 回滚原则"
+          ]
+        }
+      ]
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 10,
+    "test_loops": 5
+  },
+  "created_at": "2026-04-17T22:57:48",
+  "updated_at": "2026-04-18T02:00:00+08:00",
+  "branch": "master",
+  "baseline_revision": "dcf3a6347fc4db9830d34ff84dd78ff5581f7739",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-9a33f950da-20260417T225748",
+  "goal": "为生产排程系统制定从上到下的开发计划，围绕当前参考旧排程重排模型、按事实从当天重排目标、事实/约束/结果解耦、锁定冻结约束重定义、实施阶段与验收方案输出可执行任务工件",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-9a33f950da-20260417T225748\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-9a33f950da-20260417T225748\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-9a33f950da-20260417T225748\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-9a33f950da-20260417T225748\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-9a33f950da-20260417T225748\\test-report.md"
+  }
+}

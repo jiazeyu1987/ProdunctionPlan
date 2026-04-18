@@ -21,6 +21,7 @@ def _to_job(row: dict[str, Any]) -> dict[str, Any]:
         "result": loads(row["result_json"]),
         "error_code": row["error_code"],
         "error_message": row["error_message"],
+        "error_details": loads(row.get("error_details_json")),
         "created_at": row["created_at"],
         "started_at": row["started_at"],
         "finished_at": row["finished_at"],
@@ -49,10 +50,11 @@ class JobRepository:
                 result_json,
                 error_code,
                 error_message,
+                error_details_json,
                 created_at,
                 started_at,
                 finished_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 str(job["job_id"]),
@@ -66,6 +68,9 @@ class JobRepository:
                 dumps(job.get("result") or {}) if job.get("result") is not None else None,
                 str(job.get("error_code") or "").strip() or None,
                 str(job.get("error_message") or "").strip() or None,
+                dumps(job.get("error_details"))
+                if job.get("error_details") is not None
+                else None,
                 str(job.get("created_at") or utc_now()),
                 str(job.get("started_at") or utc_now()),
                 str(job.get("finished_at") or "").strip() or None,
@@ -103,10 +108,11 @@ class JobRepository:
                 result_json,
                 error_code,
                 error_message,
+                error_details_json,
                 created_at,
                 started_at,
                 finished_at
-            ) VALUES (?, ?, ?, ?, ?, 'PENDING', 0, ?, NULL, NULL, NULL, ?, NULL, NULL)
+            ) VALUES (?, ?, ?, ?, ?, 'PENDING', 0, ?, NULL, NULL, NULL, NULL, ?, NULL, NULL)
             """,
             (
                 job_id,
@@ -137,6 +143,7 @@ class JobRepository:
                 result_json,
                 error_code,
                 error_message,
+                error_details_json,
                 created_at,
                 started_at,
                 finished_at
@@ -163,6 +170,7 @@ class JobRepository:
                 result_json,
                 error_code,
                 error_message,
+                error_details_json,
                 created_at,
                 started_at,
                 finished_at
@@ -210,6 +218,7 @@ class JobRepository:
                 result_json,
                 error_code,
                 error_message,
+                error_details_json,
                 created_at,
                 started_at,
                 finished_at
@@ -239,6 +248,7 @@ class JobRepository:
                 result_json,
                 error_code,
                 error_message,
+                error_details_json,
                 created_at,
                 started_at,
                 finished_at
@@ -277,6 +287,7 @@ class JobRepository:
                 result_json = ?,
                 error_code = NULL,
                 error_message = NULL,
+                error_details_json = NULL,
                 finished_at = ?
             WHERE job_id = ?
             """,
@@ -284,7 +295,13 @@ class JobRepository:
         )
         self.connection.commit()
 
-    def mark_failed(self, job_id: str, error_code: str, error_message: str) -> None:
+    def mark_failed(
+        self,
+        job_id: str,
+        error_code: str,
+        error_message: str,
+        error_details: dict[str, Any] | None = None,
+    ) -> None:
         self.connection.execute(
             """
             UPDATE jobs
@@ -292,9 +309,16 @@ class JobRepository:
                 result_json = NULL,
                 error_code = ?,
                 error_message = ?,
+                error_details_json = ?,
                 finished_at = ?
             WHERE job_id = ?
             """,
-            (error_code, error_message, utc_now(), job_id),
+            (
+                error_code,
+                error_message,
+                dumps(error_details) if error_details is not None else None,
+                utc_now(),
+                job_id,
+            ),
         )
         self.connection.commit()

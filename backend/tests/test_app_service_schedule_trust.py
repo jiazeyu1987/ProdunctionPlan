@@ -177,6 +177,7 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
             """
             INSERT INTO daily_line_capacity_plan (
                 calendar_date,
+                shift_code,
                 company_code,
                 workshop_code,
                 line_code,
@@ -186,10 +187,11 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
                 machine_count,
                 source_note,
                 updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "2026-04-13",
+                "DAY",
                 "COMPANY-MAIN",
                 "WS-1",
                 "LINE-1",
@@ -269,21 +271,19 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
         )
         self.connection.commit()
 
-        with self.assertRaises(AppError) as ctx:
-            self.service.generate_schedule(
-                {
-                    "strategy_code": "KEY_ORDER_FIRST",
-                    "capacity_source_mode": "DEFAULT",
-                    "use_order_state_window": True,
-                }
-            )
-
-        self.assertEqual(ctx.exception.code, "SCHEDULE_MATERIAL_SHORTAGE_BLOCKED")
+        generated = self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+        self.assertEqual(generated["result_status"], "RISKY")
         self.assertEqual(
             self.connection.execute("SELECT COUNT(1) FROM schedule_versions").fetchone()[0],
-            0,
+            1,
         )
-        self.assertEqual(
+        self.assertGreater(
             self.connection.execute("SELECT COUNT(1) FROM schedule_tasks").fetchone()[0],
             0,
         )
@@ -390,16 +390,14 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
         )
         self.connection.commit()
 
-        with self.assertRaises(AppError) as ctx:
-            self.service.generate_schedule(
-                {
-                    "strategy_code": "KEY_ORDER_FIRST",
-                    "capacity_source_mode": "DEFAULT",
-                    "use_order_state_window": True,
-                }
-            )
-
-        self.assertEqual(ctx.exception.code, "SCHEDULE_MATERIAL_SHORTAGE_BLOCKED")
+        generated = self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+        self.assertEqual(generated["result_status"], "RISKY")
 
     def test_reference_version_defaults_to_published_version(self) -> None:
         self._seed_order("MO-REF-001", material_code="MAT-REF", quantity=10, expected_start_date="2026-04-13")
@@ -411,6 +409,18 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
 
         self.assertEqual(pool_payload["reference_version_no"], "V-PUB-001")
         self.assertEqual(timeline_payload["summary"]["reference_version_no"], "V-PUB-001")
+
+    def test_reference_version_does_not_fall_back_to_draft_when_no_published_version_exists(self) -> None:
+        self._seed_order("MO-REF-002", material_code="MAT-REF-002", quantity=10, expected_start_date="2026-04-13")
+        self._seed_schedule_version("V-DRF-ONLY-001", status="DRAFT", created_at="2026-04-14T00:00:00+00:00")
+
+        pool_payload = self.service.list_order_pool()
+        timeline_payload = self.service.get_order_pool_process_timeline("MO-REF-002")
+
+        self.assertIsNone(pool_payload["reference_version_no"])
+        self.assertIsNone(pool_payload["current_view_version_no"])
+        self.assertEqual(pool_payload["draft_version_no"], "V-DRF-ONLY-001")
+        self.assertIsNone(timeline_payload["summary"]["reference_version_no"])
 
     def _seed_order(
         self,

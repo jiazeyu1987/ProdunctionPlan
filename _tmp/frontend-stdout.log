@@ -1,0 +1,24 @@
+
+> fronted@0.1.0 dev
+> next dev --hostname 0.0.0.0 --port 2798
+
+▲ Next.js 16.2.2 (Turbopack)
+- Local:         http://localhost:2798
+- Network:       http://0.0.0.0:2798
+- Environments: .env.local
+✓ Ready in 362ms
+
+ GET / 200 in 606ms (next.js: 455ms, application-code: 151ms)
+ GET /orders/pool 200 in 324ms (next.js: 159ms, application-code: 165ms)
+ GET /orders/pool 200 in 46ms (next.js: 12ms, application-code: 34ms)
+ GET /orders/pool 200 in 31ms (next.js: 9ms, application-code: 23ms)
+ GET /orders/pool 200 in 33ms (next.js: 10ms, application-code: 23ms)
+ GET /.well-known/appspecific/com.chrome.devtools.json 200 in 33ms (next.js: 10ms, application-code: 23ms)
+ GET /orders/pool 200 in 36ms (next.js: 8ms, application-code: 28ms)
+ GET /.well-known/appspecific/com.chrome.devtools.json 200 in 34ms (next.js: 2ms, application-code: 31ms)
+ GET /orders/pool 200 in 41ms (next.js: 10ms, application-code: 30ms)
+ GET /.well-known/appspecific/com.chrome.devtools.json 200 in 26ms (next.js: 3ms, application-code: 24ms)
+✓ Compiled in 97ms
+✓ Compiled in 171ms
+ GET /orders/pool 200 in 31ms (next.js: 12ms, application-code: 19ms)
+✓ Compiled in 19ms
