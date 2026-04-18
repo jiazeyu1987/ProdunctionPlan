@@ -1,0 +1,187 @@
+{
+  "schema_version": 2,
+  "task_id": "task-4133d905b2-20260418T233206",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "固化参数接线缺口与验收基线",
+      "status": "completed",
+      "objective": "明确哪些排产参数真正进入“排产/重排”按钮调用，锁定首次排产未保存日历规则的缺口，并把关键场景写入测试契约。",
+      "owned_paths": [
+        "`fronted/src/legacy/features/schedule-calendar/useScheduleCalendarController.js` `backend/tests/*schedule*.py` `doc/tasks/task-4133d905b2-20260418T233206/*`"
+      ],
+      "dependencies": [
+        "当前前后端代码、现有参数敏感性实验结果、现有排产测试。"
+      ],
+      "deliverables": [
+        "可审阅 PRD/Test Plan；明确首次排产与重排的参数接线矩阵；锁定缺口说明。"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "明确列出排产按钮与重排按钮各自传入后端的排产参数，以及当前哪些参数在首次排产路径未生效。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1-Review",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "PRD 与测试计划必须包含“额外夜班变更后点击首次排产”的显式验证场景。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1-Review",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1-Review"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-18T23:37:05"
+    },
+    {
+      "phase_id": "P2",
+      "title": "修复首次排产参数未生效并补自动化验证",
+      "status": "completed",
+      "objective": "修复首次排产前未保存日历规则的问题，确保额外夜班、周末模式、法定假日开关等参数在点击“排产”后进入后端排产；补充自动化测试验证完成日期或排产事实随参数变化更新。",
+      "owned_paths": [
+        "`fronted/src/legacy/features/schedule-calendar/useScheduleCalendarController.js` `backend/tests/test_shift_capacity_schedule.py` `backend/tests/test_app_service_schedule_trust.py` `backend/tests/test_app_service_generate_schedule_unlocked_only.py` `backend/tests/test_simulation_manual_advance.py`"
+      ],
+      "dependencies": [
+        "P1 文档与审阅完成；现有后端测试基线可通过。"
+      ],
+      "deliverables": [
+        "产品代码修复、参数敏感性测试、执行记录。"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "首次点击“排产”前，前端必须先保存当前日历规则，再触发后端排产命令；不得只在重排路径保存规则。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2-Review",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "在可控测试夹具下，修改 `date_shift_mode_by_date`、`weekend_rest_mode` 或 `skip_statutory_holidays` 后重新排产，至少一张订单的 `scheduled_finish_date` 或 `scheduled_finish_time` 发生变化。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2-Review",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "订单完成日期展示继续读取当前排产事实字段，而不是停留在旧的订单窗口字段或陈旧快照。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2-Review",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P2-Review"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-18T23:49:54"
+    },
+    {
+      "phase_id": "P3",
+      "title": "验证完成日期展示与真实交互结果一致",
+      "status": "completed",
+      "objective": "用真实浏览器或现有 e2e 证明：修改额外夜班等日历参数后点击“排产”，订单完成日期展示使用最新排产事实；若当前数据下完工日期不变，也必须能证明参数已进入计算且展示不是陈旧值。",
+      "owned_paths": [
+        "`fronted/tests/e2e/*` `fronted/test-results/e2e/*` `doc/tasks/task-4133d905b2-20260418T233206/test-report.md`"
+      ],
+      "dependencies": [
+        "P2 修复完成；可运行浏览器验证环境。"
+      ],
+      "deliverables": [
+        "浏览器证据、测试报告、最终验收结论。"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "真实浏览器验证中，先修改额外夜班再点击首次排产，页面展示的订单完成日期与最新排产事实一致。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3-Review",
+            "test-report.md#T3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T4"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "如果某组参数在当前真实数据下没有改变某张订单的完成日期，测试报告必须明确记录“参数已进入排产计算但未改变关键路径”的证据，不能把这种情况误判为前端未更新。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3-Review",
+            "test-report.md#T4",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P3-Review",
+        "test-report.md#T3",
+        "test-report.md#T4"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-18T23:56:00"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 3,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-18T23:32:06",
+  "updated_at": "2026-04-18T23:55:01",
+  "branch": "master",
+  "baseline_revision": "dd8eda78e7e1d7a62af9d59d542eae3cef957a7e",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-4133d905b2-20260418T233206",
+  "goal": "系统里排产参数变化之后,点击排产按钮,订单的完成日期也要跟随参数的变化而变化",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-4133d905b2-20260418T233206\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-4133d905b2-20260418T233206\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-4133d905b2-20260418T233206\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-4133d905b2-20260418T233206\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-4133d905b2-20260418T233206\\test-report.md"
+  }
+}

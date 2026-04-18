@@ -22,7 +22,7 @@ class RefreshInventoryBody(RequestCommandBody):
 
 class BatchDispatchCommandBody(RequestCommandBody):
     order_nos: list[str] = Field(min_length=1)
-    command_type: Literal["LOCK", "UNLOCK"]
+    command_type: Literal["LOCK", "UNLOCK", "PRIORITY_UP", "PRIORITY_DOWN"]
 
 
 class AcceptedCommandResponse(BaseModel):

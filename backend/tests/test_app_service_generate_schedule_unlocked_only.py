@@ -249,3 +249,179 @@ class AppServiceGenerateScheduleUnlockedOnlyTestCase(unittest.TestCase):
 
         unlock_task_dates = sorted({row[2] for row in task_map if row[0] == "MO-UNLOCK-001"})
         self.assertEqual(unlock_task_dates[0], "2026-04-14")
+
+    def test_generate_schedule_clamps_open_order_start_to_simulation_current_day(self) -> None:
+        self.service.factory.build_inventory_refresh_service = lambda: type(  # type: ignore[method-assign]
+            "InventoryRefreshStub",
+            (),
+            {"refresh_inventory": staticmethod(lambda _codes: None)},
+        )()
+        self.connection.execute(
+            """
+            INSERT INTO simulation_state (
+                singleton_key,
+                current_date,
+                updated_at
+            ) VALUES (?, ?, ?)
+            ON CONFLICT(singleton_key) DO UPDATE SET
+                current_date = excluded.current_date,
+                updated_at = excluded.updated_at
+            """,
+            ("default", "2026-04-18", "2026-04-18T00:00:00+00:00"),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO masterdata_process_routes (
+                product_code,
+                sequence_no,
+                process_code,
+                process_name_cn,
+                dependency_type,
+                route_no,
+                route_name_cn,
+                product_name_cn,
+                is_final_process,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MAT-SIM-001",
+                1,
+                "PROC-A",
+                "工序A",
+                "FS",
+                "ROUTE-MAT-SIM-001",
+                "测试路线",
+                "测试物料",
+                1,
+                "2026-04-18T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO masterdata_line_topology (
+                company_code,
+                workshop_code,
+                workshop_name,
+                line_code,
+                line_name,
+                process_code,
+                capacity_per_shift,
+                required_workers,
+                required_machines,
+                enabled_flag,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "COMPANY-MAIN",
+                "WS-SIM",
+                "车间SIM",
+                "LINE-SIM",
+                "产线SIM",
+                "PROC-A",
+                10,
+                0,
+                0,
+                1,
+                "2026-04-18T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO production_orders (
+                production_order_no,
+                material_code,
+                material_name,
+                material_specification,
+                production_qty,
+                status,
+                planned_start_date,
+                planned_end_date,
+                source_bill_no,
+                material_list_no,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MO-SIM-001",
+                "MAT-SIM-001",
+                "测试物料",
+                "规格A",
+                10,
+                "OPEN",
+                "2026-04-02",
+                "2026-04-25",
+                "SRC-SIM-001",
+                "ML-SIM-001",
+                "2026-04-18T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO order_pool_state (
+                production_order_no,
+                promised_due_date,
+                expected_start_date,
+                expected_start_time,
+                expected_finish_time,
+                priority_level,
+                urgent_flag,
+                lock_flag,
+                frozen_flag,
+                status,
+                order_status,
+                completed_qty,
+                remaining_qty,
+                progress_rate,
+                production_batch_no,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MO-SIM-001",
+                "2026-04-25",
+                "2026-04-02",
+                "2026-04-02T08:00:00+08:00",
+                "2026-04-25T18:00:00+08:00",
+                5,
+                0,
+                0,
+                0,
+                "OPEN",
+                "OPEN",
+                0,
+                10,
+                0,
+                "BATCH-SIM-001",
+                "2026-04-18T00:00:00+00:00",
+            ),
+        )
+        self.connection.commit()
+
+        generated = self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+
+        version_no = str(generated.get("version_no") or "").strip()
+        first_task = self.connection.execute(
+            """
+            SELECT production_order_no, calendar_date, shift_code, plan_start_time
+            FROM schedule_tasks
+            WHERE version_no = ?
+            ORDER BY task_no ASC
+            LIMIT 1
+            """,
+            (version_no,),
+        ).fetchone()
+
+        self.assertIsNotNone(first_task)
+        assert first_task is not None
+        self.assertEqual(str(first_task["production_order_no"]), "MO-SIM-001")
+        self.assertEqual(str(first_task["calendar_date"]), "2026-04-18")
+        self.assertEqual(str(first_task["shift_code"]), "DAY")
+        self.assertEqual(str(first_task["plan_start_time"]), "2026-04-18T08:00:00+08:00")

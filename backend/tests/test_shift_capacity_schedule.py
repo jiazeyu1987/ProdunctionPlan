@@ -27,6 +27,20 @@ class ShiftCapacityScheduleTestCase(unittest.TestCase):
             (),
             {"refresh_inventory": staticmethod(lambda _codes: None)},
         )()
+        self.connection.execute(
+            """
+            INSERT INTO simulation_state (
+                singleton_key,
+                current_date,
+                updated_at
+            ) VALUES (?, ?, ?)
+            ON CONFLICT(singleton_key) DO UPDATE SET
+                current_date = excluded.current_date,
+                updated_at = excluded.updated_at
+            """,
+            ("default", "2026-04-13", "2026-04-13T00:00:00+00:00"),
+        )
+        self.connection.commit()
 
     def tearDown(self) -> None:
         self.connection.close()
@@ -103,6 +117,56 @@ class ShiftCapacityScheduleTestCase(unittest.TestCase):
 
         rows = self._list_schedule_tasks(str(generated["version_no"]))
         self.assertEqual(rows, [("2026-04-13", "DAY", 5.0), ("2026-04-13", "NIGHT", 10.0)])
+
+    def test_date_shift_mode_change_updates_scheduled_finish_time(self) -> None:
+        self._seed_route_and_topology("MAT-FINISH", "PROC-A", capacity_per_shift=10)
+        self._seed_order("MO-FINISH-001", "MAT-FINISH", 30)
+        self.service.save_line_daily_capacity(
+            {
+                "calendar_date": "2026-04-13",
+                "items": [
+                    {
+                        "company_code": "COMPANY-MAIN",
+                        "workshop_code": "WS-1",
+                        "line_code": "LINE-1",
+                        "process_code": "PROC-A",
+                        "planned_capacity_qty": 20,
+                        "worker_count": 4,
+                        "machine_count": 0,
+                        "split_rule": "CUSTOM",
+                        "split_day_ratio": 0.25,
+                        "split_night_ratio": 0.75,
+                        "capacity_change_reason": "完成日期敏感性测试",
+                    }
+                ],
+            }
+        )
+
+        self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "PLANNED",
+                "use_order_state_window": True,
+            }
+        )
+        baseline_row = self.service.list_order_pool()["items"][0]
+
+        self.service.save_schedule_calendar_rules(
+            {"date_shift_mode_by_date": {"2026-04-13": "BOTH"}}
+        )
+        self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "PLANNED",
+                "use_order_state_window": True,
+            }
+        )
+        updated_row = self.service.list_order_pool()["items"][0]
+
+        self.assertEqual(str(baseline_row["scheduled_finish_date"]), "2026-04-16")
+        self.assertEqual(str(baseline_row["scheduled_finish_time"]), "2026-04-16T20:00:00+08:00")
+        self.assertEqual(str(updated_row["scheduled_finish_date"]), "2026-04-14")
+        self.assertEqual(str(updated_row["scheduled_finish_time"]), "2026-04-14T20:00:00+08:00")
 
     def test_capacity_change_type_and_reason_are_separate_fields(self) -> None:
         self._seed_route_and_topology("MAT-SEM", "PROC-A", capacity_per_shift=10)

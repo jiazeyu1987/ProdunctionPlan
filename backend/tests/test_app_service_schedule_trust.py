@@ -21,6 +21,20 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
         self.connection.execute("PRAGMA foreign_keys = ON")
         self.service = AppService(self.connection)
         self.service._ensure_masterdata_seeded = lambda: None  # type: ignore[method-assign]
+        self.connection.execute(
+            """
+            INSERT INTO simulation_state (
+                singleton_key,
+                current_date,
+                updated_at
+            ) VALUES (?, ?, ?)
+            ON CONFLICT(singleton_key) DO UPDATE SET
+                current_date = excluded.current_date,
+                updated_at = excluded.updated_at
+            """,
+            ("default", "2026-04-13", "2026-04-13T00:00:00+00:00"),
+        )
+        self.connection.commit()
 
     def tearDown(self) -> None:
         self.connection.close()

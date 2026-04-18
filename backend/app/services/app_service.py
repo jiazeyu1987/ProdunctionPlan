@@ -5412,7 +5412,11 @@ class AppService:
             expected_start_shift = _expected_start_shift_from_datetime_text(
                 state_row.get("expected_start_time")
             )
-            start_slot = _slot_index_for(start_date, expected_start_shift)
+            start_slot = max(
+                _slot_index_for(start_date, expected_start_shift),
+                _slot_index_for(simulation_start, "DAY"),
+            )
+            effective_start_date, effective_start_shift = _slot_to_date_shift(start_slot)
 
             required_shifts = 0
             min_capacity = None
@@ -5420,8 +5424,8 @@ class AppService:
             for context in process_contexts:
                 capacity_per_shift = self._resolve_effective_capacity_per_shift(
                     process_context=context,
-                    calendar_date=start_date.isoformat(),
-                    shift_code=expected_start_shift,
+                    calendar_date=effective_start_date.isoformat(),
+                    shift_code=effective_start_shift,
                     capacity_resolver=capacity_resolver,
                 )
                 required_shifts += self._estimate_required_shifts_for_process(
@@ -5438,14 +5442,14 @@ class AppService:
                     else min(min_capacity, capacity_per_shift)
                 )
                 total_capacity += capacity_per_shift
-            slack_days = (due_date - start_date).days - required_shifts
+            slack_days = (due_date - effective_start_date).days - required_shifts
 
             schedule_candidates.append(
                 {
                     "order_no": order_no,
                     "product_code": str(order_row["material_code"]),
                     "remaining_qty": remaining_qty_value,
-                    "start_date": start_date,
+                    "start_date": effective_start_date,
                     "due_date": due_date,
                     "start_slot": start_slot,
                     "priority_level": priority_level,
@@ -6045,10 +6049,10 @@ class AppService:
 
     def batch_dispatch_commands(self, payload: dict[str, Any]) -> dict[str, Any]:
         command_type = str(payload.get("command_type") or "").strip().upper()
-        if command_type not in {"LOCK", "UNLOCK", "PRIORITY_UP"}:
+        if command_type not in {"LOCK", "UNLOCK", "PRIORITY_UP", "PRIORITY_DOWN"}:
             raise bad_request(
                 code="ORDER_BATCH_DISPATCH_COMMAND_INVALID",
-                message="command_type must be LOCK, UNLOCK or PRIORITY_UP.",
+                message="command_type must be LOCK, UNLOCK, PRIORITY_UP or PRIORITY_DOWN.",
                 details={"command_type": command_type or None},
             )
 
@@ -6091,6 +6095,12 @@ class AppService:
                 <= PRIORITY_LEVEL_MIN
             ):
                 invalid_priority_state_order_nos.append(order_no)
+            if (
+                command_type == "PRIORITY_DOWN"
+                and _normalize_priority_level((state_row or {}).get("priority_level"), PRIORITY_LEVEL_MAX)
+                >= PRIORITY_LEVEL_MAX
+            ):
+                invalid_priority_state_order_nos.append(order_no)
 
         if len(completed_order_nos) > 0:
             raise bad_request(
@@ -6117,7 +6127,11 @@ class AppService:
         if len(invalid_priority_state_order_nos) > 0:
             raise bad_request(
                 code="ORDER_BATCH_DISPATCH_PRIORITY_STATE_INVALID",
-                message="Selected orders are already at the highest priority.",
+                message=(
+                    "Selected orders are already at the highest priority."
+                    if command_type == "PRIORITY_UP"
+                    else "Selected orders are already at the lowest priority."
+                ),
                 details={"order_nos": invalid_priority_state_order_nos, "command_type": command_type},
             )
 
@@ -6128,6 +6142,8 @@ class AppService:
             else "Batch unlock production orders"
             if command_type == "UNLOCK"
             else "Batch priority-up production orders"
+            if command_type == "PRIORITY_UP"
+            else "Batch priority-down production orders"
         )
         decision_reason = str(payload.get("decision_reason") or "").strip() or (
             "Batch dispatch auto approval"
@@ -6168,8 +6184,17 @@ class AppService:
 
     def advance_simulation_one_day(self, payload: dict[str, Any]) -> dict[str, Any]:
         current = self._get_simulation_state()
-        baseline_date = _normalize_date_text(
-            current.get("current_date") or payload.get("client_date") or _today_text()
+        current_date = _normalize_date_text(current.get("current_date"))
+        client_date = _normalize_date_text(payload.get("client_date"))
+        baseline_candidates = [
+            candidate
+            for candidate in (current_date, client_date, _today_text())
+            if candidate is not None
+        ]
+        baseline_date = (
+            max(date.fromisoformat(candidate) for candidate in baseline_candidates).isoformat()
+            if baseline_candidates
+            else None
         )
         if baseline_date is None:
             raise server_error(
@@ -6179,6 +6204,8 @@ class AppService:
             )
         next_date = (date.fromisoformat(baseline_date) + timedelta(days=1)).isoformat()
         with transaction(self.connection):
+            if current_date is None or date.fromisoformat(current_date) < date.fromisoformat(baseline_date):
+                self._clear_simulation_restore_snapshot()
             snapshot_created = self._ensure_simulation_restore_snapshot(
                 baseline_date=baseline_date
             )
@@ -6302,6 +6329,7 @@ class AppService:
                 INSERT INTO daily_line_capacity_plan_audit (
                     audit_id,
                     calendar_date,
+                    shift_code,
                     company_code,
                     workshop_code,
                     line_code,
@@ -6320,6 +6348,7 @@ class AppService:
                 SELECT
                     audit_id,
                     calendar_date,
+                    shift_code,
                     company_code,
                     workshop_code,
                     line_code,
@@ -6341,6 +6370,7 @@ class AppService:
                 """
                 INSERT INTO daily_line_capacity_plan (
                     calendar_date,
+                    shift_code,
                     company_code,
                     workshop_code,
                     line_code,
@@ -6353,6 +6383,7 @@ class AppService:
                 )
                 SELECT
                     calendar_date,
+                    shift_code,
                     company_code,
                     workshop_code,
                     line_code,
@@ -6369,6 +6400,7 @@ class AppService:
                 """
                 INSERT INTO daily_line_capacity_actual (
                     calendar_date,
+                    shift_code,
                     company_code,
                     workshop_code,
                     line_code,
@@ -6380,6 +6412,7 @@ class AppService:
                 )
                 SELECT
                     calendar_date,
+                    shift_code,
                     company_code,
                     workshop_code,
                     line_code,
@@ -6486,6 +6519,7 @@ class AppService:
             """
             INSERT INTO simulation_restore_snapshot_daily_line_capacity_plan (
                 calendar_date,
+                shift_code,
                 company_code,
                 workshop_code,
                 line_code,
@@ -6498,6 +6532,7 @@ class AppService:
             )
             SELECT
                 calendar_date,
+                shift_code,
                 company_code,
                 workshop_code,
                 line_code,
@@ -6514,6 +6549,7 @@ class AppService:
             """
             INSERT INTO simulation_restore_snapshot_daily_line_capacity_actual (
                 calendar_date,
+                shift_code,
                 company_code,
                 workshop_code,
                 line_code,
@@ -6525,6 +6561,7 @@ class AppService:
             )
             SELECT
                 calendar_date,
+                shift_code,
                 company_code,
                 workshop_code,
                 line_code,
@@ -6541,6 +6578,7 @@ class AppService:
             INSERT INTO simulation_restore_snapshot_daily_line_capacity_plan_audit (
                 audit_id,
                 calendar_date,
+                shift_code,
                 company_code,
                 workshop_code,
                 line_code,
@@ -6559,6 +6597,7 @@ class AppService:
             SELECT
                 audit_id,
                 calendar_date,
+                shift_code,
                 company_code,
                 workshop_code,
                 line_code,
@@ -6657,6 +6696,7 @@ class AppService:
                 str(row.get("workshop_code") or "").strip().upper(),
                 str(row.get("line_code") or "").strip().upper(),
                 str(row.get("process_code") or "").strip().upper(),
+                _normalize_shift_code(row.get("shift_code") or "DAY"),
             )
             for row in existing_rows
         }
@@ -6681,12 +6721,14 @@ class AppService:
                         "process_code": process_code,
                     },
                 )
-            key = (company_code, workshop_code, line_code, process_code)
+            shift_code = _normalize_shift_code(item.get("shift_code") or "DAY")
+            key = (company_code, workshop_code, line_code, process_code, shift_code)
             if key in existing_keys:
                 continue
             rows_to_insert.append(
                 (
                     normalized_date,
+                    shift_code,
                     company_code,
                     workshop_code,
                     line_code,
@@ -6703,6 +6745,7 @@ class AppService:
                 """
                 INSERT INTO daily_line_capacity_plan (
                     calendar_date,
+                    shift_code,
                     company_code,
                     workshop_code,
                     line_code,
@@ -6712,7 +6755,7 @@ class AppService:
                     machine_count,
                     source_note,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows_to_insert,
             )
@@ -6858,7 +6901,7 @@ class AppService:
                     report_time,
                     operator_name,
                     updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 rows_to_insert,
             )
@@ -9239,16 +9282,38 @@ class AppService:
         ):
             first_slot = max(first_slot, int(first_process_base_slot))
 
-        first_ready_slot = self._first_available_slot_for_process(
-            process_context=first_context,
-            start_slot=first_slot,
-            planning_rules=planning_rules,
-            day_mode_cache=day_mode_cache,
-            used_capacity_by_slot=used_capacity_by_slot,
-            capacity_resolver=capacity_resolver,
-        )
-        required_shifts = max(1, int(_to_number(candidate.get("required_shifts"), 1)))
-        projected_finish_slot = first_ready_slot + required_shifts - 1
+        simulated_used_capacity = dict(used_capacity_by_slot)
+        first_ready_slot = None
+        projected_finish_slot = first_slot
+        next_start_slot = first_slot
+        for process_context in process_contexts:
+            process_code = str(process_context.get("process_code") or "").strip().upper()
+            context_start_slot = next_start_slot
+            base_process_slot = base_process_first_slot.get(process_code)
+            if (
+                (int(candidate.get("lock_flag") or 0) == 1 or int(candidate.get("frozen_flag") or 0) == 1)
+                and base_process_slot is not None
+            ):
+                context_start_slot = max(context_start_slot, int(base_process_slot))
+            allocations, last_slot = self._allocate_process_tasks(
+                order_no=str(candidate.get("order_no") or ""),
+                process_context=process_context,
+                required_qty=_to_number(candidate.get("remaining_qty"), 0),
+                first_slot=context_start_slot,
+                planning_rules=planning_rules,
+                day_mode_cache=day_mode_cache,
+                used_capacity_by_slot=simulated_used_capacity,
+                capacity_resolver=capacity_resolver,
+            )
+            if allocations and first_ready_slot is None:
+                first_ready_slot = _slot_index_from_text(
+                    str(allocations[0]["calendar_date"]),
+                    str(allocations[0]["shift_code"]),
+                )
+            projected_finish_slot = last_slot
+            next_start_slot = last_slot + 1
+        if first_ready_slot is None:
+            first_ready_slot = first_slot
         due_date = candidate.get("due_date")
         if not isinstance(due_date, date):
             due_date = _parse_date_or_today(due_date)

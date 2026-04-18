@@ -159,6 +159,48 @@ class AppServiceBatchDispatchTestCase(unittest.TestCase):
         self.assertEqual(cm.exception.code, "ORDER_BATCH_DISPATCH_PRIORITY_STATE_INVALID")
         self.assertEqual(self._count_rows("dispatch_commands"), 0)
 
+    def test_batch_priority_down_updates_priority_levels(self) -> None:
+        self._seed_order("MO-PRI-DOWN-001", priority_level=3)
+        self._seed_order("MO-PRI-DOWN-002", priority_level=4)
+
+        result = self.service.batch_dispatch_commands(
+            {
+                "order_nos": ["MO-PRI-DOWN-001", "MO-PRI-DOWN-002"],
+                "command_type": "PRIORITY_DOWN",
+                "actor": {"username": "scheduler_e2e"},
+            }
+        )
+
+        rows = self.connection.execute(
+            """
+            SELECT production_order_no, priority_level
+            FROM order_pool_state
+            WHERE production_order_no IN ('MO-PRI-DOWN-001', 'MO-PRI-DOWN-002')
+            ORDER BY production_order_no
+            """
+        ).fetchall()
+        self.assertEqual(result["command_type"], "PRIORITY_DOWN")
+        self.assertEqual(
+            [(str(row[0]), int(row[1])) for row in rows],
+            [("MO-PRI-DOWN-001", 4), ("MO-PRI-DOWN-002", 5)],
+        )
+
+    def test_batch_priority_down_rejects_orders_already_at_lowest_priority(self) -> None:
+        self._seed_order("MO-PRI-LOW", priority_level=5)
+        self._seed_order("MO-PRI-NORMAL", priority_level=3)
+
+        with self.assertRaises(AppError) as cm:
+            self.service.batch_dispatch_commands(
+                {
+                    "order_nos": ["MO-PRI-LOW", "MO-PRI-NORMAL"],
+                    "command_type": "PRIORITY_DOWN",
+                    "actor": {"username": "scheduler_e2e"},
+                }
+            )
+
+        self.assertEqual(cm.exception.code, "ORDER_BATCH_DISPATCH_PRIORITY_STATE_INVALID")
+        self.assertEqual(self._count_rows("dispatch_commands"), 0)
+
     def _seed_order(
         self,
         order_no: str,
