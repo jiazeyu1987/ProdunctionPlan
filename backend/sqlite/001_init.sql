@@ -264,6 +264,66 @@ CREATE INDEX IF NOT EXISTS idx_schedule_tasks_date_process
 CREATE INDEX IF NOT EXISTS idx_schedule_tasks_order_no
     ON schedule_tasks (production_order_no, calendar_date);
 
+CREATE TABLE IF NOT EXISTS current_schedule_meta (
+    singleton_key TEXT PRIMARY KEY,
+    strategy_code TEXT NOT NULL,
+    result_status TEXT NOT NULL DEFAULT 'FEASIBLE',
+    result_summary TEXT,
+    updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS current_schedule_tasks (
+    task_no INTEGER PRIMARY KEY,
+    production_order_no TEXT NOT NULL,
+    process_code TEXT NOT NULL,
+    process_name_cn TEXT,
+    workshop_code TEXT,
+    line_code TEXT,
+    calendar_date TEXT NOT NULL,
+    shift_code TEXT NOT NULL,
+    plan_qty REAL NOT NULL,
+    plan_start_time TEXT,
+    FOREIGN KEY (production_order_no) REFERENCES production_orders (production_order_no) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_current_schedule_tasks_date_process
+    ON current_schedule_tasks (calendar_date, process_code);
+
+CREATE INDEX IF NOT EXISTS idx_current_schedule_tasks_order_no
+    ON current_schedule_tasks (production_order_no, calendar_date);
+
+CREATE TABLE IF NOT EXISTS schedule_snapshots (
+    snapshot_id TEXT PRIMARY KEY,
+    snapshot_name TEXT NOT NULL,
+    strategy_code TEXT NOT NULL,
+    result_status TEXT NOT NULL DEFAULT 'FEASIBLE',
+    result_summary TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_snapshots_created
+    ON schedule_snapshots (created_at DESC, snapshot_id DESC);
+
+CREATE TABLE IF NOT EXISTS schedule_snapshot_tasks (
+    snapshot_id TEXT NOT NULL,
+    task_no INTEGER NOT NULL,
+    production_order_no TEXT NOT NULL,
+    process_code TEXT NOT NULL,
+    process_name_cn TEXT,
+    workshop_code TEXT,
+    line_code TEXT,
+    calendar_date TEXT NOT NULL,
+    shift_code TEXT NOT NULL,
+    plan_qty REAL NOT NULL,
+    plan_start_time TEXT,
+    PRIMARY KEY (snapshot_id, task_no),
+    FOREIGN KEY (snapshot_id) REFERENCES schedule_snapshots (snapshot_id) ON DELETE CASCADE,
+    FOREIGN KEY (production_order_no) REFERENCES production_orders (production_order_no) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_schedule_snapshot_tasks_order_no
+    ON schedule_snapshot_tasks (production_order_no, calendar_date);
+
 CREATE TABLE IF NOT EXISTS schedule_calendar_rules (
     singleton_key TEXT PRIMARY KEY,
     horizon_start_date TEXT,

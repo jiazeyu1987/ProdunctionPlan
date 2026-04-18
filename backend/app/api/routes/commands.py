@@ -322,25 +322,6 @@ def rebuild_line_daily_actual_capacity(
         payload=payload,
     )
 
-
-@router.post("/schedules/{version_no}/publish", status_code=202)
-def publish_schedule_version(
-    version_no: str,
-    payload: dict[str, Any] = Body(default_factory=dict),
-    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
-    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
-) -> AcceptedCommandResponse:
-    assert connection is not None
-    return enqueue_command_job(
-        connection,
-        job_type="LEGACY_SCHEDULE_PUBLISH",
-        target_type="SCHEDULE_VERSION",
-        target_key=version_no,
-        request_id=str(payload.get("request_id") or "").strip() or None,
-        payload={"version_no": version_no},
-    )
-
-
 @router.post("/schedules/current/save", status_code=202)
 def save_current_schedule_version(
     payload: dict[str, Any] = Body(default_factory=dict),

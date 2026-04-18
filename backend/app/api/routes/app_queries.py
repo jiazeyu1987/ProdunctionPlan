@@ -22,20 +22,18 @@ def get_app_service(
 @router.get("/order-pool")
 def list_order_pool(
     service: Annotated[AppService, Depends(get_app_service)],
-    version_no: str | None = Query(default=None),
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
-    return service.list_order_pool(version_no=version_no)
+    return service.list_order_pool()
 
 
 @router.get("/order-pool/{order_no}")
 def get_order_pool_item(
     order_no: str,
     service: Annotated[AppService, Depends(get_app_service)],
-    version_no: str | None = Query(default=None),
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
-    return service.get_order_pool_item(order_no, version_no=version_no)
+    return service.get_order_pool_item(order_no)
 
 
 @router.get("/order-pool/{order_no}/process-timeline")
@@ -43,13 +41,11 @@ def get_order_pool_process_timeline(
     order_no: str,
     service: Annotated[AppService, Depends(get_app_service)],
     process_code: str | None = Query(default=None),
-    version_no: str | None = Query(default=None),
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
     return service.get_order_pool_process_timeline(
         order_no,
         process_code=process_code,
-        version_no=version_no,
     )
 
 
@@ -72,68 +68,28 @@ def list_material_children(
 ) -> dict[str, Any]:
     return service.list_material_children(parent_material_code, refresh=refresh)
 
-
-@router.get("/schedules")
-def list_schedule_versions(
+@router.get("/schedules/current")
+def get_current_schedule(
     service: Annotated[AppService, Depends(get_app_service)],
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
-    return service.list_schedule_versions()
+    return service.get_current_schedule()
 
 
-@router.get("/schedules/{version_no}")
-def get_schedule_version(
-    version_no: str,
+@router.get("/schedules/current/tasks")
+def list_current_schedule_tasks(
     service: Annotated[AppService, Depends(get_app_service)],
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
-    return service.get_schedule_version(version_no)
+    return service.list_current_schedule_tasks()
 
 
-@router.get("/schedules/{version_no}/tasks")
-def list_schedule_tasks(
-    version_no: str,
+@router.get("/schedules/snapshots")
+def list_schedule_snapshots(
     service: Annotated[AppService, Depends(get_app_service)],
     _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
 ) -> dict[str, Any]:
-    return service.list_schedule_tasks(version_no)
-
-
-@router.get("/schedules/{version_no}/algorithm")
-def get_schedule_algorithm(
-    version_no: str,
-    service: Annotated[AppService, Depends(get_app_service)],
-    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
-) -> dict[str, Any]:
-    return service.get_schedule_algorithm(version_no)
-
-
-@router.get("/schedules/{version_no}/diff")
-def get_schedule_diff(
-    version_no: str,
-    service: Annotated[AppService, Depends(get_app_service)],
-    compare_with: str | None = Query(default=None),
-    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
-) -> dict[str, Any]:
-    return service.get_schedule_diff(version_no, compare_with)
-
-
-@router.get("/schedules/{version_no}/material-shortages")
-def get_schedule_material_shortages(
-    version_no: str,
-    service: Annotated[AppService, Depends(get_app_service)],
-    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
-) -> dict[str, Any]:
-    return service.get_schedule_material_shortages(version_no)
-
-
-@router.get("/schedules/{version_no}/process-load/daily")
-def get_schedule_daily_process_load(
-    version_no: str,
-    service: Annotated[AppService, Depends(get_app_service)],
-    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
-) -> dict[str, Any]:
-    return service.get_schedule_daily_process_load(version_no)
+    return service.list_schedule_snapshots()
 
 
 @router.get("/masterdata/config")

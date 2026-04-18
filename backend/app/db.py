@@ -382,9 +382,11 @@ def migrate_database_schema(connection: sqlite3.Connection) -> None:
     _ensure_masterdata_process_routes_schema(connection)
     _ensure_jobs_schema(connection)
     _ensure_schedule_versions_schema(connection)
+    _ensure_current_schedule_schema(connection)
     _ensure_reporting_resource_mappings_schema(connection)
     _ensure_work_reports_schema(connection)
     _ensure_schedule_tasks_schema(connection)
+    _ensure_schedule_snapshots_schema(connection)
     _ensure_shift_capacity_schema(connection)
     _ensure_reporting_import_files_schema(connection)
     _ensure_simulation_restore_snapshot_work_reports_schema(connection)
@@ -494,6 +496,220 @@ def _normalize_schedule_version_statuses(connection: sqlite3.Connection) -> None
             """,
             (target_status, target_label, version_no),
         )
+
+
+def _ensure_current_schedule_schema(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS current_schedule_meta (
+            singleton_key TEXT PRIMARY KEY,
+            strategy_code TEXT NOT NULL,
+            result_status TEXT NOT NULL DEFAULT 'FEASIBLE',
+            result_summary TEXT,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS current_schedule_tasks (
+            task_no INTEGER PRIMARY KEY,
+            production_order_no TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            process_name_cn TEXT,
+            workshop_code TEXT,
+            line_code TEXT,
+            calendar_date TEXT NOT NULL,
+            shift_code TEXT NOT NULL,
+            plan_qty REAL NOT NULL,
+            plan_start_time TEXT,
+            FOREIGN KEY (production_order_no) REFERENCES production_orders (production_order_no) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_current_schedule_tasks_date_process
+            ON current_schedule_tasks (calendar_date, process_code);
+        CREATE INDEX IF NOT EXISTS idx_current_schedule_tasks_order_no
+            ON current_schedule_tasks (production_order_no, calendar_date);
+        """
+    )
+    task_count_row = fetch_one(connection, "SELECT COUNT(1) AS total FROM current_schedule_tasks")
+    if int((task_count_row or {}).get("total") or 0) > 0:
+        return
+    current_row = fetch_one(
+        connection,
+        """
+        SELECT version_no, strategy_code, result_status, result_summary, created_at
+        FROM schedule_versions
+        WHERE UPPER(TRIM(COALESCE(status, ''))) = 'CURRENT'
+        ORDER BY created_at DESC, version_no DESC
+        LIMIT 1
+        """,
+    )
+    if current_row is None:
+        return
+    version_no = str(current_row.get("version_no") or "").strip()
+    if not version_no:
+        return
+    with connection:
+        connection.execute(
+            """
+            INSERT INTO current_schedule_meta (
+                singleton_key,
+                strategy_code,
+                result_status,
+                result_summary,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(singleton_key) DO UPDATE SET
+                strategy_code = excluded.strategy_code,
+                result_status = excluded.result_status,
+                result_summary = excluded.result_summary,
+                updated_at = excluded.updated_at
+            """,
+            (
+                "CURRENT",
+                str(current_row.get("strategy_code") or ""),
+                str(current_row.get("result_status") or "FEASIBLE"),
+                current_row.get("result_summary"),
+                str(current_row.get("created_at") or utc_now()),
+            ),
+        )
+        connection.execute(
+            "DELETE FROM current_schedule_tasks"
+        )
+        connection.execute(
+            """
+            INSERT INTO current_schedule_tasks (
+                task_no,
+                production_order_no,
+                process_code,
+                process_name_cn,
+                workshop_code,
+                line_code,
+                calendar_date,
+                shift_code,
+                plan_qty,
+                plan_start_time
+            )
+            SELECT
+                task_no,
+                production_order_no,
+                process_code,
+                process_name_cn,
+                workshop_code,
+                line_code,
+                calendar_date,
+                shift_code,
+                plan_qty,
+                plan_start_time
+            FROM schedule_tasks
+            WHERE version_no = ?
+            ORDER BY task_no ASC
+            """,
+            (version_no,),
+        )
+
+
+def _ensure_schedule_snapshots_schema(connection: sqlite3.Connection) -> None:
+    connection.executescript(
+        """
+        CREATE TABLE IF NOT EXISTS schedule_snapshots (
+            snapshot_id TEXT PRIMARY KEY,
+            snapshot_name TEXT NOT NULL,
+            strategy_code TEXT NOT NULL,
+            result_status TEXT NOT NULL DEFAULT 'FEASIBLE',
+            result_summary TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_schedule_snapshots_created
+            ON schedule_snapshots (created_at DESC, snapshot_id DESC);
+        CREATE TABLE IF NOT EXISTS schedule_snapshot_tasks (
+            snapshot_id TEXT NOT NULL,
+            task_no INTEGER NOT NULL,
+            production_order_no TEXT NOT NULL,
+            process_code TEXT NOT NULL,
+            process_name_cn TEXT,
+            workshop_code TEXT,
+            line_code TEXT,
+            calendar_date TEXT NOT NULL,
+            shift_code TEXT NOT NULL,
+            plan_qty REAL NOT NULL,
+            plan_start_time TEXT,
+            PRIMARY KEY (snapshot_id, task_no),
+            FOREIGN KEY (snapshot_id) REFERENCES schedule_snapshots (snapshot_id) ON DELETE CASCADE,
+            FOREIGN KEY (production_order_no) REFERENCES production_orders (production_order_no) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_schedule_snapshot_tasks_order_no
+            ON schedule_snapshot_tasks (production_order_no, calendar_date);
+        """
+    )
+    snapshot_count_row = fetch_one(connection, "SELECT COUNT(1) AS total FROM schedule_snapshots")
+    if int((snapshot_count_row or {}).get("total") or 0) > 0:
+        return
+    snapshot_rows = fetch_all(
+        connection,
+        """
+        SELECT version_no, strategy_code, result_status, result_summary, created_at
+        FROM schedule_versions
+        WHERE UPPER(TRIM(COALESCE(status, ''))) = 'SAVED'
+        ORDER BY created_at DESC, version_no DESC
+        """,
+    )
+    if not snapshot_rows:
+        return
+    with connection:
+        for row in snapshot_rows:
+            snapshot_id = str(row.get("version_no") or "").strip()
+            if not snapshot_id:
+                continue
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO schedule_snapshots (
+                    snapshot_id,
+                    snapshot_name,
+                    strategy_code,
+                    result_status,
+                    result_summary,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot_id,
+                    snapshot_id,
+                    str(row.get("strategy_code") or ""),
+                    str(row.get("result_status") or "FEASIBLE"),
+                    row.get("result_summary"),
+                    str(row.get("created_at") or utc_now()),
+                ),
+            )
+            connection.execute(
+                """
+                INSERT OR IGNORE INTO schedule_snapshot_tasks (
+                    snapshot_id,
+                    task_no,
+                    production_order_no,
+                    process_code,
+                    process_name_cn,
+                    workshop_code,
+                    line_code,
+                    calendar_date,
+                    shift_code,
+                    plan_qty,
+                    plan_start_time
+                )
+                SELECT
+                    ?,
+                    task_no,
+                    production_order_no,
+                    process_code,
+                    process_name_cn,
+                    workshop_code,
+                    line_code,
+                    calendar_date,
+                    shift_code,
+                    plan_qty,
+                    plan_start_time
+                FROM schedule_tasks
+                WHERE version_no = ?
+                ORDER BY task_no ASC
+                """,
+                (snapshot_id, snapshot_id),
+            )
 
 
 def _ensure_reporting_resource_mappings_schema(connection: sqlite3.Connection) -> None:

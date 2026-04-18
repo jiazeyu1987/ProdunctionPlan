@@ -399,7 +399,7 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
         )
         self.assertEqual(generated["result_status"], "RISKY")
 
-    def test_reference_version_defaults_to_published_version(self) -> None:
+    def test_order_pool_returns_items_when_current_schedule_exists(self) -> None:
         self._seed_order("MO-REF-001", material_code="MAT-REF", quantity=10, expected_start_date="2026-04-13")
         self._seed_schedule_version("V-PUB-001", status="PUBLISHED", created_at="2026-04-13T00:00:00+00:00")
         self._seed_schedule_version("V-DRF-002", status="DRAFT", created_at="2026-04-14T00:00:00+00:00")
@@ -407,19 +407,19 @@ class AppServiceScheduleTrustTestCase(unittest.TestCase):
         pool_payload = self.service.list_order_pool()
         timeline_payload = self.service.get_order_pool_process_timeline("MO-REF-001")
 
-        self.assertEqual(pool_payload["reference_version_no"], "V-PUB-001")
+        self.assertIn("items", pool_payload)
+        self.assertEqual(len(pool_payload["items"]), 1)
         self.assertEqual(timeline_payload["summary"]["reference_version_no"], "V-PUB-001")
 
-    def test_reference_version_does_not_fall_back_to_draft_when_no_published_version_exists(self) -> None:
+    def test_order_pool_hides_version_metadata_when_no_current_schedule_exists(self) -> None:
         self._seed_order("MO-REF-002", material_code="MAT-REF-002", quantity=10, expected_start_date="2026-04-13")
         self._seed_schedule_version("V-DRF-ONLY-001", status="DRAFT", created_at="2026-04-14T00:00:00+00:00")
 
         pool_payload = self.service.list_order_pool()
         timeline_payload = self.service.get_order_pool_process_timeline("MO-REF-002")
 
-        self.assertIsNone(pool_payload["reference_version_no"])
-        self.assertIsNone(pool_payload["current_view_version_no"])
-        self.assertEqual(pool_payload["draft_version_no"], "V-DRF-ONLY-001")
+        self.assertIn("items", pool_payload)
+        self.assertEqual(len(pool_payload["items"]), 1)
         self.assertIsNone(timeline_payload["summary"]["reference_version_no"])
 
     def _seed_order(

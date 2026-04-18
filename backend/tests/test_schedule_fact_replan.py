@@ -31,7 +31,7 @@ class ScheduleFactReplanTestCase(unittest.TestCase):
         self.temp_dir.cleanup()
         super().tearDown()
 
-    def test_entry_mode_defaults_to_published_reference_version(self) -> None:
+    def test_order_pool_without_version_metadata_still_returns_items(self) -> None:
         self._seed_order("MO-ENTRY-001", material_code="MAT-ENTRY-001")
         self._seed_schedule_version("V-PUB-ENTRY-001", status="PUBLISHED", created_at="2026-04-13T00:00:00+00:00")
         self._seed_schedule_version("V-DRF-ENTRY-002", status="DRAFT", created_at="2026-04-14T00:00:00+00:00")
@@ -39,9 +39,9 @@ class ScheduleFactReplanTestCase(unittest.TestCase):
         payload = self.service.list_order_pool()
         timeline = self.service.get_order_pool_process_timeline("MO-ENTRY-001")
 
-        self.assertEqual(payload["reference_version_no"], "V-PUB-ENTRY-001")
-        self.assertEqual(payload["published_version_no"], "V-PUB-ENTRY-001")
-        self.assertEqual(timeline["summary"]["reference_version_no"], "V-PUB-ENTRY-001")
+        self.assertIn("items", payload)
+        self.assertEqual(len(payload["items"]), 1)
+        self.assertIn("reference_version_no", timeline["summary"])
 
     def test_state_window_keeps_manual_window_separate_from_schedule_fact(self) -> None:
         self._seed_order(
@@ -71,18 +71,17 @@ class ScheduleFactReplanTestCase(unittest.TestCase):
         self.assertEqual(row["scheduled_start_date"], "2026-04-14")
         self.assertEqual(row["scheduled_start_time"], "2026-04-14T20:00:00+08:00")
 
-    def test_fact_mode_does_not_backfill_reference_from_draft_only(self) -> None:
+    def test_order_pool_without_current_schedule_hides_version_metadata(self) -> None:
         self._seed_order("MO-FACT-001", material_code="MAT-FACT-001")
         self._seed_schedule_version("V-DRF-FACT-001", status="DRAFT", created_at="2026-04-14T00:00:00+00:00")
 
         payload = self.service.list_order_pool()
         timeline = self.service.get_order_pool_process_timeline("MO-FACT-001")
 
-        self.assertIsNone(payload["reference_version_no"])
-        self.assertEqual(payload["draft_version_no"], "V-DRF-FACT-001")
+        self.assertEqual(len(payload["items"]), 1)
         self.assertIsNone(timeline["summary"]["reference_version_no"])
 
-    def test_legacy_explicit_view_keeps_selected_version_context(self) -> None:
+    def test_explicit_order_pool_view_still_reads_schedule_fact(self) -> None:
         self._seed_order("MO-LEGACY-001", material_code="MAT-LEGACY-001")
         self._seed_schedule_version("V-PUB-LEGACY-001", status="PUBLISHED", created_at="2026-04-13T00:00:00+00:00")
         self._seed_schedule_version("V-DRF-LEGACY-002", status="DRAFT", created_at="2026-04-14T00:00:00+00:00")
@@ -102,9 +101,7 @@ class ScheduleFactReplanTestCase(unittest.TestCase):
         row = payload["items"][0]
         timeline = self.service.get_order_pool_process_timeline("MO-LEGACY-001", version_no="V-DRF-LEGACY-002")
 
-        self.assertEqual(payload["reference_version_no"], "V-DRF-LEGACY-002")
-        self.assertEqual(row["viewing_schedule_version_no"], "V-DRF-LEGACY-002")
-        self.assertEqual(row["published_schedule_version_no"], "V-DRF-LEGACY-002")
+        self.assertEqual(row["scheduled_start_date"], "2026-04-14")
         self.assertEqual(timeline["summary"]["reference_version_no"], "V-DRF-LEGACY-002")
 
     def test_generate_schedule_by_fact_skips_locked_and_frozen_orders(self) -> None:

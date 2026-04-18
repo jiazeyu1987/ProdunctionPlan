@@ -161,6 +161,7 @@ CN_STATUTORY_HOLIDAY_DATE_SET = frozenset(
 SCHEDULE_SLOT_SEARCH_GUARD = 20000
 SCHEDULE_EPOCH_DAY = date(1970, 1, 1)
 SCHEDULE_NUMBER_EPSILON = 1e-9
+CURRENT_SCHEDULE_VERSION_NO = "CURRENT"
 STATUS_NAME_BY_CODE = {
     "CURRENT": "当前方案",
     "SAVED": "已保存",
@@ -603,21 +604,9 @@ class AppService:
         self._ensure_masterdata_seeded()
         reference_version_no = self._resolve_order_pool_version_no(version_no)
         reference_schedule_context = self._build_reference_schedule_context(reference_version_no)
-        published_version_no = self._pick_published_schedule_version_no()
-        explicit_view_requested = str(version_no or "").strip() != ""
-        published_schedule_context = (
-            reference_schedule_context
-            if explicit_view_requested or (published_version_no and published_version_no == reference_version_no)
-            else self._build_reference_schedule_context(published_version_no)
-        )
-        draft_version_no = self._pick_latest_draft_schedule_version_no()
-        draft_version = self.get_schedule_version(draft_version_no) if draft_version_no else None
+        published_schedule_context = reference_schedule_context
         shortage_analysis = self._build_schedule_shortage_analysis(reference_version_no)
-        published_shortage_analysis = (
-            shortage_analysis
-            if published_version_no and published_version_no == reference_version_no
-            else self._build_schedule_shortage_analysis(published_version_no)
-        )
+        published_shortage_analysis = shortage_analysis
         final_process_metrics_by_order = build_order_final_process_metrics(
             self.connection,
             rows,
@@ -637,12 +626,13 @@ class AppService:
                 topology_by_process=topology_by_process,
                 reference_version=reference_schedule_context.get("version"),
                 schedule_fact=reference_schedule_context["order_map"].get(order_no),
-                published_version=published_schedule_context.get("version"),
-                published_schedule_fact=published_schedule_context["order_map"].get(order_no),
+                    published_version=None,
+                    published_schedule_fact=None,
                 shortage_summary=published_shortage_analysis["order_map"].get(order_no),
                 final_process_metrics=final_process_metrics_by_order.get(order_no),
             )
             )
+        return {"items": items}
         reference_version = reference_schedule_context.get("version")
         reference_version_status = str((reference_version or {}).get("status") or "").strip().upper() or None
         reference_version_status_label = _schedule_version_status_label(reference_version_status)
@@ -684,19 +674,9 @@ class AppService:
         normalized_order_no = str(base_row["production_order_no"])
         reference_version_no = self._resolve_order_pool_version_no(version_no)
         reference_schedule_context = self._build_reference_schedule_context(reference_version_no)
-        published_version_no = self._pick_published_schedule_version_no()
-        explicit_view_requested = str(version_no or "").strip() != ""
-        published_schedule_context = (
-            reference_schedule_context
-            if explicit_view_requested or (published_version_no and published_version_no == reference_version_no)
-            else self._build_reference_schedule_context(published_version_no)
-        )
+        published_schedule_context = reference_schedule_context
         shortage_analysis = self._build_schedule_shortage_analysis(reference_version_no)
-        published_shortage_analysis = (
-            shortage_analysis
-            if published_version_no and published_version_no == reference_version_no
-            else self._build_schedule_shortage_analysis(published_version_no)
-        )
+        published_shortage_analysis = shortage_analysis
         final_process_metrics = build_order_final_process_metrics(
             self.connection,
             [base_row],
@@ -715,8 +695,8 @@ class AppService:
             topology_by_process=topology_by_process,
             reference_version=reference_schedule_context.get("version"),
             schedule_fact=reference_schedule_context["order_map"].get(normalized_order_no),
-            published_version=published_schedule_context.get("version"),
-            published_schedule_fact=published_schedule_context["order_map"].get(normalized_order_no),
+            published_version=None,
+            published_schedule_fact=None,
             shortage_summary=published_shortage_analysis["order_map"].get(normalized_order_no),
             final_process_metrics=final_process_metrics,
         )
@@ -3052,102 +3032,92 @@ class AppService:
             ]
         }
 
-    def get_schedule_algorithm(self, version_no: str) -> dict[str, Any]:
-        row = self.get_schedule_version(version_no)
+    def get_current_schedule(self) -> dict[str, Any]:
+        row = fetch_one(
+            self.connection,
+            """
+            SELECT singleton_key, strategy_code, result_status, result_summary, updated_at
+            FROM current_schedule_meta
+            WHERE singleton_key = 'CURRENT'
+            """,
+        )
+        if row is None:
+            return {
+                "has_schedule": False,
+                "schedule_id": CURRENT_SCHEDULE_VERSION_NO,
+                "result_status": None,
+                "result_status_label": None,
+                "result_summary": "",
+                "updated_at": None,
+            }
         return {
-            "version_no": row["version_no"],
-            "strategy_code": row["strategy_code"],
-            "algorithm_name_cn": "MVP Schedule",
+            "has_schedule": True,
+            "schedule_id": CURRENT_SCHEDULE_VERSION_NO,
+            "result_status": row.get("result_status"),
+            "result_status_label": _schedule_result_status_label(row.get("result_status")),
+            "result_summary": row.get("result_summary"),
+            "updated_at": row.get("updated_at"),
+            "strategy_code": row.get("strategy_code"),
         }
 
-    def get_schedule_diff(
-        self,
-        version_no: str,
-        compare_with: str | None,
-    ) -> dict[str, Any]:
-        current_version = self.get_schedule_version(version_no)
-        if compare_with:
-            compare_version = self.get_schedule_version(compare_with)
-        else:
-            compare_version = self._pick_schedule_compare_version(version_no)
-        if compare_version is None:
-            raise bad_request(
-                code="SCHEDULE_COMPARE_VERSION_REQUIRED",
-                message="compare_with is required when no other comparable version exists.",
-            )
-
-        current_tasks = self._list_schedule_task_detail_rows(version_no)
-        compare_tasks = self._list_schedule_task_detail_rows(str(compare_version["version_no"]))
-        current_orders = self._build_schedule_order_summary_map(current_tasks)
-        compare_orders = self._build_schedule_order_summary_map(compare_tasks)
-
-        delivery_changes = self._build_schedule_delivery_changes(
-            current_orders=current_orders,
-            compare_orders=compare_orders,
+    def list_current_schedule_tasks(self) -> dict[str, Any]:
+        rows = fetch_all(
+            self.connection,
+            """
+            SELECT
+                production_order_no,
+                process_code,
+                process_name_cn,
+                workshop_code,
+                line_code,
+                calendar_date,
+                shift_code,
+                plan_qty,
+                plan_start_time
+            FROM current_schedule_tasks
+            ORDER BY task_no ASC
+            """,
         )
-        schedule_changes = self._build_schedule_schedule_changes(
-            current_orders=current_orders,
-            compare_orders=compare_orders,
-        )
-        line_changes = self._build_schedule_line_changes(
-            current_tasks=current_tasks,
-            compare_tasks=compare_tasks,
-        )
-        material_changes = self._build_schedule_material_changes(
-            current_orders=current_orders,
-            compare_orders=compare_orders,
-        )
-
-        summary = {
-            "selected_version_no": str(current_version["version_no"]),
-            "compare_version_no": str(compare_version["version_no"]),
-            "changed_order_count": len(schedule_changes["items"]),
-            "added_order_count": sum(1 for item in schedule_changes["items"] if item["change_type"] == "ADDED"),
-            "removed_order_count": sum(1 for item in schedule_changes["items"] if item["change_type"] == "REMOVED"),
-            "earlier_finish_count": sum(
-                1 for item in delivery_changes["items"] if item["change_type"] == "EARLIER_FINISH"
-            ),
-            "later_finish_count": sum(
-                1 for item in delivery_changes["items"] if item["change_type"] == "LATER_FINISH"
-            ),
-            "start_changed_count": sum(
-                1
-                for item in schedule_changes["items"]
-                if item["selected_start_date"] != item["compare_start_date"]
-            ),
-            "material_risk_increase_count": sum(
-                1
-                for item in material_changes["items"]
-                if item["risk_change"] in {"NEW_SHORTAGE", "SHORTAGE_WORSE"}
-            ),
-            "line_change_available": bool(line_changes["available"]),
-            "line_change_count": len(line_changes["items"]),
+        return {
+            "items": [
+                {
+                    "order_no": row["production_order_no"],
+                    "process_code": row["process_code"],
+                    "process_name_cn": row.get("process_name_cn") or row["process_code"],
+                    "workshop_code": row.get("workshop_code"),
+                    "line_code": row.get("line_code"),
+                    "calendar_date": row["calendar_date"],
+                    "shift_code": row["shift_code"],
+                    "plan_qty": row["plan_qty"],
+                    "plan_start_time": row.get("plan_start_time"),
+                }
+                for row in rows
+            ]
         }
 
+    def list_schedule_snapshots(self) -> dict[str, Any]:
+        rows = fetch_all(
+            self.connection,
+            """
+            SELECT snapshot_id, snapshot_name, strategy_code, created_at, result_status, result_summary
+            FROM schedule_snapshots
+            ORDER BY created_at DESC, snapshot_id DESC
+            """,
+        )
         return {
-            "selected_version": current_version,
-            "compare_version": compare_version,
-            "summary": summary,
-            "delivery_changes": delivery_changes,
-            "schedule_changes": schedule_changes,
-            "line_changes": line_changes,
-            "material_changes": material_changes,
-        }
-
-    def get_schedule_material_shortages(self, version_no: str) -> dict[str, Any]:
-        current_version = self.get_schedule_version(version_no)
-        shortage_analysis = self._build_schedule_shortage_analysis(version_no)
-        return {
-            "summary": {
-                "version_no": str(current_version["version_no"]),
-                "shortage_material_count": int(
-                    shortage_analysis["summary"].get("shortage_material_count") or 0
-                ),
-                "impacted_order_count": int(
-                    shortage_analysis["summary"].get("impacted_order_count") or 0
-                ),
-            },
-            "items": shortage_analysis["items"],
+            "items": [
+                {
+                    "snapshot_id": str(row.get("snapshot_id") or "").strip(),
+                    "snapshot_name": str(row.get("snapshot_name") or "").strip(),
+                    "created_at": row.get("created_at"),
+                    "result_status": row.get("result_status"),
+                    "result_status_label": _schedule_result_status_label(row.get("result_status")),
+                    "result_summary": row.get("result_summary"),
+                    "strategy_code": row.get("strategy_code"),
+                }
+                for row in rows
+                if str(row.get("snapshot_id") or "").strip()
+            ]
         }
 
     def _clone_schedule_version(
@@ -3244,54 +3214,287 @@ class AppService:
             "status_label": _schedule_version_status_label(status),
         }
 
+    def _replace_current_schedule(
+        self,
+        *,
+        strategy_code: str,
+        result_status: str,
+        result_summary: str,
+        tasks: list[tuple[Any, ...]],
+        order_rows: list[dict[str, Any]],
+        states: dict[str, dict[str, Any]],
+        created_at: str,
+    ) -> None:
+        with transaction(self.connection):
+            self.connection.execute(
+                """
+                INSERT INTO current_schedule_meta (
+                    singleton_key,
+                    strategy_code,
+                    result_status,
+                    result_summary,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(singleton_key) DO UPDATE SET
+                    strategy_code = excluded.strategy_code,
+                    result_status = excluded.result_status,
+                    result_summary = excluded.result_summary,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    "CURRENT",
+                    strategy_code,
+                    result_status,
+                    result_summary,
+                    created_at,
+                ),
+            )
+            self.connection.execute("DELETE FROM current_schedule_tasks")
+            if tasks:
+                self.connection.executemany(
+                    """
+                    INSERT INTO current_schedule_tasks (
+                        task_no,
+                        production_order_no,
+                        process_code,
+                        process_name_cn,
+                        workshop_code,
+                        line_code,
+                        calendar_date,
+                        shift_code,
+                        plan_qty,
+                        plan_start_time
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [task[1:] for task in tasks],
+                )
+            self.connection.execute(
+                """
+                INSERT INTO schedule_versions (
+                    version_no,
+                    status,
+                    status_name_cn,
+                    strategy_code,
+                    result_status,
+                    result_summary,
+                    created_at,
+                    published_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(version_no) DO UPDATE SET
+                    status = excluded.status,
+                    status_name_cn = excluded.status_name_cn,
+                    strategy_code = excluded.strategy_code,
+                    result_status = excluded.result_status,
+                    result_summary = excluded.result_summary,
+                    created_at = excluded.created_at,
+                    published_at = excluded.published_at
+                """,
+                (
+                    CURRENT_SCHEDULE_VERSION_NO,
+                    "CURRENT",
+                    _status_name("CURRENT"),
+                    strategy_code,
+                    result_status,
+                    result_summary,
+                    created_at,
+                    None,
+                ),
+            )
+            self.connection.execute(
+                "DELETE FROM schedule_tasks WHERE version_no = ?",
+                (CURRENT_SCHEDULE_VERSION_NO,),
+            )
+            if tasks:
+                self.connection.executemany(
+                    """
+                    INSERT INTO schedule_tasks (
+                        version_no,
+                        task_no,
+                        production_order_no,
+                        process_code,
+                        process_name_cn,
+                        workshop_code,
+                        line_code,
+                        calendar_date,
+                        shift_code,
+                        plan_qty,
+                        plan_start_time
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    tasks,
+                )
+                self._sync_order_pool_state_schedule_window_from_tasks(
+                    tasks=tasks,
+                    order_rows=order_rows,
+                    states=states,
+                )
+
     def save_current_schedule_version(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        current_version_no = self._pick_current_schedule_version_no()
-        if not current_version_no:
+        current_meta = fetch_one(
+            self.connection,
+            """
+            SELECT strategy_code, result_status, result_summary
+            FROM current_schedule_meta
+            WHERE singleton_key = 'CURRENT'
+            """,
+        )
+        if current_meta is None:
             raise bad_request(
                 code="SCHEDULE_CURRENT_VERSION_REQUIRED",
                 message="当前没有可保存的排产方案，请先执行排产。",
             )
-        snapshot = self._clone_schedule_version(current_version_no, target_status="SAVED")
+        current_tasks = fetch_all(
+            self.connection,
+            """
+            SELECT
+                task_no,
+                production_order_no,
+                process_code,
+                process_name_cn,
+                workshop_code,
+                line_code,
+                calendar_date,
+                shift_code,
+                plan_qty,
+                plan_start_time
+            FROM current_schedule_tasks
+            ORDER BY task_no ASC
+            """,
+        )
+        snapshot_id = self._next_schedule_version_no()
+        with transaction(self.connection):
+            self.connection.execute(
+                """
+                INSERT INTO schedule_snapshots (
+                    snapshot_id,
+                    snapshot_name,
+                    strategy_code,
+                    result_status,
+                    result_summary,
+                    created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    snapshot_id,
+                    snapshot_id,
+                    str(current_meta.get("strategy_code") or ""),
+                    str(current_meta.get("result_status") or "FEASIBLE"),
+                    current_meta.get("result_summary"),
+                    utc_now(),
+                ),
+            )
+            if current_tasks:
+                self.connection.executemany(
+                    """
+                    INSERT INTO schedule_snapshot_tasks (
+                        snapshot_id,
+                        task_no,
+                        production_order_no,
+                        process_code,
+                        process_name_cn,
+                        workshop_code,
+                        line_code,
+                        calendar_date,
+                        shift_code,
+                        plan_qty,
+                        plan_start_time
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    [
+                        (
+                            snapshot_id,
+                            int(row.get("task_no") or 0),
+                            row.get("production_order_no"),
+                            row.get("process_code"),
+                            row.get("process_name_cn"),
+                            row.get("workshop_code"),
+                            row.get("line_code"),
+                            row.get("calendar_date"),
+                            row.get("shift_code"),
+                            row.get("plan_qty"),
+                            row.get("plan_start_time"),
+                        )
+                        for row in current_tasks
+                    ],
+                )
         return {
-            "version_no": snapshot["version_no"],
-            "saved_from_version_no": current_version_no,
+            "snapshot_id": snapshot_id,
+            "snapshot_name": snapshot_id,
             "status": "SAVED",
             "status_label": _schedule_version_status_label("SAVED"),
         }
 
     def load_saved_schedule_version(self, version_no: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        selected_version = self.get_schedule_version(version_no)
-        selected_status = str(selected_version.get("status") or "").strip().upper()
-        if selected_status == "CURRENT":
-            return {
-                "version_no": version_no,
-                "status": "CURRENT",
-                "status_label": _schedule_version_status_label("CURRENT"),
-                "loaded_from_version_no": version_no,
-                "auto_saved_version_no": None,
-            }
-
-        current_version_no = self._pick_current_schedule_version_no()
-        auto_saved_version_no = None
-        if current_version_no:
-            with transaction(self.connection):
-                self.connection.execute(
-                    """
-                    UPDATE schedule_versions
-                    SET status = 'SAVED',
-                        status_name_cn = ?
-                    WHERE version_no = ?
-                    """,
-                    (_status_name("SAVED"), current_version_no),
-                )
-            auto_saved_version_no = current_version_no
-        loaded = self._clone_schedule_version(version_no, target_status="CURRENT")
+        selected_snapshot = fetch_one(
+            self.connection,
+            """
+            SELECT snapshot_id, strategy_code, result_status, result_summary
+            FROM schedule_snapshots
+            WHERE snapshot_id = ?
+            """,
+            (version_no,),
+        )
+        if selected_snapshot is None:
+            raise not_found(
+                code="SCHEDULE_SNAPSHOT_NOT_FOUND",
+                message="Saved schedule snapshot does not exist.",
+                details={"snapshot_id": version_no},
+            )
+        selected_tasks = fetch_all(
+            self.connection,
+            """
+            SELECT
+                task_no,
+                production_order_no,
+                process_code,
+                process_name_cn,
+                workshop_code,
+                line_code,
+                calendar_date,
+                shift_code,
+                plan_qty,
+                plan_start_time
+            FROM schedule_snapshot_tasks
+            WHERE snapshot_id = ?
+            ORDER BY task_no ASC
+            """,
+            (version_no,),
+        )
+        created_at = utc_now()
+        tasks = [
+            (
+                CURRENT_SCHEDULE_VERSION_NO,
+                int(row.get("task_no") or 0),
+                row.get("production_order_no"),
+                row.get("process_code"),
+                row.get("process_name_cn"),
+                row.get("workshop_code"),
+                row.get("line_code"),
+                row.get("calendar_date"),
+                row.get("shift_code"),
+                row.get("plan_qty"),
+                row.get("plan_start_time"),
+            )
+            for row in selected_tasks
+        ]
+        order_rows = self._list_order_rows()
+        states = self._get_order_state_map(
+            [str(row["production_order_no"]) for row in order_rows]
+        )
+        self._replace_current_schedule(
+            strategy_code=str(selected_snapshot.get("strategy_code") or ""),
+            result_status=str(selected_snapshot.get("result_status") or "FEASIBLE"),
+            result_summary=str(selected_snapshot.get("result_summary") or ""),
+            tasks=tasks,
+            order_rows=order_rows,
+            states=states,
+            created_at=created_at,
+        )
         return {
-            "version_no": loaded["version_no"],
+            "schedule_id": CURRENT_SCHEDULE_VERSION_NO,
+            "loaded_snapshot_id": version_no,
             "status": "CURRENT",
             "status_label": _schedule_version_status_label("CURRENT"),
-            "loaded_from_version_no": version_no,
-            "auto_saved_version_no": auto_saved_version_no,
         }
 
     def _pick_current_schedule_version_no(self) -> str | None:
@@ -3317,34 +3520,12 @@ class AppService:
         version_no = str(row.get("version_no") or "").strip()
         return version_no or None
 
-    def _pick_reference_schedule_version_no(self) -> str | None:
-        return self._pick_current_schedule_version_no()
-
     def _resolve_order_pool_version_no(self, version_no: str | None) -> str | None:
         normalized_version_no = str(version_no or "").strip()
         if normalized_version_no:
             self.get_schedule_version(normalized_version_no)
             return normalized_version_no
-        return self._pick_reference_schedule_version_no()
-
-    def _pick_published_schedule_version_no(self) -> str | None:
         return self._pick_current_schedule_version_no()
-
-    def _pick_latest_draft_schedule_version_no(self) -> str | None:
-        row = fetch_one(
-            self.connection,
-            """
-            SELECT version_no
-            FROM schedule_versions
-            WHERE UPPER(TRIM(COALESCE(status, ''))) IN ('SAVED', 'DRAFT')
-            ORDER BY created_at DESC, version_no DESC
-            LIMIT 1
-            """,
-        )
-        if row is None:
-            return None
-        version_no = str(row.get("version_no") or "").strip()
-        return version_no or None
 
     def _list_schedule_task_rows_by_version_order(
         self,
@@ -4585,26 +4766,6 @@ class AppService:
         )
         return {"items": items}
 
-    def get_schedule_daily_process_load(self, version_no: str) -> dict[str, Any]:
-        self.get_schedule_version(version_no)
-        rows = fetch_all(
-            self.connection,
-            """
-            SELECT
-                calendar_date,
-                process_code,
-                COALESCE(MAX(process_name_cn), process_code) AS process_name_cn,
-                COUNT(1) AS task_count,
-                SUM(plan_qty) AS plan_qty
-            FROM schedule_tasks
-            WHERE version_no = ?
-            GROUP BY calendar_date, process_code
-            ORDER BY calendar_date ASC, process_code ASC
-            """,
-            (version_no,),
-        )
-        return {"items": rows}
-
     def get_masterdata_config(self) -> dict[str, Any]:
         self._ensure_masterdata_seeded()
         rules = self.get_schedule_calendar_rules()["data"]
@@ -5163,7 +5324,7 @@ class AppService:
             base_schedule_hints = self._build_base_schedule_hints(base_version_no)
         planning_rules = self._build_planning_rules_from_current_config()
         current_version_no = self._pick_current_schedule_version_no()
-        version_no = self._next_schedule_version_no()
+        version_no = CURRENT_SCHEDULE_VERSION_NO
         order_rows = self._list_order_rows()
         route_rows_by_product = self._group_routes_by_product(self._list_route_rows())
         capacity_map = self._get_capacity_map(
@@ -5542,68 +5703,19 @@ class AppService:
             else "已生成班次级建议计划。"
         )
         created_at = utc_now()
-        with transaction(self.connection):
-            if current_version_no:
-                self.connection.execute(
-                    """
-                    UPDATE schedule_versions
-                    SET status = 'SAVED',
-                        status_name_cn = ?
-                    WHERE version_no = ?
-                    """,
-                    (_status_name("SAVED"), current_version_no),
-                )
-            self.connection.execute(
-                """
-                INSERT INTO schedule_versions (
-                    version_no,
-                    status,
-                    status_name_cn,
-                    strategy_code,
-                    result_status,
-                    result_summary,
-                    created_at,
-                    published_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    version_no,
-                    "CURRENT",
-                    _status_name("CURRENT"),
-                    strategy_code,
-                    result_status,
-                    result_summary,
-                    created_at,
-                    None,
-                ),
-            )
-            if tasks:
-                self.connection.executemany(
-                    """
-                    INSERT INTO schedule_tasks (
-                        version_no,
-                        task_no,
-                        production_order_no,
-                        process_code,
-                        process_name_cn,
-                        workshop_code,
-                        line_code,
-                        calendar_date,
-                        shift_code,
-                        plan_qty,
-                        plan_start_time
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    tasks,
-                )
-                self._sync_order_pool_state_schedule_window_from_tasks(
-                    tasks=tasks,
-                    order_rows=order_rows,
-                    states=states,
-                )
+        self._replace_current_schedule(
+            strategy_code=strategy_code,
+            result_status=result_status,
+            result_summary=result_summary,
+            tasks=tasks,
+            order_rows=order_rows,
+            states=states,
+            created_at=created_at,
+        )
         return {
-            "version_no": version_no,
-            "auto_saved_version_no": current_version_no,
+            "schedule_id": CURRENT_SCHEDULE_VERSION_NO,
+            "version_no": CURRENT_SCHEDULE_VERSION_NO,
+            "auto_saved_version_no": None,
             "capacity_source_mode": capacity_source_mode,
             "result_status": result_status,
             "result_status_label": _schedule_result_status_label(result_status),
@@ -5628,7 +5740,7 @@ class AppService:
         )
         planning_rules = self._build_planning_rules_from_current_config()
         current_version_no = self._pick_current_schedule_version_no()
-        version_no = self._next_schedule_version_no()
+        version_no = CURRENT_SCHEDULE_VERSION_NO
         order_rows = self._list_order_rows()
         route_rows_by_product = self._group_routes_by_product(self._list_route_rows())
         capacity_map = self._get_capacity_map(
@@ -5864,77 +5976,25 @@ class AppService:
             else "宸叉寜浜嬪疄杈圭晫鐢熸垚鍚庣画鐝鎺掍骇銆?"
         )
         created_at = utc_now()
-        with transaction(self.connection):
-            if current_version_no:
-                self.connection.execute(
-                    """
-                    UPDATE schedule_versions
-                    SET status = 'SAVED',
-                        status_name_cn = ?
-                    WHERE version_no = ?
-                    """,
-                    (_status_name("SAVED"), current_version_no),
-                )
-            self.connection.execute(
-                """
-                INSERT INTO schedule_versions (
-                    version_no,
-                    status,
-                    status_name_cn,
-                    strategy_code,
-                    result_status,
-                    result_summary,
-                    created_at,
-                    published_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    version_no,
-                    "CURRENT",
-                    _status_name("CURRENT"),
-                    strategy_code,
-                    result_status,
-                    result_summary,
-                    created_at,
-                    None,
-                ),
-            )
-            if tasks:
-                self.connection.executemany(
-                    """
-                    INSERT INTO schedule_tasks (
-                        version_no,
-                        task_no,
-                        production_order_no,
-                        process_code,
-                        process_name_cn,
-                        workshop_code,
-                        line_code,
-                        calendar_date,
-                        shift_code,
-                        plan_qty,
-                        plan_start_time
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    tasks,
-                )
-                self._sync_order_pool_state_schedule_window_from_tasks(
-                    tasks=tasks,
-                    order_rows=order_rows,
-                    states=states,
-                )
+        self._replace_current_schedule(
+            strategy_code=strategy_code,
+            result_status=result_status,
+            result_summary=result_summary,
+            tasks=tasks,
+            order_rows=order_rows,
+            states=states,
+            created_at=created_at,
+        )
         return {
-            "version_no": version_no,
-            "auto_saved_version_no": current_version_no,
+            "schedule_id": CURRENT_SCHEDULE_VERSION_NO,
+            "version_no": CURRENT_SCHEDULE_VERSION_NO,
+            "auto_saved_version_no": None,
             "capacity_source_mode": capacity_source_mode,
             "result_status": result_status,
             "result_status_label": _schedule_result_status_label(result_status),
             "result_summary": result_summary,
             "material_shortages": shortage_result,
         }
-
-    def publish_schedule_version(self, version_no: str) -> dict[str, Any]:
-        return self.load_saved_schedule_version(version_no, {})
 
     def create_dispatch_command(self, payload: dict[str, Any]) -> dict[str, Any]:
         order_no = str(payload.get("target_order_no") or "").strip()
@@ -7759,29 +7819,7 @@ class AppService:
             "published_scheduled_due_gap_days": published_scheduled_due_gap_days,
             "published_scheduled_risk_level": published_scheduled_risk_level,
             "delay_risk_source": delay_risk_source,
-            "reference_version_no": reference_version_no,
-            "reference_schedule_version_no": reference_version_no,
-            "reference_schedule_version_status": reference_version_status,
-            "reference_schedule_version_status_label": reference_schedule_version_status_label,
-            "reference_schedule_version_label": reference_schedule_version_label,
-            "viewing_schedule_version_no": reference_version_no,
-            "viewing_schedule_version_status": reference_version_status,
-            "viewing_schedule_version_status_label": reference_schedule_version_status_label,
-            "viewing_schedule_version_label": viewing_schedule_version_label,
-            "published_schedule_version_no": published_version_no,
-            "published_schedule_version_status": published_version_status,
-            "published_schedule_version_status_label": published_schedule_version_status_label,
-            "published_schedule_version_label": published_schedule_version_label,
             "scheduled_in_reference_version": scheduled_in_reference_version,
-            "scheduled_in_viewing_version": scheduled_in_reference_version,
-            "published_in_reference_version": published_in_reference_version,
-            "scheduled_in_published_version": scheduled_in_published_version,
-            "current_schedule_version_no": reference_version_no if published_in_reference_version else None,
-            "published_scheduled_start_date": published_scheduled_start_date,
-            "published_scheduled_start_time": published_scheduled_start_time,
-            "published_scheduled_start_shift": published_scheduled_start_shift,
-            "published_scheduled_finish_date": published_scheduled_finish_date,
-            "published_scheduled_finish_time": published_scheduled_finish_time,
             "material_shortage_count": int((shortage_summary or {}).get("shortage_material_count") or 0),
             "material_shortage_summary": str((shortage_summary or {}).get("summary_text") or "").strip(),
             "material_shortage_start_date": _normalize_date_text(
