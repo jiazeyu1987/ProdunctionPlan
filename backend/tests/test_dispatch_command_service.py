@@ -42,6 +42,35 @@ class DispatchCommandServiceTestCase(unittest.TestCase):
         )
         self.assertEqual(approved, {"ok": True})
 
+    def test_create_and_approve_freeze_and_unfreeze_dispatch_command(self) -> None:
+        self._seed_order("MO-CMD-FREEZE-001")
+
+        freeze_created = self.service.create_dispatch_command(
+            {"target_order_no": "MO-CMD-FREEZE-001", "command_type": "FREEZE"}
+        )
+        self.service.approve_dispatch_command(
+            freeze_created["command_id"],
+            {"approver": "scheduler", "decision": "APPROVED"},
+        )
+        frozen_row = self.connection.execute(
+            "SELECT frozen_flag FROM order_pool_state WHERE production_order_no = ?",
+            ("MO-CMD-FREEZE-001",),
+        ).fetchone()
+        self.assertEqual(int(frozen_row[0]), 1)
+
+        unfreeze_created = self.service.create_dispatch_command(
+            {"target_order_no": "MO-CMD-FREEZE-001", "command_type": "UNFREEZE"}
+        )
+        self.service.approve_dispatch_command(
+            unfreeze_created["command_id"],
+            {"approver": "scheduler", "decision": "APPROVED"},
+        )
+        unfrozen_row = self.connection.execute(
+            "SELECT frozen_flag FROM order_pool_state WHERE production_order_no = ?",
+            ("MO-CMD-FREEZE-001",),
+        ).fetchone()
+        self.assertEqual(int(unfrozen_row[0]), 0)
+
     def test_batch_dispatch_requires_order_nos(self) -> None:
         with self.assertRaises(AppError) as ctx:
             self.service.batch_dispatch_commands({"order_nos": [], "command_type": "LOCK"})

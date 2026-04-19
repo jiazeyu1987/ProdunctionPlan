@@ -61,9 +61,16 @@
   - 临时真实浏览器脚本 2：在当前 2798 服务上 stub ERP 同步预览与执行接口，验证手动 ERP 同步后整表请求计数增加。
 - Evidence refs:
   - `fronted/test-results/manual/orders-pool-item-refresh.json`
+  - `fronted/test-results/manual/orders-pool-batch-item-refresh.json`
   - `fronted/test-results/manual/orders-pool-erp-sync-refresh.json`
+  - `fronted/test-results/manual/orders-pool-priority-delete-item-refresh.json`
+  - `fronted/test-results/manual/schedule-calendar-publish-order-pool-signal.json`
+  - `fronted/test-results/manual/orders-pool-consume-schedule-signal.json`
+  - `fronted/test-results/manual/orders-pool-consume-signal-on-mount.json`
 - Notes:
   - Playwright 正式 config 因本机已有开发服务器运行而无法直接复用 `fronted/playwright.config.ts` 启动独立 webServer，本轮使用当前运行中的真实前端服务完成浏览器验证。
+  - 追加验证确认：单张优先级调整与单张删除也不会重新拉整张 `/api/order-pool`；删除会直接移除对应 row。
+  - 继续验证确认：排产页会把 `affected_order_nos` 写入局部刷新信号；订单池页既能在已打开场景消费该信号，也能在同标签页从排产页返回订单池页时于挂载阶段消费该信号。
 
 ## Outstanding Blockers
 

@@ -2821,8 +2821,6 @@ class AppService:
 
             lock_flag = int(_to_number(state_row.get("lock_flag"), 0))
             frozen_flag = int(_to_number(state_row.get("frozen_flag"), 0))
-            if lock_flag == 1 or frozen_flag == 1:
-                continue
 
             process_contexts = self._build_schedule_process_contexts(
                 order_no=order_no,
@@ -3073,8 +3071,6 @@ class AppService:
 
             lock_flag = int(_to_number(state_row.get("lock_flag"), 0))
             frozen_flag = int(_to_number(state_row.get("frozen_flag"), 0))
-            if lock_flag == 1 or frozen_flag == 1:
-                continue
 
             process_contexts = self._build_schedule_process_contexts(
                 order_no=order_no,
@@ -3152,8 +3148,8 @@ class AppService:
                     "due_date": due_date,
                     "start_slot": start_slot,
                     "priority_level": priority_level,
-                    "lock_flag": 0,
-                    "frozen_flag": 0,
+                    "lock_flag": lock_flag,
+                    "frozen_flag": frozen_flag,
                     "updated_at": str(order_row.get("updated_at") or ""),
                     "process_contexts": process_contexts,
                     "required_shifts": required_shifts,

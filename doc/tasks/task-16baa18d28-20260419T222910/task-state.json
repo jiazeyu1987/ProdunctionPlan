@@ -1,0 +1,200 @@
+{
+  "schema_version": 2,
+  "task_id": "task-16baa18d28-20260419T222910",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "固化冻结/解冻产品语义与验收口径",
+      "status": "completed",
+      "objective": "明确前后端当前实现中“锁单/解锁/冻结”的现状，定义本次 UI 与命令链路的目标行为，并把测试口径固化到任务产物。",
+      "owned_paths": [
+        "`doc/tasks/task-16baa18d28-20260419T222910/prd.md` `doc/tasks/task-16baa18d28-20260419T222910/test-plan.md` `doc/tasks/task-16baa18d28-20260419T222910/task-state.json`"
+      ],
+      "dependencies": [
+        "仓库可读；订单池前后端相关源码存在。"
+      ],
+      "deliverables": [
+        "审核通过的 PRD、测试计划与同步后的任务状态。"
+      ],
+      "evidence_expectation": "`prd.md`、`test-plan.md` 通过 `validate_artifacts.py` 且状态已同步到 `task-state.json`。",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "PRD 与测试计划必须明确本次改动不是纯文案替换，而是需要同时覆盖前端入口、前端状态更新和后端 `FREEZE` / `UNFREEZE` 命令支持。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#t1-单条订单按钮切换为冻结语义",
+            "test-report.md#t3-批量冻结解冻命令服务更新状态",
+            "test-report.md#t5-调度命令批准链路支持冻结解冻"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "测试计划必须覆盖真实浏览器下的订单池按钮行为，并声明 `Validation surface: real-browser` 与 `Required tools: playwright`。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#t1-单条订单按钮切换为冻结语义",
+            "test-report.md#t3-批量冻结解冻命令服务更新状态",
+            "test-report.md#t5-调度命令批准链路支持冻结解冻"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T22:51:46"
+    },
+    {
+      "phase_id": "P2",
+      "title": "实现订单池冻结/解冻命令链路",
+      "status": "completed",
+      "objective": "让订单池前端单行与批量操作移除“解锁”，改为提供“冻结/解冻”，并补齐前后端对 `FREEZE` / `UNFREEZE` 的状态变更能力。",
+      "owned_paths": [
+        "`fronted/src/legacy/features/orders-pool/page/OrdersPoolOrdersTable.jsx` `fronted/src/legacy/features/orders-pool/page/OrdersPoolToolbar.jsx` `fronted/src/legacy/features/orders-pool/page/useOrdersPoolPageController.js` `fronted/src/legacy/features/orders-pool/commandActions.js` `fronted/src/legacy/features/orders-pool/formatters.js` `backend/app/services/dispatch_command_service.py`"
+      ],
+      "dependencies": [
+        "P1 完成；订单池前后端命令接口保持可编辑。"
+      ],
+      "deliverables": [
+        "可运行的前后端实现与执行日志证据。"
+      ],
+      "evidence_expectation": "`execution-log.md` 记录变更路径、命令类型、验证命令和覆盖的验收项。",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "单条订单操作中不再显示“解锁”按钮；锁单按钮旁新增冻结或解冻按钮，且按钮文案与点击行为与订单当前 `frozen_flag` 一致。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#t1-单条订单按钮切换为冻结语义",
+            "test-report.md#t3-批量冻结解冻命令服务更新状态",
+            "test-report.md#t5-调度命令批准链路支持冻结解冻"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "批量工具栏不再提供“全部解锁”；必须提供“全部冻结”和“全部解冻”，并且前端批量预览、禁用与错误提示与冻结状态一致。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#t1-单条订单按钮切换为冻结语义",
+            "test-report.md#t3-批量冻结解冻命令服务更新状态",
+            "test-report.md#t5-调度命令批准链路支持冻结解冻"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "前端本地 optimistic 更新、命令文案和命令提交逻辑必须支持 `FREEZE` / `UNFREEZE`，且不引入 fallback 或双写逻辑。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#t1-单条订单按钮切换为冻结语义",
+            "test-report.md#t3-批量冻结解冻命令服务更新状态",
+            "test-report.md#t5-调度命令批准链路支持冻结解冻"
+          ]
+        },
+        {
+          "ac_id": "P2-AC4",
+          "text": "后端批量调度服务必须支持 `FREEZE` / `UNFREEZE`，并正确更新 `frozen_flag` 与审计记录；非法状态要 fail fast 返回明确错误。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#t1-单条订单按钮切换为冻结语义",
+            "test-report.md#t3-批量冻结解冻命令服务更新状态",
+            "test-report.md#t5-调度命令批准链路支持冻结解冻"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P2"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T22:51:54"
+    },
+    {
+      "phase_id": "P3",
+      "title": "验证冻结/解冻交互与回归",
+      "status": "completed",
+      "objective": "用后端测试与真实浏览器测试验证新按钮行为、命令处理和局部刷新链路，确保没有残留“解锁”入口。",
+      "owned_paths": [
+        "`backend/tests/test_app_service_batch_dispatch.py` `backend/tests/test_dispatch_command_service.py` `fronted/tests/e2e/orders-pool-item-refresh.e2e.spec.ts` `doc/tasks/task-16baa18d28-20260419T222910/execution-log.md` `doc/tasks/task-16baa18d28-20260419T222910/test-report.md`"
+      ],
+      "dependencies": [
+        "P2 完成；测试工具可运行。"
+      ],
+      "deliverables": [
+        "通过的测试结果、独立测试报告与完成态任务状态。"
+      ],
+      "evidence_expectation": "`test-report.md` + Playwright trace/video/screenshot + pytest 输出。",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "后端自动化测试必须证明 `FREEZE` / `UNFREEZE` 能正确更新状态，并对空选中、已冻结、未冻结等非法状态给出明确错误。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#t1-单条订单按钮切换为冻结语义",
+            "test-report.md#t3-批量冻结解冻命令服务更新状态",
+            "test-report.md#t5-调度命令批准链路支持冻结解冻"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "真实浏览器测试必须证明订单池页面可执行冻结或解冻动作，且局部刷新仍只刷新受影响订单，不会整表重拉 `/api/order-pool`。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#t1-单条订单按钮切换为冻结语义",
+            "test-report.md#t3-批量冻结解冻命令服务更新状态",
+            "test-report.md#t5-调度命令批准链路支持冻结解冻"
+          ]
+        },
+        {
+          "ac_id": "P3-AC3",
+          "text": "真实浏览器测试或实现检查必须证明页面不再暴露“解锁”入口，批量入口与单条入口都切换为冻结语义。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#t1-单条订单按钮切换为冻结语义",
+            "test-report.md#t3-批量冻结解冻命令服务更新状态",
+            "test-report.md#t5-调度命令批准链路支持冻结解冻"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P3"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T22:52:03"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 3,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-19T22:29:11",
+  "updated_at": "2026-04-19T22:55:23",
+  "branch": "master",
+  "baseline_revision": "f127def8007c8204798831462d61ad08f0662b42",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-16baa18d28-20260419T222910",
+  "goal": "删除解锁,锁单按钮增加冻结,解冻按钮",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-16baa18d28-20260419T222910\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-16baa18d28-20260419T222910\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-16baa18d28-20260419T222910\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-16baa18d28-20260419T222910\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-16baa18d28-20260419T222910\\test-report.md"
+  }
+}

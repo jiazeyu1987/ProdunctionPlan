@@ -611,3 +611,534 @@ Import trace:
 [ 2190233ms] [LOG] [Fast Refresh] done in 70ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
 [ 2199513ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
 [ 2199532ms] [LOG] [Fast Refresh] done in 61ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 6997878ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 6997898ms] [LOG] [Fast Refresh] done in 104ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 7014290ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 7014312ms] [LOG] [Fast Refresh] done in 73ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 7123575ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 7123578ms] [LOG] [Fast Refresh] done in 107ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 7150870ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 7150891ms] [LOG] [Fast Refresh] done in 58ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8052861ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8052883ms] [LOG] [Fast Refresh] done in 59ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8428467ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8429101ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8429112ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8429147ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8429148ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8687153ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8687764ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8687774ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8687801ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8687801ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8687887ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 8687887ms] [LOG] [Fast Refresh] done in 105ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[10592107ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[10592109ms] [ERROR] ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js:13:48
+Module not found: Can't resolve '../../order-execution/ordersPoolRefreshSignal'
+  11 |   fetchOrdersPoolItems,
+  12 |   fetchOrdersPoolSnapshot,
+> 13 | } from "../../order-execution/ordersPoolService";
+     |                                                ^
+> 14 | import {
+     | ^^^^^^^^
+> 15 |   ORDERS_POOL_PARTIAL_REFRESH_EVENT,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 16 |   ORDERS_POOL_PARTIAL_REFRESH_SIGNAL_KEY,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |   parseOrdersPoolPartialRefreshSignal,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 | } from "../../order-execution/ordersPoolRefreshSignal";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  19 | import {
+  20 |   buildOrderRiskSummary,
+  21 |   applyOrdersSyncFromErpAndRefresh,
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[10592109ms] [ERROR] ./src/legacy/features/schedule-calendar/useScheduleCalendarController.js:19:1
+Module not found: Can't resolve '../order-execution/ordersPoolRefreshSignal'
+  17 | } from "../schedule";
+  18 | import { listOrderPoolMaterials } from "../order-execution/ordersPoolQueryClient";
+> 19 | import { publishOrdersPoolPartialRefreshSignal } from "../order-execution/ordersPoolRefreshSignal";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  20 | import {
+  21 |   buildCalendarWeeksByMonth,
+  22 |   formatMonthText,
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/schedule-calendar/useScheduleCalendarController.js [Client Component Browser]
+    ./src/legacy/pages/ScheduleCalendarPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[10592169ms] [ERROR] ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js:13:48
+Module not found: Can't resolve '../../order-execution/ordersPoolRefreshSignal'
+  11 |   fetchOrdersPoolItems,
+  12 |   fetchOrdersPoolSnapshot,
+> 13 | } from "../../order-execution/ordersPoolService";
+     |                                                ^
+> 14 | import {
+     | ^^^^^^^^
+> 15 |   ORDERS_POOL_PARTIAL_REFRESH_EVENT,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 16 |   ORDERS_POOL_PARTIAL_REFRESH_SIGNAL_KEY,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |   parseOrdersPoolPartialRefreshSignal,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 | } from "../../order-execution/ordersPoolRefreshSignal";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  19 | import {
+  20 |   buildOrderRiskSummary,
+  21 |   applyOrdersSyncFromErpAndRefresh,
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[10592169ms] [ERROR] ./src/legacy/features/schedule-calendar/useScheduleCalendarController.js:19:1
+Module not found: Can't resolve '../order-execution/ordersPoolRefreshSignal'
+  17 | } from "../schedule";
+  18 | import { listOrderPoolMaterials } from "../order-execution/ordersPoolQueryClient";
+> 19 | import { publishOrdersPoolPartialRefreshSignal } from "../order-execution/ordersPoolRefreshSignal";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  20 | import {
+  21 |   buildCalendarWeeksByMonth,
+  22 |   formatMonthText,
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/schedule-calendar/useScheduleCalendarController.js [Client Component Browser]
+    ./src/legacy/pages/ScheduleCalendarPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[10592246ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[10606662ms] [ERROR] ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js:13:48
+Module not found: Can't resolve '../../order-execution/ordersPoolRefreshSignal'
+  11 |   fetchOrdersPoolItems,
+  12 |   fetchOrdersPoolSnapshot,
+> 13 | } from "../../order-execution/ordersPoolService";
+     |                                                ^
+> 14 | import {
+     | ^^^^^^^^
+> 15 |   ORDERS_POOL_PARTIAL_REFRESH_EVENT,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 16 |   ORDERS_POOL_PARTIAL_REFRESH_SIGNAL_KEY,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |   parseOrdersPoolPartialRefreshSignal,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 | } from "../../order-execution/ordersPoolRefreshSignal";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  19 | import {
+  20 |   buildOrderRiskSummary,
+  21 |   applyOrdersSyncFromErpAndRefresh,
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[10606676ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[10627757ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[10627880ms] [LOG] [Fast Refresh] done in 87ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12304164ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12304768ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12304776ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12304805ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12304805ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12334367ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=NP6rt19lkcwS73viWcwLS' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[12337428ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=NP6rt19lkcwS73viWcwLS' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[12340480ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=NP6rt19lkcwS73viWcwLS' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[12343530ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=NP6rt19lkcwS73viWcwLS' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[12346572ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=NP6rt19lkcwS73viWcwLS' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[12353598ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=NP6rt19lkcwS73viWcwLS' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[12360653ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=NP6rt19lkcwS73viWcwLS' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[12367690ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=NP6rt19lkcwS73viWcwLS' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[12372698ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12372799ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12372811ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12373004ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12373004ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12848725ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12848773ms] [ERROR] ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js:9:30
+Export fetchOrdersPoolItems doesn't exist in target module
+   7 |   listMaterialChildrenByParentCode,
+   8 |   listOrderPoolMaterials,
+>  9 | } from "../../order-execution";
+     |                              ^
+> 10 | import {
+     | ^^^^^^^^
+> 11 |   fetchOrdersPoolItems,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 12 |   fetchOrdersPoolSnapshot,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 13 | } from "../../order-execution/ordersPoolService";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  14 | import {
+  15 |   buildOrderRiskSummary,
+  16 |   applyOrdersSyncFromErpAndRefresh,
+
+The export fetchOrdersPoolItems was not found in module [project]/src/legacy/features/order-execution/ordersPoolService.js [app-client] (ecmascript).
+Did you mean to import fetchOrderPoolItem?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component] @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[12848817ms] [ERROR] ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js:9:30
+Export fetchOrdersPoolItems doesn't exist in target module
+   7 |   listMaterialChildrenByParentCode,
+   8 |   listOrderPoolMaterials,
+>  9 | } from "../../order-execution";
+     |                              ^
+> 10 | import {
+     | ^^^^^^^^
+> 11 |   fetchOrdersPoolItems,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 12 |   fetchOrdersPoolSnapshot,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 13 | } from "../../order-execution/ordersPoolService";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  14 | import {
+  15 |   buildOrderRiskSummary,
+  16 |   applyOrdersSyncFromErpAndRefresh,
+
+The export fetchOrdersPoolItems was not found in module [project]/src/legacy/features/order-execution/ordersPoolService.js [app-client] (ecmascript).
+Did you mean to import fetchOrderPoolItem?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component] @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[12848893ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12864229ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[12864306ms] [LOG] [Fast Refresh] done in 67ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13039774ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=INzxIsgIgd0xSYadgxIgq' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[13041286ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13041863ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13041875ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13041909ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13041909ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13426851ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13426880ms] [LOG] [Fast Refresh] done in 80ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13462946ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13462971ms] [LOG] [Fast Refresh] done in 68ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13578907ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13578909ms] [ERROR] ./src/legacy/pages/OrdersPoolPage.jsx:3:1
+Module not found: Can't resolve '../features/orders-pool/page/OrdersPoolOrdersTable'
+  1 | import { useEffect, useState } from "react";
+  2 | import OrdersPoolOrderDetailPanel from "../features/orders-pool/page/OrdersPoolOrderDetailPanel";
+> 3 | import OrdersPoolOrdersTable from "../features/orders-pool/page/OrdersPoolOrdersTable";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import OrdersPoolToolbar from "../features/orders-pool/page/OrdersPoolToolbar";
+  5 | import { useOrdersPoolPageController } from "../features/orders-pool/page/useOrdersPoolPageController";
+  6 |
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[13578955ms] [ERROR] ./src/legacy/pages/OrdersPoolPage.jsx:3:1
+Module not found: Can't resolve '../features/orders-pool/page/OrdersPoolOrdersTable'
+  1 | import { useEffect, useState } from "react";
+  2 | import OrdersPoolOrderDetailPanel from "../features/orders-pool/page/OrdersPoolOrderDetailPanel";
+> 3 | import OrdersPoolOrdersTable from "../features/orders-pool/page/OrdersPoolOrdersTable";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import OrdersPoolToolbar from "../features/orders-pool/page/OrdersPoolToolbar";
+  5 | import { useOrdersPoolPageController } from "../features/orders-pool/page/useOrdersPoolPageController";
+  6 |
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[13579029ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13669106ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13669152ms] [LOG] [Fast Refresh] done in 56ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13684396ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13684425ms] [LOG] [Fast Refresh] done in 32ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13700304ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13700879ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13700892ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13700926ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13700927ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13914723ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13914753ms] [LOG] [Fast Refresh] done in 46ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13931769ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13931798ms] [LOG] [Fast Refresh] done in 46ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13963547ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13963567ms] [LOG] [Fast Refresh] done in 74ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13982695ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13983307ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13983318ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13983350ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13983350ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13983435ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[13983466ms] [LOG] [Fast Refresh] done in 141ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[14036559ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[14036588ms] [LOG] [Fast Refresh] done in 48ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[14055745ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[14056368ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[14056378ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[14056411ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[14056411ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[14056491ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[14056537ms] [LOG] [Fast Refresh] done in 148ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[15062625ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[15065667ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[15068728ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[15071757ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[15074803ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[15081847ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[15088915ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[15095978ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[15103042ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[15110111ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[15117210ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[15124355ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=QjMbxoHppoEi1O-L0Nye3' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[16132768ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[16132828ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[16132965ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[16132966ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[18197930ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[18197961ms] [LOG] [Fast Refresh] done in 47ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[18220709ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[18220739ms] [LOG] [Fast Refresh] done in 31ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[18246094ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[18246120ms] [LOG] [Fast Refresh] done in 66ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[18291936ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[18292483ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[18292493ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[18292526ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[18292526ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[19743139ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=f6ovNm1lOLOk6VvrHbk2M' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[19746203ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=f6ovNm1lOLOk6VvrHbk2M' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[19749634ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[19750221ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[19750234ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[19750265ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[19750265ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[19960420ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[19961001ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[19961013ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[19961040ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[19961040ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[20059180ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[20059781ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[20059790ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[20059819ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[20059819ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[20059901ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[20059901ms] [LOG] [Fast Refresh] done in 102ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[20195360ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20198415ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20201469ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20204510ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20207553ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20214599ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20221643ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20228713ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20235775ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20242865ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20249983ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20257086ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=a-3qAsl-gMs2yZdxJWg2e' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[20361403ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[20361461ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[20361610ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[20361610ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[21069454ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=0kuqc--kvmnOVpL88kBdM' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[21072130ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[21072716ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[21072729ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[21072760ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[21072760ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[21072841ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[21072841ms] [LOG] [Fast Refresh] done in 103ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22568299ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22568779ms] [LOG] [Fast Refresh] done in 582ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22594092ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22594402ms] [LOG] [Fast Refresh] done in 408ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22629621ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22629652ms] [LOG] [Fast Refresh] done in 91ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22648671ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22649148ms] [LOG] [Fast Refresh] done in 592ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22652482ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=zuOVAG7Grg6E5eIsoYz9t' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[22655540ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=zuOVAG7Grg6E5eIsoYz9t' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[22664418ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22665275ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22665317ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22665365ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[22665366ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[24319737ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[24319760ms] [LOG] [Fast Refresh] done in 89ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[24494019ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[24494615ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[24494649ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[24494679ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[24494679ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[24494766ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[24494766ms] [LOG] [Fast Refresh] done in 103ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25352029ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25352094ms] [LOG] [Fast Refresh] done in 165ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25371242ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25371264ms] [LOG] [Fast Refresh] done in 60ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25391153ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25391173ms] [LOG] [Fast Refresh] done in 44ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25409717ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25409738ms] [LOG] [Fast Refresh] done in 60ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25460556ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25461183ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25461206ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25461238ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25461239ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25611276ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25611297ms] [LOG] [Fast Refresh] done in 75ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25641173ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25641193ms] [LOG] [Fast Refresh] done in 58ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25664481ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25665086ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25665107ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25665137ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[25665138ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26476890ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26477493ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26477512ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26477542ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26477543ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26520325ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26520344ms] [LOG] [Fast Refresh] done in 90ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26551613ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26552221ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26552239ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26552273ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26552274ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[26597698ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[26600744ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[26603788ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[26606839ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[26609881ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[26616937ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[26623981ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[26631042ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[26638097ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[26645161ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[26652217ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[26659272ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=c6JDqfR9a98Eg7uyKzbIQ' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[27065653ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[27065708ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[27065876ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[27065877ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[27498743ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[27498770ms] [LOG] [Fast Refresh] done in 37ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[27536359ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[27536943ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[27536954ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[27536990ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[27536990ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29048463ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29048471ms] [LOG] [Fast Refresh] done in 107ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29072670ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29072677ms] [LOG] [Fast Refresh] done in 78ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29243073ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29243092ms] [LOG] [Fast Refresh] done in 77ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29378503ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29379094ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29379107ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29379141ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29379141ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29470144ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=vbR8pRD1gUgkB_g1yEtRj' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[29471421ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29471974ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29471985ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29472017ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[29472018ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30618032ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30618050ms] [LOG] [Fast Refresh] done in 93ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30637943ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30637962ms] [LOG] [Fast Refresh] done in 62ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30659048ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30659067ms] [LOG] [Fast Refresh] done in 48ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30681916ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30681935ms] [LOG] [Fast Refresh] done in 59ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30707446ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30708053ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30708066ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30708098ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[30708099ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[32338761ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[32339369ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[32339381ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[32339408ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[32339409ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[33197177ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[33197191ms] [LOG] [Fast Refresh] done in 82ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[33295049ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[33295076ms] [LOG] [Fast Refresh] done in 36ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[33664612ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[33667663ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[33670703ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[33673755ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[33676813ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[33683858ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[33690914ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[33697984ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[33705054ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[33712141ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[33719251ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[33726381ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=8MxHmgr6IE5AW9Wd9VSld' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299

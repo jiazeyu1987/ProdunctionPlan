@@ -105,23 +105,21 @@ def patch_order_pool_order(
     )
 
 
-@router.post("/order-pool/batch-dispatch", status_code=202)
+@router.post("/order-pool/batch-dispatch")
 def batch_dispatch_order_pool_orders(
     body: BatchDispatchCommandBody,
     connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
     current_user: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
-) -> AcceptedCommandResponse:
+) -> dict[str, Any]:
     assert connection is not None
-    return enqueue_command_job(
-        connection,
-        job_type="LEGACY_DISPATCH_COMMAND_BATCH",
-        target_type="ORDER",
-        target_key=f"BATCH:{body.command_type}",
-        request_id=body.request_id,
-        payload={
+    from ...services.app_service_provider import create_app_service
+
+    service = create_app_service(connection)
+    return service.batch_dispatch_commands(
+        {
             **body.model_dump(),
             "actor": build_actor_payload(current_user),
-        },
+        }
     )
 
 

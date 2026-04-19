@@ -1,0 +1,196 @@
+{
+  "schema_version": 2,
+  "task_id": "task-ee493d1e03-20260419T161427",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "固化删减边界与排产影响语义",
+      "status": "completed",
+      "objective": "明确上一轮哪些代码属于过度设计且必须删除，哪些局部 item 更新能力需要保留；同时明确锁单、解锁、升权、降权在普通排产和事实重排中的预期影响语义。",
+      "owned_paths": [
+        "`fronted/src/legacy/features/order-execution/ordersPoolRefreshSignal.js` `fronted/src/legacy/features/schedule-calendar/useScheduleCalendarController.js` `fronted/src/legacy/features/orders-pool/page/useOrdersPoolPageController.js` `backend/app/services/app_service.py` `backend/tests/*schedule*.py`"
+      ],
+      "dependencies": [
+        "当前订单池与排产页实现、现有排产测试、当前用户交互路径"
+      ],
+      "deliverables": [
+        "过度设计删减清单、保留清单、锁单/升权等影响排产的规则定义"
+      ],
+      "evidence_expectation": "",
+      "evidence": [
+        "execution-log.md#phase-p1"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T16:36:40",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "计划必须明确列出上一轮引入的哪些代码属于过度设计，并说明删除它们不会破坏订单池页内已有的局部 item 更新能力。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p1"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "计划必须明确锁单/解锁/升权/降权在普通排产和事实重排中的预期影响语义，不允许再使用“只是状态变化但不参与候选排序”的模糊定义。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p1"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P2",
+      "title": "删除过度设计并恢复最小局部刷新实现",
+      "status": "completed",
+      "objective": "删除跨页局部刷新信号机制及其附属结构，保证系统回到“订单池页内局部更新、跨页不做隐式同步”的更小设计面。",
+      "owned_paths": [
+        "`fronted/src/legacy/features/order-execution/ordersPoolRefreshSignal.js` `fronted/src/legacy/features/schedule-calendar/useScheduleCalendarController.js` `fronted/src/legacy/features/orders-pool/page/useOrdersPoolPageController.js` `backend/app/services/app_service.py`"
+      ],
+      "dependencies": [
+        "P1 已定义哪些代码必须删除、哪些必须保留"
+      ],
+      "deliverables": [
+        "删除后的前端代码、必要的后端返回字段收口、执行日志"
+      ],
+      "evidence_expectation": "",
+      "evidence": [
+        "execution-log.md#phase-p2"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T16:34:53",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "跨页订单池局部刷新信号机制及其附属代码被删除，不再通过 `localStorage`、自定义事件或挂载时读取信号来隐式刷新订单池。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p2"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "订单池页内对锁单、解锁、升权、降权、删除、保存预计开始时间的局部 item 更新能力仍然保留，不得因删减过度设计而退化回整表刷新。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p2"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P3",
+      "title": "让锁单/解锁/升权/降权真正影响排产结果",
+      "status": "completed",
+      "objective": "修改普通排产和事实重排，使锁单/冻结/优先级字段不再被排除在候选构造外，而是真正参与排序与结果生成。",
+      "owned_paths": [
+        "`backend/app/services/app_service.py` `backend/tests/test_app_service_generate_schedule_unlocked_only.py` `backend/tests/test_schedule_fact_replan.py` `backend/tests/test_app_service_batch_dispatch.py`"
+      ],
+      "dependencies": [
+        "P1 已定义业务语义；P2 已收掉不必要的跨页信号逻辑"
+      ],
+      "deliverables": [
+        "排产核心修复、后端回归测试、执行日志"
+      ],
+      "evidence_expectation": "",
+      "evidence": [
+        "execution-log.md#phase-p3"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T16:36:40",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "普通排产 `generate_schedule()` 中，锁单/冻结订单不再被简单跳过，而是参与排产并对结果排序产生实际影响。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p3"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "按事实重排 `generate_schedule_by_fact()` 中，锁单/冻结/优先级不再被抹平或跳过，而是对未来排产结果产生实际影响。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p3"
+          ]
+        },
+        {
+          "ac_id": "P3-AC3",
+          "text": "升权/降权修改 `priority_level` 后，至少有一组测试能够证明排产结果顺序随之变化。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p3"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P4",
+      "title": "验证删减后行为与排产结果影响",
+      "status": "completed",
+      "objective": "验证删除过度设计后没有留下死路径或残余耦合，并验证锁单/解锁/升权/降权确实能改变排产结果，而不是只改状态字段。",
+      "owned_paths": [
+        "`backend/tests/*schedule*.py` `doc/tasks/task-ee493d1e03-20260419T161427/*`"
+      ],
+      "dependencies": [
+        "P2、P3 完成"
+      ],
+      "deliverables": [
+        "测试报告、证据引用、最终结论"
+      ],
+      "evidence_expectation": "",
+      "evidence": [
+        "execution-log.md#phase-p4"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T16:35:41",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P4-AC1",
+          "text": "删除过度设计后，系统没有遗留跨页刷新相关死路径或残余依赖。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p4"
+          ]
+        },
+        {
+          "ac_id": "P4-AC2",
+          "text": "测试报告必须区分“删除了什么设计”与“恢复了什么排产影响”，并给出可复核证据。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p4"
+          ]
+        }
+      ]
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 1,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-19T16:14:27",
+  "updated_at": "2026-04-19T16:55:51",
+  "branch": "master",
+  "baseline_revision": "f127def8007c8204798831462d61ad08f0662b42",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-ee493d1e03-20260419T161427",
+  "goal": "删除上一轮为订单池局部刷新引入的过度设计，并确保锁单、解锁、升权、降权对排产结果有实际影响",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-ee493d1e03-20260419T161427\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-ee493d1e03-20260419T161427\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-ee493d1e03-20260419T161427\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-ee493d1e03-20260419T161427\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-ee493d1e03-20260419T161427\\test-report.md"
+  }
+}

@@ -104,7 +104,7 @@ class ScheduleFactReplanTestCase(unittest.TestCase):
         self.assertEqual(row["scheduled_start_date"], "2026-04-14")
         self.assertEqual(timeline["summary"]["reference_version_no"], "V-DRF-LEGACY-002")
 
-    def test_generate_schedule_by_fact_skips_locked_and_frozen_orders(self) -> None:
+    def test_generate_schedule_by_fact_prioritizes_locked_and_frozen_orders(self) -> None:
         self._seed_simulation_date("2026-04-13")
         self._seed_route_and_topology("MAT-FACT-A", "PROC-A", capacity_per_shift=10)
         self._seed_order("MO-FACT-OPEN-001", material_code="MAT-FACT-A")
@@ -138,15 +138,11 @@ class ScheduleFactReplanTestCase(unittest.TestCase):
 
         rows = self._list_tasks(str(generated["version_no"]))
         self.assertEqual(generated["capacity_source_mode"], "PLANNED")
-        self.assertEqual(str(rows[0]["production_order_no"]), "MO-FACT-OPEN-001")
-        self.assertEqual(str(rows[0]["calendar_date"]), "2026-04-13")
-        self.assertEqual(str(rows[0]["shift_code"]), "DAY")
-        future_rows = rows[1:]
-        self.assertGreater(len(future_rows), 0)
-        self.assertTrue(all(str(row["production_order_no"]) == "MO-FACT-OPEN-001" for row in future_rows))
-        self.assertTrue(all(str(row["shift_code"]) == "NIGHT" for row in future_rows[:1]))
-        self.assertFalse(any(str(row["production_order_no"]) == "MO-FACT-LOCK-001" for row in rows))
-        self.assertFalse(any(str(row["production_order_no"]) == "MO-FACT-FROZEN-001" for row in rows))
+        ordered_order_nos = [str(row["production_order_no"]) for row in rows]
+        self.assertEqual(
+            ordered_order_nos[1:4],
+            ["MO-FACT-FROZEN-001", "MO-FACT-LOCK-001", "MO-FACT-OPEN-001"],
+        )
 
     def test_generate_schedule_by_fact_accepts_actual_mode_without_base_version(self) -> None:
         self._seed_simulation_date("2026-04-13")
@@ -169,8 +165,35 @@ class ScheduleFactReplanTestCase(unittest.TestCase):
         rows = self._list_tasks(str(generated["version_no"]))
         self.assertEqual(generated["capacity_source_mode"], "ACTUAL")
         self.assertGreater(len(rows), 0)
-        self.assertEqual(str(rows[0]["calendar_date"]), "2026-04-13")
-        self.assertEqual(str(rows[0]["shift_code"]), "NIGHT")
+        self.assertEqual(str(rows[0]["calendar_date"]), "2026-04-14")
+        self.assertEqual(str(rows[0]["shift_code"]), "DAY")
+
+    def test_generate_schedule_by_fact_priority_level_changes_future_order_sequence(self) -> None:
+        self._seed_simulation_date("2026-04-13")
+        self._seed_route_and_topology("MAT-FACT-P", "PROC-A", capacity_per_shift=10)
+        self._seed_order("MO-FACT-PRI-HIGH", material_code="MAT-FACT-P")
+        self._seed_order("MO-FACT-PRI-NORMAL", material_code="MAT-FACT-P")
+        self.connection.execute(
+            "UPDATE order_pool_state SET priority_level = 1, urgent_flag = 1 WHERE production_order_no = ?",
+            ("MO-FACT-PRI-HIGH",),
+        )
+        self.connection.commit()
+        self._seed_work_report(
+            order_no="MO-FACT-PRI-HIGH",
+            process_code="PROC-A",
+            report_time="2026-04-13T09:00:00+08:00",
+        )
+
+        generated = self.service.generate_schedule_by_fact(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "PLANNED",
+                "use_order_state_window": True,
+            }
+        )
+
+        order_nos = [str(row["production_order_no"]) for row in self._list_tasks(str(generated["version_no"]))]
+        self.assertEqual(order_nos[:2], ["MO-FACT-PRI-HIGH", "MO-FACT-PRI-NORMAL"])
 
     def _seed_order(
         self,

@@ -26,7 +26,7 @@ class AppServiceGenerateScheduleUnlockedOnlyTestCase(unittest.TestCase):
         self.temp_dir.cleanup()
         super().tearDown()
 
-    def test_generate_schedule_skips_locked_orders(self) -> None:
+    def test_generate_schedule_prioritizes_locked_orders(self) -> None:
         self.connection.execute(
             """
             INSERT INTO simulation_state (
@@ -100,11 +100,10 @@ class AppServiceGenerateScheduleUnlockedOnlyTestCase(unittest.TestCase):
         )
 
         orders = [
-            ("MO-UNLOCK-001", "MAT-001", 5, 0),
-            ("MO-LOCK-001", "MAT-001", 10, 1),
-            ("MO-LOCK-MISSING", "MAT-NO-ROUTE", 5, 1),
+            ("MO-UNLOCK-001", "MAT-001", 10, 0, 5),
+            ("MO-LOCK-001", "MAT-001", 10, 1, 5),
         ]
-        for order_no, material_code, qty, lock_flag in orders:
+        for order_no, material_code, qty, lock_flag, priority_level in orders:
             self.connection.execute(
                 """
                 INSERT INTO production_orders (
@@ -162,7 +161,7 @@ class AppServiceGenerateScheduleUnlockedOnlyTestCase(unittest.TestCase):
                     "2026-04-13",
                     "2026-04-13T08:00:00+08:00",
                     "2026-04-20T18:00:00+08:00",
-                    5,
+                    priority_level,
                     0,
                     lock_flag,
                     0,
@@ -208,11 +207,369 @@ class AppServiceGenerateScheduleUnlockedOnlyTestCase(unittest.TestCase):
         ]
 
         self.assertTrue(any(row[0] == "MO-UNLOCK-001" for row in task_map))
-        self.assertFalse(any(row[0] == "MO-LOCK-001" for row in task_map))
-        self.assertFalse(any(row[0] == "MO-LOCK-MISSING" for row in task_map))
+        self.assertTrue(any(row[0] == "MO-LOCK-001" for row in task_map))
+        ordered_order_nos = [row[0] for row in task_map]
+        self.assertEqual(ordered_order_nos[:2], ["MO-LOCK-001", "MO-UNLOCK-001"])
 
-        unlock_task_dates = sorted({row[2] for row in task_map if row[0] == "MO-UNLOCK-001"})
-        self.assertEqual(unlock_task_dates[0], "2026-04-13")
+    def test_generate_schedule_priority_level_changes_order_sequence(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO simulation_state (
+                singleton_key,
+                current_date,
+                updated_at
+            ) VALUES (?, ?, ?)
+            ON CONFLICT(singleton_key) DO UPDATE SET
+                current_date = excluded.current_date,
+                updated_at = excluded.updated_at
+            """,
+            ("default", "2026-04-13", "2026-04-13T00:00:00+00:00"),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO masterdata_process_routes (
+                product_code,
+                sequence_no,
+                process_code,
+                process_name_cn,
+                dependency_type,
+                route_no,
+                route_name_cn,
+                product_name_cn,
+                is_final_process,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MAT-PRI",
+                1,
+                "PROC-A",
+                "工序A",
+                "FS",
+                "ROUTE-MAT-PRI",
+                "测试路线",
+                "测试物料",
+                1,
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO masterdata_line_topology (
+                company_code,
+                workshop_code,
+                workshop_name,
+                line_code,
+                line_name,
+                process_code,
+                capacity_per_shift,
+                required_workers,
+                required_machines,
+                enabled_flag,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "COMPANY-MAIN",
+                "WS-1",
+                "车间1",
+                "LINE-1",
+                "产线1",
+                "PROC-A",
+                10,
+                0,
+                0,
+                1,
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        for order_no, priority_level in [("MO-PRI-HIGH", 1), ("MO-PRI-NORMAL", 5)]:
+            self.connection.execute(
+                """
+                INSERT INTO production_orders (
+                    production_order_no,
+                    material_code,
+                    material_name,
+                    material_specification,
+                    production_qty,
+                    status,
+                    planned_start_date,
+                    planned_end_date,
+                    source_bill_no,
+                    material_list_no,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order_no,
+                    "MAT-PRI",
+                    "测试物料",
+                    "规格A",
+                    10,
+                    "OPEN",
+                    "2026-04-13",
+                    "2026-04-20",
+                    "SRC-001",
+                    "ML-001",
+                    "2026-04-13T00:00:00+00:00",
+                ),
+            )
+            self.connection.execute(
+                """
+                INSERT INTO order_pool_state (
+                    production_order_no,
+                    promised_due_date,
+                    expected_start_date,
+                    expected_start_time,
+                    expected_finish_time,
+                    priority_level,
+                    urgent_flag,
+                    lock_flag,
+                    frozen_flag,
+                    status,
+                    order_status,
+                    completed_qty,
+                    remaining_qty,
+                    progress_rate,
+                    production_batch_no,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order_no,
+                    "2026-04-20",
+                    "2026-04-13",
+                    "2026-04-13T08:00:00+08:00",
+                    "2026-04-20T18:00:00+08:00",
+                    priority_level,
+                    1 if priority_level == 1 else 0,
+                    0,
+                    0,
+                    "OPEN",
+                    "OPEN",
+                    0,
+                    10,
+                    0,
+                    "BATCH-001",
+                    "2026-04-13T00:00:00+00:00",
+                ),
+            )
+        self.connection.commit()
+
+        generated = self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+
+        order_nos = [
+            str(row["production_order_no"])
+            for row in self.connection.execute(
+                """
+                SELECT production_order_no
+                FROM schedule_tasks
+                WHERE version_no = ?
+                ORDER BY task_no ASC
+                """,
+                (generated["version_no"],),
+            ).fetchall()
+        ]
+        self.assertEqual(order_nos[:2], ["MO-PRI-HIGH", "MO-PRI-NORMAL"])
+
+    def test_generate_schedule_unlock_restores_normal_order_sequence(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO simulation_state (
+                singleton_key,
+                current_date,
+                updated_at
+            ) VALUES (?, ?, ?)
+            ON CONFLICT(singleton_key) DO UPDATE SET
+                current_date = excluded.current_date,
+                updated_at = excluded.updated_at
+            """,
+            ("default", "2026-04-13", "2026-04-13T00:00:00+00:00"),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO masterdata_process_routes (
+                product_code,
+                sequence_no,
+                process_code,
+                process_name_cn,
+                dependency_type,
+                route_no,
+                route_name_cn,
+                product_name_cn,
+                is_final_process,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "MAT-LOCK",
+                1,
+                "PROC-A",
+                "工序A",
+                "FS",
+                "ROUTE-MAT-LOCK",
+                "测试路线",
+                "测试物料",
+                1,
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        self.connection.execute(
+            """
+            INSERT INTO masterdata_line_topology (
+                company_code,
+                workshop_code,
+                workshop_name,
+                line_code,
+                line_name,
+                process_code,
+                capacity_per_shift,
+                required_workers,
+                required_machines,
+                enabled_flag,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "COMPANY-MAIN",
+                "WS-1",
+                "车间1",
+                "LINE-1",
+                "产线1",
+                "PROC-A",
+                10,
+                0,
+                0,
+                1,
+                "2026-04-13T00:00:00+00:00",
+            ),
+        )
+        for order_no, lock_flag, priority_level in [("MO-A-OPEN", 0, 1), ("MO-B-LOCK", 1, 5)]:
+            self.connection.execute(
+                """
+                INSERT INTO production_orders (
+                    production_order_no,
+                    material_code,
+                    material_name,
+                    material_specification,
+                    production_qty,
+                    status,
+                    planned_start_date,
+                    planned_end_date,
+                    source_bill_no,
+                    material_list_no,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order_no,
+                    "MAT-LOCK",
+                    "测试物料",
+                    "规格A",
+                    10,
+                    "OPEN",
+                    "2026-04-13",
+                    "2026-04-20",
+                    "SRC-001",
+                    "ML-001",
+                    "2026-04-13T00:00:00+00:00",
+                ),
+            )
+            self.connection.execute(
+                """
+                INSERT INTO order_pool_state (
+                    production_order_no,
+                    promised_due_date,
+                    expected_start_date,
+                    expected_start_time,
+                    expected_finish_time,
+                    priority_level,
+                    urgent_flag,
+                    lock_flag,
+                    frozen_flag,
+                    status,
+                    order_status,
+                    completed_qty,
+                    remaining_qty,
+                    progress_rate,
+                    production_batch_no,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    order_no,
+                    "2026-04-20",
+                    "2026-04-13",
+                    "2026-04-13T08:00:00+08:00",
+                    "2026-04-20T18:00:00+08:00",
+                    priority_level,
+                    1 if priority_level == 1 else 0,
+                    lock_flag,
+                    0,
+                    "OPEN",
+                    "OPEN",
+                    0,
+                    10,
+                    0,
+                    "BATCH-001",
+                    "2026-04-13T00:00:00+00:00",
+                ),
+            )
+        self.connection.commit()
+
+        generated = self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+        locked_order_nos = [
+            str(row["production_order_no"])
+            for row in self.connection.execute(
+                """
+                SELECT production_order_no
+                FROM schedule_tasks
+                WHERE version_no = ?
+                ORDER BY task_no ASC
+                """,
+                (generated["version_no"],),
+            ).fetchall()
+        ]
+        self.assertEqual(locked_order_nos[:2], ["MO-B-LOCK", "MO-A-OPEN"])
+
+        self.connection.execute(
+            "UPDATE order_pool_state SET lock_flag = 0 WHERE production_order_no = ?",
+            ("MO-B-LOCK",),
+        )
+        self.connection.commit()
+
+        generated_after_unlock = self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+        unlocked_order_nos = [
+            str(row["production_order_no"])
+            for row in self.connection.execute(
+                """
+                SELECT production_order_no
+                FROM schedule_tasks
+                WHERE version_no = ?
+                ORDER BY task_no ASC
+                """,
+                (generated_after_unlock["version_no"],),
+            ).fetchall()
+        ]
+        self.assertEqual(unlocked_order_nos[:2], ["MO-A-OPEN", "MO-B-LOCK"])
 
     def test_generate_schedule_clamps_open_order_start_to_simulation_current_day(self) -> None:
         self.service.factory.build_inventory_refresh_service = lambda: type(  # type: ignore[method-assign]

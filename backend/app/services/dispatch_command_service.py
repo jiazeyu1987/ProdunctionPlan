@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+from time import perf_counter
 from typing import Any
 
 from ..db import fetch_one, transaction, utc_now
@@ -20,6 +22,9 @@ def _normalize_priority_level(value: object, default: int = 5) -> int:
     except (TypeError, ValueError):
         return default
     return max(1, min(5, level))
+
+
+logger = logging.getLogger("uvicorn.error")
 
 
 class DispatchCommandService:
@@ -75,15 +80,31 @@ class DispatchCommandService:
         return {"ok": True}
 
     def batch_dispatch_commands(self, payload: dict[str, Any]) -> dict[str, Any]:
+        started_at = perf_counter()
         command_type = str(payload.get("command_type") or "").strip().upper()
-        if command_type not in {"LOCK", "UNLOCK", "PRIORITY_UP", "PRIORITY_DOWN"}:
+        logger.info(
+            "[dispatch][batch] start command_type=%s order_nos=%s",
+            command_type,
+            payload.get("order_nos"),
+        )
+        if command_type not in {"LOCK", "UNLOCK", "FREEZE", "UNFREEZE", "PRIORITY_UP", "PRIORITY_DOWN"}:
             raise bad_request(
                 code="ORDER_BATCH_DISPATCH_COMMAND_INVALID",
-                message="command_type must be LOCK, UNLOCK, PRIORITY_UP or PRIORITY_DOWN.",
+                message=(
+                    "command_type must be LOCK, UNLOCK, FREEZE, UNFREEZE, "
+                    "PRIORITY_UP or PRIORITY_DOWN."
+                ),
                 details={"command_type": command_type or None},
             )
 
         order_nos = self._normalize_batch_dispatch_order_nos(payload.get("order_nos"))
+        normalized_done_at = perf_counter()
+        logger.info(
+            "[dispatch][batch] normalized command_type=%s count=%s duration_ms=%.3f",
+            command_type,
+            len(order_nos),
+            (normalized_done_at - started_at) * 1000,
+        )
         if len(order_nos) == 0:
             raise bad_request(
                 code="ORDER_BATCH_DISPATCH_EMPTY",
@@ -91,6 +112,12 @@ class DispatchCommandService:
             )
 
         order_rows_by_no = self.host._get_order_rows_by_nos(order_nos)
+        order_rows_done_at = perf_counter()
+        logger.info(
+            "[dispatch][batch] loaded-order-rows command_type=%s duration_ms=%.3f",
+            command_type,
+            (order_rows_done_at - normalized_done_at) * 1000,
+        )
         missing_order_nos = [order_no for order_no in order_nos if order_no not in order_rows_by_no]
         if len(missing_order_nos) > 0:
             raise not_found(
@@ -100,22 +127,34 @@ class DispatchCommandService:
             )
 
         state_rows_by_no = self.host._get_order_state_map(order_nos)
+        state_rows_done_at = perf_counter()
+        logger.info(
+            "[dispatch][batch] loaded-state-rows command_type=%s duration_ms=%.3f",
+            command_type,
+            (state_rows_done_at - order_rows_done_at) * 1000,
+        )
         completed_order_nos: list[str] = []
         frozen_order_nos: list[str] = []
         invalid_lock_state_order_nos: list[str] = []
+        invalid_frozen_state_order_nos: list[str] = []
         invalid_priority_state_order_nos: list[str] = []
         for order_no in order_nos:
             order_row = order_rows_by_no[order_no]
             state_row = state_rows_by_no.get(order_no)
             if self._is_order_completed_for_dispatch(order_row, state_row):
                 completed_order_nos.append(order_no)
-            if int(_to_number((state_row or {}).get("frozen_flag"), 0)) == 1:
+            is_frozen = int(_to_number((state_row or {}).get("frozen_flag"), 0)) == 1
+            if is_frozen:
                 frozen_order_nos.append(order_no)
             is_locked = int(_to_number((state_row or {}).get("lock_flag"), 0)) == 1
             if command_type == "LOCK" and is_locked:
                 invalid_lock_state_order_nos.append(order_no)
             if command_type == "UNLOCK" and not is_locked:
                 invalid_lock_state_order_nos.append(order_no)
+            if command_type == "FREEZE" and is_frozen:
+                invalid_frozen_state_order_nos.append(order_no)
+            if command_type == "UNFREEZE" and not is_frozen:
+                invalid_frozen_state_order_nos.append(order_no)
             if (
                 command_type == "PRIORITY_UP"
                 and _normalize_priority_level((state_row or {}).get("priority_level"), 5)
@@ -129,13 +168,20 @@ class DispatchCommandService:
             ):
                 invalid_priority_state_order_nos.append(order_no)
 
+        validation_done_at = perf_counter()
+        logger.info(
+            "[dispatch][batch] validated command_type=%s duration_ms=%.3f",
+            command_type,
+            (validation_done_at - state_rows_done_at) * 1000,
+        )
+
         if len(completed_order_nos) > 0:
             raise bad_request(
                 code="ORDER_BATCH_DISPATCH_COMPLETED",
                 message="Completed orders cannot be batch dispatched.",
                 details={"order_nos": completed_order_nos, "command_type": command_type},
             )
-        if len(frozen_order_nos) > 0:
+        if command_type in {"LOCK", "UNLOCK", "PRIORITY_UP", "PRIORITY_DOWN"} and len(frozen_order_nos) > 0:
             raise bad_request(
                 code="ORDER_BATCH_DISPATCH_FROZEN",
                 message="Frozen orders cannot be batch dispatched.",
@@ -150,6 +196,16 @@ class DispatchCommandService:
                     else "Selected orders are not locked."
                 ),
                 details={"order_nos": invalid_lock_state_order_nos, "command_type": command_type},
+            )
+        if len(invalid_frozen_state_order_nos) > 0:
+            raise bad_request(
+                code="ORDER_BATCH_DISPATCH_FROZEN_STATE_INVALID",
+                message=(
+                    "Selected orders are already frozen."
+                    if command_type == "FREEZE"
+                    else "Selected orders are not frozen."
+                ),
+                details={"order_nos": invalid_frozen_state_order_nos, "command_type": command_type},
             )
         if len(invalid_priority_state_order_nos) > 0:
             raise bad_request(
@@ -168,6 +224,10 @@ class DispatchCommandService:
             if command_type == "LOCK"
             else "Batch unlock production orders"
             if command_type == "UNLOCK"
+            else "Batch freeze production orders"
+            if command_type == "FREEZE"
+            else "Batch unfreeze production orders"
+            if command_type == "UNFREEZE"
             else "Batch priority-up production orders"
             if command_type == "PRIORITY_UP"
             else "Batch priority-down production orders"
@@ -200,6 +260,14 @@ class DispatchCommandService:
                     },
                 )
                 command_ids.append(command_id)
+        committed_at = perf_counter()
+        logger.info(
+            "[dispatch][batch] committed command_type=%s count=%s duration_ms=%.3f total_ms=%.3f",
+            command_type,
+            len(order_nos),
+            (committed_at - validation_done_at) * 1000,
+            (committed_at - started_at) * 1000,
+        )
         return {
             "command_ids": command_ids,
             "command_type": command_type,
@@ -368,6 +436,10 @@ class DispatchCommandService:
             next_row["lock_flag"] = 1
         elif normalized == "UNLOCK":
             next_row["lock_flag"] = 0
+        elif normalized == "FREEZE":
+            next_row["frozen_flag"] = 1
+        elif normalized == "UNFREEZE":
+            next_row["frozen_flag"] = 0
         elif normalized == "PRIORITY_UP":
             next_row["priority_level"] = max(1, next_row["priority_level"] - 1)
             next_row["urgent_flag"] = 1 if next_row["priority_level"] == 1 else 0

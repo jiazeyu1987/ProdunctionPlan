@@ -63,6 +63,34 @@ class AppServiceBatchDispatchTestCase(unittest.TestCase):
         self.assertEqual(self._lock_flags(), [("MO-LOCK-001", 0), ("MO-LOCK-002", 0)])
         self.assertEqual(len(self._dispatch_command_rows()), 4)
 
+    def test_batch_freeze_and_unfreeze_updates_state_and_audit_records(self) -> None:
+        self._seed_order("MO-FREEZE-001")
+        self._seed_order("MO-FREEZE-002")
+
+        freeze_result = self.service.batch_dispatch_commands(
+            {
+                "order_nos": ["MO-FREEZE-001", "MO-FREEZE-002"],
+                "command_type": "FREEZE",
+                "actor": {"username": "scheduler_e2e"},
+            }
+        )
+
+        self.assertEqual(freeze_result["command_type"], "FREEZE")
+        self.assertEqual(freeze_result["count"], 2)
+        self.assertEqual(self._frozen_flags(), [("MO-FREEZE-001", 1), ("MO-FREEZE-002", 1)])
+
+        unfreeze_result = self.service.batch_dispatch_commands(
+            {
+                "order_nos": ["MO-FREEZE-001", "MO-FREEZE-002"],
+                "command_type": "UNFREEZE",
+                "actor": {"username": "scheduler_e2e"},
+            }
+        )
+
+        self.assertEqual(unfreeze_result["command_type"], "UNFREEZE")
+        self.assertEqual(unfreeze_result["count"], 2)
+        self.assertEqual(self._frozen_flags(), [("MO-FREEZE-001", 0), ("MO-FREEZE-002", 0)])
+
     def test_batch_lock_fails_when_selected_orders_have_mixed_lock_state(self) -> None:
         self._seed_order("MO-MIX-001")
         self._seed_order("MO-MIX-002", lock_flag=1)
@@ -118,6 +146,40 @@ class AppServiceBatchDispatchTestCase(unittest.TestCase):
 
         self.assertEqual(cm.exception.code, "ORDER_BATCH_DISPATCH_FROZEN")
         self.assertEqual(self._lock_flags(), [("MO-FROZEN-001", 0), ("MO-FROZEN-002", 0)])
+        self.assertEqual(self._count_rows("dispatch_commands"), 0)
+
+    def test_batch_freeze_fails_when_selected_orders_have_mixed_frozen_state(self) -> None:
+        self._seed_order("MO-FREEZE-MIX-001")
+        self._seed_order("MO-FREEZE-MIX-002", frozen_flag=1)
+
+        with self.assertRaises(AppError) as cm:
+            self.service.batch_dispatch_commands(
+                {
+                    "order_nos": ["MO-FREEZE-MIX-001", "MO-FREEZE-MIX-002"],
+                    "command_type": "FREEZE",
+                    "actor": {"username": "scheduler_e2e"},
+                }
+            )
+
+        self.assertEqual(cm.exception.code, "ORDER_BATCH_DISPATCH_FROZEN_STATE_INVALID")
+        self.assertEqual(self._frozen_flags(), [("MO-FREEZE-MIX-001", 0), ("MO-FREEZE-MIX-002", 1)])
+        self.assertEqual(self._count_rows("dispatch_commands"), 0)
+
+    def test_batch_unfreeze_fails_when_selected_orders_are_not_frozen(self) -> None:
+        self._seed_order("MO-UNFREEZE-001")
+        self._seed_order("MO-UNFREEZE-002", frozen_flag=1)
+
+        with self.assertRaises(AppError) as cm:
+            self.service.batch_dispatch_commands(
+                {
+                    "order_nos": ["MO-UNFREEZE-001", "MO-UNFREEZE-002"],
+                    "command_type": "UNFREEZE",
+                    "actor": {"username": "scheduler_e2e"},
+                }
+            )
+
+        self.assertEqual(cm.exception.code, "ORDER_BATCH_DISPATCH_FROZEN_STATE_INVALID")
+        self.assertEqual(self._frozen_flags(), [("MO-UNFREEZE-001", 0), ("MO-UNFREEZE-002", 1)])
         self.assertEqual(self._count_rows("dispatch_commands"), 0)
 
     def test_batch_priority_up_updates_priority_levels(self) -> None:
@@ -293,6 +355,16 @@ class AppServiceBatchDispatchTestCase(unittest.TestCase):
         rows = self.connection.execute(
             """
             SELECT production_order_no, lock_flag
+            FROM order_pool_state
+            ORDER BY production_order_no
+            """
+        ).fetchall()
+        return [(str(row[0]), int(row[1])) for row in rows]
+
+    def _frozen_flags(self) -> list[tuple[str, int]]:
+        rows = self.connection.execute(
+            """
+            SELECT production_order_no, frozen_flag
             FROM order_pool_state
             ORDER BY production_order_no
             """
