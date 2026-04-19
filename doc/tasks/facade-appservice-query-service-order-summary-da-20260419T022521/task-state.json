@@ -1,0 +1,137 @@
+{
+  "schema_version": 2,
+  "task_id": "facade-appservice-query-service-order-summary-da-20260419T022521",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "下沉 schedules 查询实现",
+      "status": "completed",
+      "objective": "将 schedules 相关公开查询从 AppService 内部实现改为独立 query service 承接。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "代码 diff、execution-log.md#Phase-P1",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "schedules facade/provider 依赖 SchedulesQueryService，不再直接依赖 AppService 的 schedules 公开方法实现。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "AppService 的 schedules 三个公开方法改为委托到 SchedulesQueryService。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T02:27:30"
+    },
+    {
+      "phase_id": "P2",
+      "title": "为 order-summary/dashboard 建立内部 service 骨架",
+      "status": "completed",
+      "objective": "让 order-summary 与 dashboard facade 下方依赖显式 service 层，为后续更深下沉做准备。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "代码 diff、execution-log.md#Phase-P2",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "order-summary 与 dashboard facade 下方都有显式 query service 层。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "facade/provider 层与测试完成同步，说明依赖结构已从 facade -> AppService 变为 facade -> service。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P2"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T02:27:30"
+    },
+    {
+      "phase_id": "P3",
+      "title": "定向测试与工件闭环",
+      "status": "completed",
+      "objective": "用定向 pytest 验证 service 层改造没有打断 facade/provider 与 route delegation，并补齐工件。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "pytest 输出、test-report.md#T1、test-report.md#T2、test-report.md#T3",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "定向 pytest 证明 schedules/order-summary/dashboard 的 facade/provider 与 route delegation 仍可用。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "validate_test_report.py 与 check_completion.py --apply 通过。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P3"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T02:30:30"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 1,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-19T02:25:21",
+  "updated_at": "2026-04-19T02:45:31",
+  "branch": "master",
+  "baseline_revision": "85c66725c3c28e23453fcc74b7745fd30103c86a",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-appservice-query-service-order-summary-da-20260419T022521",
+  "goal": "继续模块化重构：将 facade 之下的查询实现从 AppService 内部下沉到独立 query service，优先处理 order-summary 与 dashboard 查询域，降低单体内部耦合",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-appservice-query-service-order-summary-da-20260419T022521\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-appservice-query-service-order-summary-da-20260419T022521\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-appservice-query-service-order-summary-da-20260419T022521\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-appservice-query-service-order-summary-da-20260419T022521\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-appservice-query-service-order-summary-da-20260419T022521\\test-report.md"
+  }
+}

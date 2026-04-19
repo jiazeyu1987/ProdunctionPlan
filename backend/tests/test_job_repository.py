@@ -56,7 +56,7 @@ class JobRepositoryTestCase(unittest.TestCase):
 
             repository.mark_failed(
                 str(job["job_id"]),
-                "SCHEDULE_FIXED_ORDER_MISSING_FROM_BASE",
+                "SCHEDULE_GENERATE_FAILED",
                 "存在锁定或冻结订单未出现在基准版本中，已禁止继续重排。",
                 {"order_nos": ["MO-LOCK-001", "MO-LOCK-002"]},
             )

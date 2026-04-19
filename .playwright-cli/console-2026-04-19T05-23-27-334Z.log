@@ -1,0 +1,613 @@
+[     112ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[     169ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[     307ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[     307ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  369151ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  369730ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  369741ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  369773ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  369774ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  632279ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  632861ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  632870ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  632897ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  632897ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  632985ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  632986ms] [LOG] [Fast Refresh] done in 107ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  857895ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=kLnhLAeR6eRGaW0zv418r' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[  860948ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=kLnhLAeR6eRGaW0zv418r' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[  869763ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  870623ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  870635ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  870668ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[  870669ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1302938ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=wvqTj0DpYLz7_4fhFc9m-' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[ 1304394ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1304953ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1304962ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1304989ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1304990ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1972482ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 1972511ms] [LOG] [Fast Refresh] done in 80ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2009657ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2009831ms] [ERROR] ./src/legacy/features/orders-pool/index.js:36:1
+Module not found: Can't resolve './commandActions'
+  34 | } from "./selectors";
+  35 |
+> 36 | export {
+     | ^^^^^^^
+> 37 |   applyOrdersSyncFromErpAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 38 |   batchOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 39 |   createOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |   previewOrdersSyncFromErpAction,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 41 |   saveExpectedStartAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 42 | } from "./commandActions";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  43 |
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/index.js [Client Component Browser]
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[ 2009906ms] [ERROR] ./src/legacy/features/orders-pool/index.js:36:1
+Module not found: Can't resolve './commandActions'
+  34 | } from "./selectors";
+  35 |
+> 36 | export {
+     | ^^^^^^^
+> 37 |   applyOrdersSyncFromErpAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 38 |   batchOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 39 |   createOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |   previewOrdersSyncFromErpAction,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 41 |   saveExpectedStartAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 42 | } from "./commandActions";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  43 |
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/index.js [Client Component Browser]
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[ 2009982ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2025925ms] [ERROR] ./src/legacy/features/orders-pool/index.js:36:1
+Export batchOrderCommandAndRefresh doesn't exist in target module
+  34 | } from "./selectors";
+  35 |
+> 36 | export {
+     | ^^^^^^^
+> 37 |   applyOrdersSyncFromErpAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 38 |   batchOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 39 |   createOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |   previewOrdersSyncFromErpAction,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 41 |   saveExpectedStartAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 42 | } from "./commandActions";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  43 |
+
+The export batchOrderCommandAndRefresh was not found in module [project]/src/legacy/features/orders-pool/commandActions.js [app-client] (ecmascript).
+Did you mean to import batchOrderCommand?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/index.js [Client Component Browser]
+    ./src/legacy/features/orders-pool/page/OrdersPoolOrdersTable.jsx [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component] @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[ 2025925ms] [ERROR] ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js:10:82
+Export batchOrderCommandAndRefresh doesn't exist in target module
+   8 |   listOrderPoolMaterials,
+   9 | } from "../../order-execution";
+> 10 | import { fetchOrdersPoolSnapshot } from "../../order-execution/ordersPoolService";
+     |                                                                                  ^
+> 11 | import {
+     | ^^^^^^^^
+> 12 |   buildOrderRiskSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 13 |   applyOrdersSyncFromErpAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 14 |   batchOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 15 |   buildFinishedSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 16 |   buildOrdersPoolFilterOptions,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |   buildMaterialTreeRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 |   buildSelectedOrderReportings,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 19 |   collapseExpandedMaterialNodeKeys,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 20 |   createOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 21 |   filterOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 22 |   findSelectedOrderByOrderNoFilter,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 23 |   hasOwn,
+     | ^^^^^^^^^
+> 24 |   isInProgressStatus,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 25 |   isOrderCompleted,
+     | ^^^^^^^^^^^^^^^^^^^
+> 26 |   normalizeMaterialCode,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 27 |   normalizeProcessContexts,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 28 |   previewOrdersSyncFromErpAction,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 29 |   resolveShortageFilterValue,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 30 |   saveExpectedStartAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 31 |   sortOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 32 | } from "..";
+     | ^^^^^^^^^
+  33 |
+  34 | const ORDERS_POOL_FILTERS_STORAGE_KEY = "orders-pool-filters";
+  35 | const ORDER_STATUS_FILTER_SET = new Set(["OPEN", "IN_PROGRESS", "DONE", "DELAY"]);
+
+The export batchOrderCommandAndRefresh was not found in module [project]/src/legacy/features/orders-pool/commandActions.js [app-client] (ecmascript).
+Did you mean to import batchOrderCommand?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component] @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[ 2025926ms] [ERROR] ./src/legacy/features/orders-pool/index.js:36:1
+Export createOrderCommandAndRefresh doesn't exist in target module
+  34 | } from "./selectors";
+  35 |
+> 36 | export {
+     | ^^^^^^^
+> 37 |   applyOrdersSyncFromErpAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 38 |   batchOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 39 |   createOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |   previewOrdersSyncFromErpAction,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 41 |   saveExpectedStartAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 42 | } from "./commandActions";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  43 |
+
+The export createOrderCommandAndRefresh was not found in module [project]/src/legacy/features/orders-pool/commandActions.js [app-client] (ecmascript).
+Did you mean to import createOrderCommand?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/index.js [Client Component Browser]
+    ./src/legacy/features/orders-pool/page/OrdersPoolOrdersTable.jsx [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component] @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[ 2025926ms] [ERROR] ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js:10:82
+Export createOrderCommandAndRefresh doesn't exist in target module
+   8 |   listOrderPoolMaterials,
+   9 | } from "../../order-execution";
+> 10 | import { fetchOrdersPoolSnapshot } from "../../order-execution/ordersPoolService";
+     |                                                                                  ^
+> 11 | import {
+     | ^^^^^^^^
+> 12 |   buildOrderRiskSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 13 |   applyOrdersSyncFromErpAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 14 |   batchOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 15 |   buildFinishedSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 16 |   buildOrdersPoolFilterOptions,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |   buildMaterialTreeRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 |   buildSelectedOrderReportings,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 19 |   collapseExpandedMaterialNodeKeys,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 20 |   createOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 21 |   filterOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 22 |   findSelectedOrderByOrderNoFilter,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 23 |   hasOwn,
+     | ^^^^^^^^^
+> 24 |   isInProgressStatus,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 25 |   isOrderCompleted,
+     | ^^^^^^^^^^^^^^^^^^^
+> 26 |   normalizeMaterialCode,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 27 |   normalizeProcessContexts,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 28 |   previewOrdersSyncFromErpAction,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 29 |   resolveShortageFilterValue,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 30 |   saveExpectedStartAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 31 |   sortOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 32 | } from "..";
+     | ^^^^^^^^^
+  33 |
+  34 | const ORDERS_POOL_FILTERS_STORAGE_KEY = "orders-pool-filters";
+  35 | const ORDER_STATUS_FILTER_SET = new Set(["OPEN", "IN_PROGRESS", "DONE", "DELAY"]);
+
+The export createOrderCommandAndRefresh was not found in module [project]/src/legacy/features/orders-pool/commandActions.js [app-client] (ecmascript).
+Did you mean to import createOrderCommand?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component] @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[ 2025926ms] [ERROR] ./src/legacy/features/orders-pool/index.js:36:1
+Export saveExpectedStartAndRefresh doesn't exist in target module
+  34 | } from "./selectors";
+  35 |
+> 36 | export {
+     | ^^^^^^^
+> 37 |   applyOrdersSyncFromErpAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 38 |   batchOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 39 |   createOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 40 |   previewOrdersSyncFromErpAction,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 41 |   saveExpectedStartAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 42 | } from "./commandActions";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  43 |
+
+The export saveExpectedStartAndRefresh was not found in module [project]/src/legacy/features/orders-pool/commandActions.js [app-client] (ecmascript).
+Did you mean to import saveExpectedStart?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/index.js [Client Component Browser]
+    ./src/legacy/features/orders-pool/page/OrdersPoolOrdersTable.jsx [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component] @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[ 2025927ms] [ERROR] ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js:10:82
+Export saveExpectedStartAndRefresh doesn't exist in target module
+   8 |   listOrderPoolMaterials,
+   9 | } from "../../order-execution";
+> 10 | import { fetchOrdersPoolSnapshot } from "../../order-execution/ordersPoolService";
+     |                                                                                  ^
+> 11 | import {
+     | ^^^^^^^^
+> 12 |   buildOrderRiskSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 13 |   applyOrdersSyncFromErpAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 14 |   batchOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 15 |   buildFinishedSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 16 |   buildOrdersPoolFilterOptions,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |   buildMaterialTreeRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 |   buildSelectedOrderReportings,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 19 |   collapseExpandedMaterialNodeKeys,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 20 |   createOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 21 |   filterOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 22 |   findSelectedOrderByOrderNoFilter,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 23 |   hasOwn,
+     | ^^^^^^^^^
+> 24 |   isInProgressStatus,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 25 |   isOrderCompleted,
+     | ^^^^^^^^^^^^^^^^^^^
+> 26 |   normalizeMaterialCode,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 27 |   normalizeProcessContexts,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 28 |   previewOrdersSyncFromErpAction,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 29 |   resolveShortageFilterValue,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 30 |   saveExpectedStartAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 31 |   sortOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 32 | } from "..";
+     | ^^^^^^^^^
+  33 |
+  34 | const ORDERS_POOL_FILTERS_STORAGE_KEY = "orders-pool-filters";
+  35 | const ORDER_STATUS_FILTER_SET = new Set(["OPEN", "IN_PROGRESS", "DONE", "DELAY"]);
+
+The export saveExpectedStartAndRefresh was not found in module [project]/src/legacy/features/orders-pool/commandActions.js [app-client] (ecmascript).
+Did you mean to import saveExpectedStart?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component] @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[ 2025933ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2034873ms] [ERROR] ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js:10:82
+Export batchOrderCommandAndRefresh doesn't exist in target module
+   8 |   listOrderPoolMaterials,
+   9 | } from "../../order-execution";
+> 10 | import { fetchOrdersPoolSnapshot } from "../../order-execution/ordersPoolService";
+     |                                                                                  ^
+> 11 | import {
+     | ^^^^^^^^
+> 12 |   buildOrderRiskSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 13 |   applyOrdersSyncFromErpAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 14 |   batchOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 15 |   buildFinishedSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 16 |   buildOrdersPoolFilterOptions,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |   buildMaterialTreeRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 |   buildSelectedOrderReportings,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 19 |   collapseExpandedMaterialNodeKeys,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 20 |   createOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 21 |   filterOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 22 |   findSelectedOrderByOrderNoFilter,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 23 |   hasOwn,
+     | ^^^^^^^^^
+> 24 |   isInProgressStatus,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 25 |   isOrderCompleted,
+     | ^^^^^^^^^^^^^^^^^^^
+> 26 |   normalizeMaterialCode,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 27 |   normalizeProcessContexts,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 28 |   previewOrdersSyncFromErpAction,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 29 |   resolveShortageFilterValue,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 30 |   saveExpectedStartAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 31 |   sortOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 32 | } from "..";
+     | ^^^^^^^^^
+  33 |
+  34 | const ORDERS_POOL_FILTERS_STORAGE_KEY = "orders-pool-filters";
+  35 | const ORDER_STATUS_FILTER_SET = new Set(["OPEN", "IN_PROGRESS", "DONE", "DELAY"]);
+
+The export batchOrderCommandAndRefresh was not found in module [project]/src/legacy/features/orders-pool/index.js [app-client] (ecmascript).
+Did you mean to import batchOrderCommand?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component] @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[ 2034874ms] [ERROR] ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js:10:82
+Export createOrderCommandAndRefresh doesn't exist in target module
+   8 |   listOrderPoolMaterials,
+   9 | } from "../../order-execution";
+> 10 | import { fetchOrdersPoolSnapshot } from "../../order-execution/ordersPoolService";
+     |                                                                                  ^
+> 11 | import {
+     | ^^^^^^^^
+> 12 |   buildOrderRiskSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 13 |   applyOrdersSyncFromErpAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 14 |   batchOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 15 |   buildFinishedSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 16 |   buildOrdersPoolFilterOptions,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |   buildMaterialTreeRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 |   buildSelectedOrderReportings,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 19 |   collapseExpandedMaterialNodeKeys,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 20 |   createOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 21 |   filterOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 22 |   findSelectedOrderByOrderNoFilter,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 23 |   hasOwn,
+     | ^^^^^^^^^
+> 24 |   isInProgressStatus,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 25 |   isOrderCompleted,
+     | ^^^^^^^^^^^^^^^^^^^
+> 26 |   normalizeMaterialCode,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 27 |   normalizeProcessContexts,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 28 |   previewOrdersSyncFromErpAction,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 29 |   resolveShortageFilterValue,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 30 |   saveExpectedStartAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 31 |   sortOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 32 | } from "..";
+     | ^^^^^^^^^
+  33 |
+  34 | const ORDERS_POOL_FILTERS_STORAGE_KEY = "orders-pool-filters";
+  35 | const ORDER_STATUS_FILTER_SET = new Set(["OPEN", "IN_PROGRESS", "DONE", "DELAY"]);
+
+The export createOrderCommandAndRefresh was not found in module [project]/src/legacy/features/orders-pool/index.js [app-client] (ecmascript).
+Did you mean to import createOrderCommand?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component] @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[ 2034874ms] [ERROR] ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js:10:82
+Export saveExpectedStartAndRefresh doesn't exist in target module
+   8 |   listOrderPoolMaterials,
+   9 | } from "../../order-execution";
+> 10 | import { fetchOrdersPoolSnapshot } from "../../order-execution/ordersPoolService";
+     |                                                                                  ^
+> 11 | import {
+     | ^^^^^^^^
+> 12 |   buildOrderRiskSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 13 |   applyOrdersSyncFromErpAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 14 |   batchOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 15 |   buildFinishedSummary,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 16 |   buildOrdersPoolFilterOptions,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 17 |   buildMaterialTreeRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 18 |   buildSelectedOrderReportings,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 19 |   collapseExpandedMaterialNodeKeys,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 20 |   createOrderCommandAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 21 |   filterOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^^^
+> 22 |   findSelectedOrderByOrderNoFilter,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 23 |   hasOwn,
+     | ^^^^^^^^^
+> 24 |   isInProgressStatus,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 25 |   isOrderCompleted,
+     | ^^^^^^^^^^^^^^^^^^^
+> 26 |   normalizeMaterialCode,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^
+> 27 |   normalizeProcessContexts,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 28 |   previewOrdersSyncFromErpAction,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 29 |   resolveShortageFilterValue,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 30 |   saveExpectedStartAndRefresh,
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 31 |   sortOrdersPoolRows,
+     | ^^^^^^^^^^^^^^^^^^^^^
+> 32 | } from "..";
+     | ^^^^^^^^^
+  33 |
+  34 | const ORDERS_POOL_FILTERS_STORAGE_KEY = "orders-pool-filters";
+  35 | const ORDER_STATUS_FILTER_SET = new Set(["OPEN", "IN_PROGRESS", "DONE", "DELAY"]);
+
+The export saveExpectedStartAndRefresh was not found in module [project]/src/legacy/features/orders-pool/index.js [app-client] (ecmascript).
+Did you mean to import saveExpectedStart?
+All exports of the module are statically known (It doesn't have dynamic exports). So it's known statically that the requested export doesn't exist.
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/features/orders-pool/page/useOrdersPoolPageController.js [Client Component Browser]
+    ./src/legacy/pages/OrdersPoolPage.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component] @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[ 2034902ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2085572ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2085646ms] [LOG] [Fast Refresh] done in 104ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2100473ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2100493ms] [LOG] [Fast Refresh] done in 58ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2136689ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2136710ms] [LOG] [Fast Refresh] done in 59ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2190221ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2190233ms] [LOG] [Fast Refresh] done in 70ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2199513ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[ 2199532ms] [LOG] [Fast Refresh] done in 61ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431

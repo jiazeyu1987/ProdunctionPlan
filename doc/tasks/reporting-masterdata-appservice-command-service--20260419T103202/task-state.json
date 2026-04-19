@@ -1,0 +1,31 @@
+{
+  "schema_version": 2,
+  "task_id": "reporting-masterdata-appservice-command-service--20260419T103202",
+  "mode": "full",
+  "status": "planning",
+  "current_phase": null,
+  "phase_statuses": [],
+  "planner_review_status": "pending",
+  "test_status": "not_started",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 0,
+    "test_loops": 0
+  },
+  "created_at": "2026-04-19T10:32:02",
+  "updated_at": "2026-04-19T10:32:02",
+  "branch": "master",
+  "baseline_revision": "85c66725c3c28e23453fcc74b7745fd30103c86a",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\reporting-masterdata-appservice-command-service--20260419T103202",
+  "goal": "继续模块化重构：将 reporting 与 masterdata 的命令实现从 AppService 下沉到独立 command service，优先抽离 reporting 命令域并保持 commands/job_dispatcher 入口稳定",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\reporting-masterdata-appservice-command-service--20260419T103202\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\reporting-masterdata-appservice-command-service--20260419T103202\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\reporting-masterdata-appservice-command-service--20260419T103202\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\reporting-masterdata-appservice-command-service--20260419T103202\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\reporting-masterdata-appservice-command-service--20260419T103202\\test-report.md"
+  }
+}

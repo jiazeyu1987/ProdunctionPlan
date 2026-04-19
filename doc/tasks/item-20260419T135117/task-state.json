@@ -1,0 +1,221 @@
+{
+  "schema_version": 2,
+  "task_id": "item-20260419T135117",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "固化刷新边界与 item 更新契约",
+      "status": "completed",
+      "objective": "明确哪些操作当前会整表刷新，哪些操作必须改成 item 级更新，哪些操作必须保留整表刷新；同时确认单条订单查询接口是否具备替换前端全量快照所需的数据。",
+      "owned_paths": [
+        "`fronted/src/legacy/features/orders-pool/page/useOrdersPoolPageController.js` `fronted/src/legacy/features/orders-pool/commandActions.js` `fronted/src/legacy/features/order-execution/ordersPoolService.js` `fronted/src/legacy/features/order-execution/ordersPoolQueryClient.js` `backend/app/api/routes/app_queries.py` `backend/app/services/app_service.py`"
+      ],
+      "dependencies": [
+        "当前订单池页面实现、单条订单查询接口、现有同步入口 `/api/orders/sync-from-erp/apply`"
+      ],
+      "deliverables": [
+        "item 级更新目标清单、保留整表刷新的白名单、单条订单查询契约结论"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "计划必须明确列出当前哪些订单池操作会调用整表快照刷新，以及这些操作在目标行为下应改为 item 级更新还是保留整表刷新。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p1",
+            "test-report.md#t1-单张锁单解锁不整表刷新",
+            "test-report.md#t3-批量操作只更新受影响-item",
+            "test-report.md#t4-保存手工预计开始时间只刷新当前订单",
+            "test-report.md#t5-手动-erp-同步仍整表刷新"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "计划必须明确“手动点击 ERP 刷新生产订单”是唯一允许整表同步生产订单列表的入口，其他日常订单池操作不得再隐式触发整表刷新。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p1",
+            "test-report.md#t1-单张锁单解锁不整表刷新",
+            "test-report.md#t3-批量操作只更新受影响-item",
+            "test-report.md#t4-保存手工预计开始时间只刷新当前订单",
+            "test-report.md#t5-手动-erp-同步仍整表刷新"
+          ]
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "计划必须说明单条订单查询接口是否足够支撑前端 item 替换；若不够，需把接口补强纳入实现范围。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p1",
+            "test-report.md#t1-单张锁单解锁不整表刷新",
+            "test-report.md#t3-批量操作只更新受影响-item",
+            "test-report.md#t4-保存手工预计开始时间只刷新当前订单",
+            "test-report.md#t5-手动-erp-同步仍整表刷新"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#phase-p1"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T14:11:58"
+    },
+    {
+      "phase_id": "P2",
+      "title": "实现订单池页面 item 级更新",
+      "status": "completed",
+      "objective": "将非 ERP 手动同步操作从 `refreshSnapshot()` 整表刷新改成只更新当前或受影响订单 item，并同步维护选中态、详情区、排产标记等前端派生状态。",
+      "owned_paths": [
+        "`fronted/src/legacy/features/orders-pool/page/useOrdersPoolPageController.js` `fronted/src/legacy/features/orders-pool/commandActions.js` `fronted/src/legacy/features/order-execution/ordersPoolService.js` `fronted/src/legacy/features/order-execution/ordersPoolQueryClient.js` `backend/app/api/routes/app_queries.py` `backend/app/services/app_service.py`"
+      ],
+      "dependencies": [
+        "P1 已明确 item 更新所需字段与保留整表刷新入口"
+      ],
+      "deliverables": [
+        "前端 item 更新实现、必要的单条订单查询接口补强、执行日志"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "单张锁单、解锁、优先级调整、删除完成后，前端不得再重新拉取整张 `/api/order-pool`，只能更新受影响订单 item 或本地移除该 item。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p2",
+            "test-report.md#t1-单张锁单解锁不整表刷新",
+            "test-report.md#t3-批量操作只更新受影响-item",
+            "test-report.md#t4-保存手工预计开始时间只刷新当前订单",
+            "test-report.md#t5-手动-erp-同步仍整表刷新"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "批量锁单、解锁、提优先级完成后，前端不得整表刷新，只能对受影响订单集合做局部更新。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p2",
+            "test-report.md#t1-单张锁单解锁不整表刷新",
+            "test-report.md#t3-批量操作只更新受影响-item",
+            "test-report.md#t4-保存手工预计开始时间只刷新当前订单",
+            "test-report.md#t5-手动-erp-同步仍整表刷新"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "保存手工预计开始日期/班次后，前端不得整表刷新，只能刷新当前订单 item，并保持详情区与列表展示一致。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p2",
+            "test-report.md#t1-单张锁单解锁不整表刷新",
+            "test-report.md#t3-批量操作只更新受影响-item",
+            "test-report.md#t4-保存手工预计开始时间只刷新当前订单",
+            "test-report.md#t5-手动-erp-同步仍整表刷新"
+          ]
+        },
+        {
+          "ac_id": "P2-AC4",
+          "text": "手动点击“ERP 刷新生产订单”后，系统仍允许整表同步与刷新，不得误改成 item 级局部更新。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p2",
+            "test-report.md#t1-单张锁单解锁不整表刷新",
+            "test-report.md#t3-批量操作只更新受影响-item",
+            "test-report.md#t4-保存手工预计开始时间只刷新当前订单",
+            "test-report.md#t5-手动-erp-同步仍整表刷新"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#phase-p2"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T14:11:58"
+    },
+    {
+      "phase_id": "P3",
+      "title": "验证“仅手动刷新整表”的回归",
+      "status": "completed",
+      "objective": "通过自动化与真实页面验证证明：锁单/预计开工保存等操作不再整表刷新；只有手动点击 ERP 刷新生产订单时才整表同步生产订单列表。",
+      "owned_paths": [
+        "`fronted/tests/e2e/*` `backend/tests/test_app_service_order_pool.py` `doc/tasks/item-20260419T135117/*`"
+      ],
+      "dependencies": [
+        "P2 完成且前后端运行环境可用"
+      ],
+      "deliverables": [
+        "自动化验证结果、浏览器证据、测试报告"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "自动化或浏览器验证能证明非 ERP 手动同步操作不会触发整表 `/api/order-pool` 重新加载。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p3",
+            "test-report.md#t1-单张锁单解锁不整表刷新",
+            "test-report.md#t3-批量操作只更新受影响-item",
+            "test-report.md#t4-保存手工预计开始时间只刷新当前订单",
+            "test-report.md#t5-手动-erp-同步仍整表刷新"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "自动化或浏览器验证能证明手动 ERP 同步仍会触发整表刷新，并使订单池列表与 ERP 同步结果一致。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p3",
+            "test-report.md#t1-单张锁单解锁不整表刷新",
+            "test-report.md#t3-批量操作只更新受影响-item",
+            "test-report.md#t4-保存手工预计开始时间只刷新当前订单",
+            "test-report.md#t5-手动-erp-同步仍整表刷新"
+          ]
+        },
+        {
+          "ac_id": "P3-AC3",
+          "text": "测试报告必须记录至少一个真实页面或真实请求级证据，区分“item 级更新”与“整表刷新”两类行为。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#phase-p3",
+            "test-report.md#t1-单张锁单解锁不整表刷新",
+            "test-report.md#t3-批量操作只更新受影响-item",
+            "test-report.md#t4-保存手工预计开始时间只刷新当前订单",
+            "test-report.md#t5-手动-erp-同步仍整表刷新"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#phase-p3"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T14:11:59"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 3,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-19T13:51:17",
+  "updated_at": "2026-04-19T14:15:00",
+  "branch": "master",
+  "baseline_revision": "85c66725c3c28e23453fcc74b7745fd30103c86a",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\item-20260419T135117",
+  "goal": "把当前会整表刷新订单池/生产订单列表的操作改成只更新对应 item；只有手动点击刷新生产订单时才允许刷新整个订单列表",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\item-20260419T135117\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\item-20260419T135117\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\item-20260419T135117\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\item-20260419T135117\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\item-20260419T135117\\test-report.md"
+  }
+}

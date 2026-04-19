@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from backend.app.db import managed_connection  # noqa: E402
 from backend.app.services.app_service import AppService  # noqa: E402
+from backend.app.services.app_service_provider import create_app_service  # noqa: E402
 
 
 DEFAULT_COMPANY_CODE = "COMPANY-MAIN"
@@ -248,7 +249,7 @@ def main() -> None:
         raise RuntimeError("No valid process rows found in Sheet2.")
 
     with managed_connection() as connection:
-        service = AppService(connection)
+        service = create_app_service(connection)
         payload, name_to_code = _build_mapping_payload(service, process_rows)
         service.save_masterdata_config(payload)
 

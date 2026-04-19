@@ -1,0 +1,131 @@
+{
+  "schema_version": 2,
+  "task_id": "app-queries-masterdata-reporting-facade-appservi-20260419T020047",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "抽离 masterdata query facade",
+      "status": "completed",
+      "objective": "将 masterdata 相关 5 个查询入口切换为独立 facade 依赖。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "代码 diff、`execution-log.md#Phase-P1`",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "`app_queries.py` 中 masterdata 相关 5 个查询入口不再注入 `AppService`，而是注入独立的 masterdata query facade。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "masterdata facade 只承接 masterdata 域查询，不扩大到其他业务域。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T02:10:24"
+    },
+    {
+      "phase_id": "P2",
+      "title": "抽离 reporting query facade",
+      "status": "completed",
+      "objective": "将 reporting 相关 2 个查询入口切换为独立 facade 依赖。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "代码 diff、`execution-log.md#Phase-P2`",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "`app_queries.py` 中 reporting 相关 2 个查询入口不再注入 `AppService`，而是注入独立的 reporting query facade。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "reporting facade 只承接 reporting 域查询，不扩大到其他业务域。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P2"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T02:05:15"
+    },
+    {
+      "phase_id": "P3",
+      "title": "定向测试与工件闭环",
+      "status": "completed",
+      "objective": "用 facade/route delegation 测试和独立 tester 复核确认本轮切分可用，并完成任务工件。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "pytest 输出、`test-report.md#T1`、`test-report.md#T2`、`test-report.md#T3`",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "定向 pytest 证明 masterdata/reporting 路由层已切换到 facade，并且 facade 调用路径可用。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "`validate_test_report.py` 与 `check_completion.py --apply` 通过。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P3"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T02:09:52"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 0,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-19T02:00:47",
+  "updated_at": "2026-04-19T02:11:32",
+  "branch": "master",
+  "baseline_revision": "85c66725c3c28e23453fcc74b7745fd30103c86a",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\app-queries-masterdata-reporting-facade-appservi-20260419T020047",
+  "goal": "继续模块化重构：按业务域拆分 app_queries 的剩余查询依赖，优先抽离 masterdata 与 reporting 相关 facade，降低路由层对 AppService 的直接耦合",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\app-queries-masterdata-reporting-facade-appservi-20260419T020047\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\app-queries-masterdata-reporting-facade-appservi-20260419T020047\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\app-queries-masterdata-reporting-facade-appservi-20260419T020047\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\app-queries-masterdata-reporting-facade-appservi-20260419T020047\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\app-queries-masterdata-reporting-facade-appservi-20260419T020047\\test-report.md"
+  }
+}

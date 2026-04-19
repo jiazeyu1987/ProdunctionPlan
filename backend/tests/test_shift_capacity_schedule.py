@@ -168,6 +168,34 @@ class ShiftCapacityScheduleTestCase(unittest.TestCase):
         self.assertEqual(str(updated_row["scheduled_finish_date"]), "2026-04-14")
         self.assertEqual(str(updated_row["scheduled_finish_time"]), "2026-04-14T20:00:00+08:00")
 
+    def test_rest_day_blocks_exact_start_slot(self) -> None:
+        self._seed_route_and_topology("MAT-REST", "PROC-A", capacity_per_shift=10)
+        self._seed_order("MO-REST-001", "MAT-REST", 10)
+        self.service.save_schedule_calendar_rules(
+            {
+                "weekend_rest_mode": "NONE",
+                "date_shift_mode_by_date": {"2026-04-13": "REST"},
+            }
+        )
+
+        generated = self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+
+        rows = self._list_schedule_tasks(str(generated["version_no"]))
+        self.assertEqual(rows, [("2026-04-14", "DAY", 10.0)])
+
+        order_row = self.service.list_order_pool()["items"][0]
+        self.assertEqual(str(order_row["scheduled_finish_date"]), "2026-04-14")
+        self.assertEqual(
+            str(order_row["scheduled_finish_time"]),
+            "2026-04-14T20:00:00+08:00",
+        )
+
     def test_capacity_change_type_and_reason_are_separate_fields(self) -> None:
         self._seed_route_and_topology("MAT-SEM", "PROC-A", capacity_per_shift=10)
         payload = self.service.save_line_daily_capacity(

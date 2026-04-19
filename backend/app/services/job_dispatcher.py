@@ -16,10 +16,13 @@ from ..repositories.supply import MaterialSupplyRepository
 from .backup_service import BACKUP_TRIGGER_AUTO, BACKUP_TRIGGER_MANUAL, BackupService, restore_backup_job
 from .capacity_query_service import CapacityQueryService
 from .inventory_refresh_service import InventoryRefreshService
+from .dispatch_command_service import DispatchCommandService
+from .masterdata_command_service import MasterdataCommandService
 from .material_query_service import MaterialQueryService
 from .material_refresh_service import MaterialRefreshService
 from .order_sync_service import OrderSyncService
 from .order_query_service import OrderQueryService
+from .reporting_command_service import ReportingCommandService
 from .report_query_service import ReportQueryService
 
 
@@ -92,6 +95,26 @@ class ServiceFactory:
     def build_backup_service(self) -> BackupService:
         return BackupService(self.connection)
 
+    def build_reporting_command_service(self) -> ReportingCommandService:
+        from .app_service_provider import create_app_service
+
+        return ReportingCommandService(create_app_service(self.connection))
+
+    def build_masterdata_command_service(self) -> MasterdataCommandService:
+        from .app_service_provider import create_app_service
+
+        return MasterdataCommandService(create_app_service(self.connection))
+
+    def build_dispatch_command_service(self) -> DispatchCommandService:
+        from .app_service_provider import create_app_service
+
+        return DispatchCommandService(create_app_service(self.connection))
+
+    def build_app_service(self):
+        from .app_service_provider import create_app_service
+
+        return create_app_service(self.connection)
+
 
 class JobDispatcher:
     def __init__(self, connection: sqlite3.Connection) -> None:
@@ -136,87 +159,74 @@ class JobDispatcher:
         if job_type == "ORDERS_SYNC_FROM_ERP":
             return self.factory.build_order_sync_service().sync_orders_from_erp_incremental()
         if job_type == "LEGACY_ORDER_PATCH":
-            return self._dispatch_app_service("patch_order_pool_order", str(payload["order_no"]), payload)
+            return self.factory.build_app_service().patch_order_pool_order(str(payload["order_no"]), payload)
         if job_type == "LEGACY_ORDER_DELETE":
-            return self._dispatch_app_service("delete_order_pool_order", str(payload["order_no"]))
+            return self.factory.build_app_service().delete_order_pool_order(str(payload["order_no"]))
         if job_type == "LEGACY_DISPATCH_COMMAND_CREATE":
-            return self._dispatch_app_service("create_dispatch_command", payload)
+            return self.factory.build_dispatch_command_service().create_dispatch_command(payload)
         if job_type == "LEGACY_DISPATCH_COMMAND_APPROVE":
-            return self._dispatch_app_service(
-                "approve_dispatch_command",
+            return self.factory.build_dispatch_command_service().approve_dispatch_command(
                 str(payload["command_id"]),
                 payload,
             )
         if job_type == "LEGACY_DISPATCH_COMMAND_BATCH":
-            return self._dispatch_app_service("batch_dispatch_commands", payload)
+            return self.factory.build_dispatch_command_service().batch_dispatch_commands(payload)
         if job_type == "LEGACY_REPORT_CREATE":
-            return self._dispatch_app_service("create_reporting", payload)
+            return self.factory.build_reporting_command_service().create_reporting(payload)
         if job_type == "LEGACY_REPORT_IMPORT_XLSX":
-            return self._dispatch_app_service("import_mes_reportings_from_xlsx", payload)
+            return self.factory.build_reporting_command_service().import_mes_reportings_from_xlsx(payload)
         if job_type == "LEGACY_REPORT_CAPACITY_COMPARE_SELECT":
-            return self._dispatch_app_service("select_reporting_capacity_compare", payload)
+            return self.factory.build_reporting_command_service().select_reporting_capacity_compare(payload)
         if job_type == "LEGACY_REPORT_DELETE":
-            return self._dispatch_app_service(
-                "delete_reporting",
+            return self.factory.build_reporting_command_service().delete_reporting(
                 str(payload["report_id"]),
                 payload.get("actor"),
             )
         if job_type == "LEGACY_SCHEDULE_GENERATE":
-            return self._dispatch_app_service("generate_schedule", payload)
+            return self.factory.build_app_service().generate_schedule(payload)
         if job_type == "FACT_SCHEDULE_GENERATE":
-            return self._dispatch_app_service("generate_schedule_by_fact", payload)
+            return self.factory.build_app_service().generate_schedule_by_fact(payload)
         if job_type == "LEGACY_SCHEDULE_SAVE_CURRENT":
-            return self._dispatch_app_service("save_current_schedule_version", payload)
+            return self.factory.build_app_service().save_current_schedule_version(payload)
         if job_type == "LEGACY_SCHEDULE_LOAD_SAVED":
-            return self._dispatch_app_service(
-                "load_saved_schedule_version",
+            return self.factory.build_app_service().load_saved_schedule_version(
                 str(payload["version_no"]),
                 payload,
             )
         if job_type == "LEGACY_CALENDAR_RULES_SAVE":
-            return self._dispatch_app_service("save_schedule_calendar_rules", payload)
+            return self.factory.build_masterdata_command_service().save_schedule_calendar_rules(payload)
         if job_type == "LEGACY_MASTERDATA_CONFIG_SAVE":
-            return self._dispatch_app_service("save_masterdata_config", payload)
+            return self.factory.build_masterdata_command_service().save_masterdata_config(payload)
         if job_type == "LEGACY_PROCESS_ROUTE_CREATE":
-            return self._dispatch_app_service("create_process_routes", payload)
+            return self.factory.build_masterdata_command_service().create_process_routes(payload)
         if job_type == "LEGACY_PROCESS_ROUTE_UPDATE":
-            return self._dispatch_app_service("update_process_routes", payload)
+            return self.factory.build_masterdata_command_service().update_process_routes(payload)
         if job_type == "LEGACY_PROCESS_ROUTE_COPY":
-            return self._dispatch_app_service("copy_process_routes", payload)
+            return self.factory.build_masterdata_command_service().copy_process_routes(payload)
         if job_type == "LEGACY_PROCESS_ROUTE_DELETE":
-            return self._dispatch_app_service("delete_process_routes", payload)
+            return self.factory.build_masterdata_command_service().delete_process_routes(payload)
         if job_type == "LEGACY_DAILY_LINE_CAPACITY_SAVE":
-            return self._dispatch_app_service("save_line_daily_capacity", payload)
+            return self.factory.build_app_service().save_line_daily_capacity(payload)
         if job_type == "LEGACY_DAILY_LINE_CAPACITY_ACTUAL_REBUILD":
-            return self._dispatch_app_service("rebuild_line_daily_actual_capacity", payload)
+            return self.factory.build_app_service().rebuild_line_daily_actual_capacity(payload)
         if job_type == "LEGACY_SIMULATION_ADVANCE_DAY":
-            return self._dispatch_app_service("advance_simulation_one_day", payload)
+            return self.factory.build_app_service().advance_simulation_one_day(payload)
         if job_type == "LEGACY_SIMULATION_RESET":
-            return self._dispatch_app_service("reset_manual_simulation")
+            return self.factory.build_app_service().reset_manual_simulation()
         if job_type == "LEGACY_IMPORT_PRODUCTION_ORDERS":
-            return self._dispatch_app_service("import_production_orders_from_erp", payload)
+            return self.factory.build_app_service().import_production_orders_from_erp(payload)
         if job_type == "LEGACY_TEST_MATERIAL_ISSUES_QUERY":
-            return self._dispatch_app_service(
-                "test_material_issues",
+            return self.factory.build_app_service().test_material_issues(
                 str(payload["order_no"]),
                 str(payload.get("mode") or "fast"),
             )
         if job_type == "LEGACY_TEST_MATERIAL_SUPPLY_QUERY":
-            return self._dispatch_app_service(
-                "test_material_supply",
+            return self.factory.build_app_service().test_material_supply(
                 str(payload["material_code"]),
             )
         if job_type == "LEGACY_TEST_MATERIAL_INVENTORY_QUERY":
-            return self._dispatch_app_service(
-                "test_material_inventory",
+            return self.factory.build_app_service().test_material_inventory(
                 str(payload["material_code"]),
             )
 
         raise ValueError(f"Unsupported job type: {job_type}")
-
-    def _dispatch_app_service(self, method_name: str, *args: Any) -> dict[str, Any]:
-        from .app_service import AppService
-
-        service = AppService(self.factory.connection)
-        method = getattr(service, method_name)
-        return method(*args)

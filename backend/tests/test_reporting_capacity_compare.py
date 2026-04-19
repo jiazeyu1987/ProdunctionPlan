@@ -277,6 +277,7 @@ class ReportingCapacityCompareTestCase(unittest.TestCase):
                 workshop_code,
                 line_code,
                 process_code,
+                shift_code,
                 old_planned_capacity_qty,
                 new_planned_capacity_qty,
                 old_worker_count,
@@ -287,7 +288,7 @@ class ReportingCapacityCompareTestCase(unittest.TestCase):
                 operator_username,
                 operator_display_name,
                 changed_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 audit_id,
@@ -296,6 +297,7 @@ class ReportingCapacityCompareTestCase(unittest.TestCase):
                 workshop_code,
                 line_code,
                 process_code,
+                "DAY",
                 old_planned_capacity_qty,
                 new_planned_capacity_qty,
                 1,

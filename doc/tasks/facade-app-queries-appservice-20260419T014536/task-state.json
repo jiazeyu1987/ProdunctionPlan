@@ -1,0 +1,160 @@
+{
+  "schema_version": 2,
+  "task_id": "facade-app-queries-appservice-20260419T014536",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "抽离订单池查询 facade",
+      "status": "completed",
+      "objective": "新增专门面向订单池查询的 facade，使路由层不再依赖 `AppService` 处理订单池查询。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "代码 diff、`execution-log.md#Phase-P1`",
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T01:58:52",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "`app_queries.py` 中订单池相关 5 个接口不再注入 `AppService`，而是注入独立的订单池 query facade。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "新 facade 仅承接订单池相关查询，不扩大到无关业务域。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "`AppService` 保留原有订单池查询逻辑作为过渡实现，facade 通过显式组合调用这些逻辑，不引入 fallback 分支。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P2",
+      "title": "保持行为稳定并补齐测试",
+      "status": "completed",
+      "objective": "用已有订单池测试与新增路由依赖测试兜住重构后的行为边界。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "pytest 输出、`test-report.md#T1`、`test-report.md#T2`",
+      "evidence": [
+        "execution-log.md#Phase-P2"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T01:50:52",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "订单池相关定向 pytest 通过，确认订单池列表、详情、工序时间线和物料查询行为未被重构打断。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "新增或更新的测试能证明路由层已切换到 facade 依赖。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        }
+      ]
+    },
+    {
+      "phase_id": "P3",
+      "title": "工件闭环",
+      "status": "completed",
+      "objective": "将这轮 facade 重构的执行证据和测试证据写入任务工件并通过 completion gate。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "工件内容、completion check",
+      "evidence": [
+        "execution-log.md#Phase-P3"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T01:58:25",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "`execution-log.md` 与 `test-report.md` 记录了本轮 facade 重构的执行与验证证据。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "`validate_test_report.py` 与 `check_completion.py --apply` 通过。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        }
+      ]
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 0,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-19T01:45:37",
+  "updated_at": "2026-04-19T01:59:44",
+  "branch": "master",
+  "baseline_revision": "85c66725c3c28e23453fcc74b7745fd30103c86a",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-app-queries-appservice-20260419T014536",
+  "goal": "继续模块化重构：抽离订单池查询 facade，使 app_queries 不再直接依赖 AppService，并保持订单池/工序时间线查询行为稳定",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-app-queries-appservice-20260419T014536\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-app-queries-appservice-20260419T014536\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-app-queries-appservice-20260419T014536\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-app-queries-appservice-20260419T014536\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\facade-app-queries-appservice-20260419T014536\\test-report.md"
+  }
+}

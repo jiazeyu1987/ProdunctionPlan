@@ -1,0 +1,149 @@
+{
+  "schema_version": 2,
+  "task_id": "order-summary-dashboard-appservice-query-service-20260419T024628",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "真实下沉 order-summary 查询实现",
+      "status": "completed",
+      "objective": "将 order-summary 两个公开查询方法的实现体搬到 OrderSummaryQueryService。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "代码 diff、execution-log.md#Phase-P1",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "OrderSummaryQueryService 不再是薄包装，而是承接 get_order_summary 与 list_order_summary_workshop_managers 的真实实现。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "AppService 对这两个公开方法降为委托入口。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T02:50:00"
+    },
+    {
+      "phase_id": "P2",
+      "title": "保持 facade/provider 与 dashboard service 稳定",
+      "status": "completed",
+      "objective": "确保 facade/provider 与 route delegation 继续稳定，并保持 dashboard service 与 order-summary service 的内部分层准备就绪。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "pytest 输出、execution-log.md#Phase-P2",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "facade/provider 与路由委托测试仍然通过。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "dashboard service 仍可稳定依赖当前内部 service 分层，不被这次下沉打断。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P2"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T02:50:00"
+    },
+    {
+      "phase_id": "P3",
+      "title": "工件闭环",
+      "status": "completed",
+      "objective": "记录执行与测试证据并通过 completion gate。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "test-report.md#T1、test-report.md#T2、test-report.md#T3",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "定向 pytest 与 tester 复核通过。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "validate_test_report.py 与 check_completion.py --apply 通过。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P3"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T02:50:00"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 1,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-19T02:46:28",
+  "updated_at": "2026-04-19T02:55:39",
+  "branch": "master",
+  "baseline_revision": "85c66725c3c28e23453fcc74b7745fd30103c86a",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\order-summary-dashboard-appservice-query-service-20260419T024628",
+  "goal": "继续模块化重构：将 order_summary_query_service 与 dashboard_query_service 从薄包装推进为真实承接实现的 service，并让 AppService 对这两块公开查询降为委托入口",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\order-summary-dashboard-appservice-query-service-20260419T024628\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\order-summary-dashboard-appservice-query-service-20260419T024628\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\order-summary-dashboard-appservice-query-service-20260419T024628\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\order-summary-dashboard-appservice-query-service-20260419T024628\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\order-summary-dashboard-appservice-query-service-20260419T024628\\test-report.md"
+  }
+}

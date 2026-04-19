@@ -1,0 +1,200 @@
+{
+  "schema_version": 2,
+  "task_id": "task-61cb339d1c-20260419T011916",
+  "mode": "full",
+  "status": "completed",
+  "current_phase": null,
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "后端 Legacy App 组合根收口",
+      "status": "completed",
+      "objective": "为遗留聚合服务建立单一创建入口与显式依赖容器，让 API 路由、任务分发器和脚本不再直接耦合 `AppService(connection)` 的构造细节。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "代码 diff、定向测试结果、`execution-log.md#Phase-P1`",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "后端新增单一的 legacy app 服务创建入口，`app_queries.py` 与 `job_dispatcher.py` 不再直接构造 `AppService(connection)`。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5"
+          ]
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "`AppService` 的依赖装配从业务实现中抽离为显式结构，构造函数保留现有调用契约或通过统一 provider 兼容现有调用点。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5"
+          ]
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "直接依赖 legacy app 服务入口的脚本或测试完成同步，仓库内不存在新的分散构造方式。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P1",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P1"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T01:41:21"
+    },
+    {
+      "phase_id": "P2",
+      "title": "前端 Legacy 应用壳层拆分",
+      "status": "completed",
+      "objective": "将 `fronted/src/legacy/App.jsx` 中的导航配置、权限守卫、侧边栏和路由装配拆为独立模块，保留页面行为不变但降低壳层耦合。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "代码 diff、前端静态检查结果、`execution-log.md#Phase-P2`",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "`fronted/src/legacy/App.jsx` 降为薄入口，只负责认证状态分流和壳层装配，不再同时承载导航配置、路由明细与权限守卫实现。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5"
+          ]
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "legacy 应用壳层至少拆出独立的导航配置模块、权限守卫模块和路由装配模块，模块之间通过显式导出协作。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5"
+          ]
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "`fronted/src/components/legacy-app-page.tsx` 与 catch-all Next 页面仍能装配 legacy 应用入口，不引入新的页面路径回退逻辑。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P2",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P2"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T01:35:37"
+    },
+    {
+      "phase_id": "P3",
+      "title": "回归验证与工件闭环",
+      "status": "completed",
+      "objective": "用与改动范围匹配的后端单测和前端静态检查验证重构未破坏现有入口行为，并补齐执行证据。",
+      "owned_paths": [],
+      "dependencies": [],
+      "deliverables": [],
+      "evidence_expectation": "命令输出摘要、`test-report.md`、最终 completion check",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "与后端入口重构直接相关的定向测试通过，覆盖 legacy app 服务创建和主要调用路径未损坏。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5"
+          ]
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "与前端应用壳层拆分直接相关的静态检查通过，确认模块导入、路由装配和 JSX 语法有效。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5"
+          ]
+        },
+        {
+          "ac_id": "P3-AC3",
+          "text": "`execution-log.md` 和 `test-report.md` 记录了每个 acceptance id 的证据，且没有未解释的失败或跳过项。",
+          "status": "completed",
+          "evidence": [
+            "execution-log.md#Phase-P3",
+            "test-report.md#T1",
+            "test-report.md#T2",
+            "test-report.md#T3",
+            "test-report.md#T4",
+            "test-report.md#T5"
+          ]
+        }
+      ],
+      "evidence": [
+        "execution-log.md#Phase-P3"
+      ],
+      "notes": "",
+      "last_reviewed_at": "2026-04-19T01:40:52"
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "passed",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 0,
+    "test_loops": 1
+  },
+  "created_at": "2026-04-19T01:19:16",
+  "updated_at": "2026-04-19T01:41:47",
+  "branch": "master",
+  "baseline_revision": "85c66725c3c28e23453fcc74b7745fd30103c86a",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-61cb339d1c-20260419T011916",
+  "goal": "重构代码，按自上向下方式重新模块化，降低模块耦合度，优先梳理后端聚合服务和前端应用壳层的职责边界",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-61cb339d1c-20260419T011916\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-61cb339d1c-20260419T011916\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-61cb339d1c-20260419T011916\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-61cb339d1c-20260419T011916\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\task-61cb339d1c-20260419T011916\\test-report.md"
+  }
+}

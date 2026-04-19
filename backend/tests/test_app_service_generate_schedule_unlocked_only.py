@@ -26,7 +26,20 @@ class AppServiceGenerateScheduleUnlockedOnlyTestCase(unittest.TestCase):
         self.temp_dir.cleanup()
         super().tearDown()
 
-    def test_generate_schedule_ignores_locked_orders_missing_in_base_version(self) -> None:
+    def test_generate_schedule_skips_locked_orders(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO simulation_state (
+                singleton_key,
+                current_date,
+                updated_at
+            ) VALUES (?, ?, ?)
+            ON CONFLICT(singleton_key) DO UPDATE SET
+                current_date = excluded.current_date,
+                updated_at = excluded.updated_at
+            """,
+            ("default", "2026-04-13", "2026-04-13T00:00:00+00:00"),
+        )
         self.connection.execute(
             """
             INSERT INTO masterdata_process_routes (
@@ -162,59 +175,10 @@ class AppServiceGenerateScheduleUnlockedOnlyTestCase(unittest.TestCase):
                     "2026-04-13T00:00:00+00:00",
                 ),
             )
-
-        base_version_no = "BASE-V1"
-        self.connection.execute(
-            """
-            INSERT INTO schedule_versions (
-                version_no,
-                status,
-                status_name_cn,
-                strategy_code,
-                created_at,
-                published_at
-            ) VALUES (?, ?, ?, ?, ?, ?)
-            """,
-            (
-                base_version_no,
-                "PUBLISHED",
-                "已发布",
-                "KEY_ORDER_FIRST",
-                "2026-04-13T00:00:00+00:00",
-                "2026-04-13T00:00:00+00:00",
-            ),
-        )
-        self.connection.execute(
-            """
-            INSERT INTO schedule_tasks (
-                version_no,
-                task_no,
-                production_order_no,
-                process_code,
-                process_name_cn,
-                calendar_date,
-                shift_code,
-                plan_qty,
-                plan_start_time
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                base_version_no,
-                1,
-                "MO-LOCK-001",
-                "PROC-A",
-                "工序A",
-                "2026-04-13",
-                "DAY",
-                10,
-                "2026-04-13T08:00:00+08:00",
-            ),
-        )
         self.connection.commit()
 
         generated = self.service.generate_schedule(
             {
-                "base_version_no": base_version_no,
                 "strategy_code": "KEY_ORDER_FIRST",
                 "capacity_source_mode": "DEFAULT",
                 "use_order_state_window": False,
@@ -243,12 +207,12 @@ class AppServiceGenerateScheduleUnlockedOnlyTestCase(unittest.TestCase):
             for row in tasks
         ]
 
-        self.assertIn(("MO-LOCK-001", "PROC-A", "2026-04-13", "DAY", 10.0), task_map)
         self.assertTrue(any(row[0] == "MO-UNLOCK-001" for row in task_map))
+        self.assertFalse(any(row[0] == "MO-LOCK-001" for row in task_map))
         self.assertFalse(any(row[0] == "MO-LOCK-MISSING" for row in task_map))
 
         unlock_task_dates = sorted({row[2] for row in task_map if row[0] == "MO-UNLOCK-001"})
-        self.assertEqual(unlock_task_dates[0], "2026-04-14")
+        self.assertEqual(unlock_task_dates[0], "2026-04-13")
 
     def test_generate_schedule_clamps_open_order_start_to_simulation_current_day(self) -> None:
         self.service.factory.build_inventory_refresh_service = lambda: type(  # type: ignore[method-assign]

@@ -1,0 +1,31 @@
+{
+  "schema_version": 2,
+  "task_id": "dashboard-query-service-service-appservice-get-s-20260419T025620",
+  "mode": "full",
+  "status": "planning",
+  "current_phase": null,
+  "phase_statuses": [],
+  "planner_review_status": "pending",
+  "test_status": "not_started",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 0,
+    "test_loops": 0
+  },
+  "created_at": "2026-04-19T02:56:20",
+  "updated_at": "2026-04-19T02:56:20",
+  "branch": "master",
+  "baseline_revision": "85c66725c3c28e23453fcc74b7745fd30103c86a",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-query-service-service-appservice-get-s-20260419T025620",
+  "goal": "继续模块化重构：将 dashboard_query_service 从骨架推进为真实承接实现的 service，并让 AppService.get_scheduler_dashboard 降为委托入口",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-query-service-service-appservice-get-s-20260419T025620\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-query-service-service-appservice-get-s-20260419T025620\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-query-service-service-appservice-get-s-20260419T025620\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-query-service-service-appservice-get-s-20260419T025620\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\dashboard-query-service-service-appservice-get-s-20260419T025620\\test-report.md"
+  }
+}

@@ -1,31 +1,29 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import base64
-import binascii
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
-import hashlib
 from io import BytesIO
 import math
-from pathlib import Path
 import random
 import sqlite3
 from typing import Any
 from uuid import uuid4
 
-from openpyxl import load_workbook
-
 from ..db import fetch_all, fetch_one, transaction, utc_now
 from ..errors import bad_request, forbidden, not_found, server_error
-from ..gateway.inventory import ERPInventoryGateway
-from ..gateway.masterdata import UpstreamMasterdataGateway
-from ..gateway.orders import ERPOrderGateway
-from ..gateway.supply import ERPSupplyGateway
-from ..json_utils import dumps, loads
+from ..json_utils import loads
 from ..repositories.backups import BackupRepository
+from .dashboard_query_service import DashboardQueryService
+from .dispatch_command_service import DispatchCommandService
 from .final_process_metrics import build_order_final_process_metrics
-from .job_dispatcher import ServiceFactory
-from .line_daily_capacity_service import LineDailyCapacityService
+from .legacy_runtime import LegacyAppRuntime, build_legacy_app_runtime
+from .masterdata_query_service import MasterdataQueryService
+from .masterdata_command_service import MasterdataCommandService
+from .order_summary_query_service import OrderSummaryQueryService
+from .reporting_command_service import ReportingCommandService
+from .reporting_query_service import ReportingQueryService
+from .schedules_query_service import SchedulesQueryService
 
 
 RULES_SINGLETON_KEY = "default"
@@ -56,10 +54,10 @@ ANGIO_CATHETER_PRODUCT_CODES = frozenset(
         "YXN.044.02.1020",
     }
 )
-DEFAULT_ANGIO_WORKSHOP_CODE = "1车间"
-DEFAULT_ANGIO_WORKSHOP_NAME = "1车间"
-DEFAULT_ANGIO_LINE_CODE = "1产线"
-DEFAULT_ANGIO_LINE_NAME = "1产线"
+DEFAULT_ANGIO_WORKSHOP_CODE = "1杞﹂棿"
+DEFAULT_ANGIO_WORKSHOP_NAME = "1杞﹂棿"
+DEFAULT_ANGIO_LINE_CODE = "1浜х嚎"
+DEFAULT_ANGIO_LINE_NAME = "1浜х嚎"
 CN_STATUTORY_HOLIDAY_DATE_SET = frozenset(
     {
         # 2024
@@ -163,7 +161,7 @@ SCHEDULE_EPOCH_DAY = date(1970, 1, 1)
 SCHEDULE_NUMBER_EPSILON = 1e-9
 CURRENT_SCHEDULE_VERSION_NO = "CURRENT"
 STATUS_NAME_BY_CODE = {
-    "CURRENT": "当前方案",
+    "CURRENT": "褰撳墠鏂规",
     "SAVED": "已保存",
     "ARCHIVED": "已归档",
 }
@@ -178,75 +176,6 @@ LOCAL_ORDER_STATUS_CODES = frozenset(
     }
 )
 LOCAL_TIMEZONE = timezone(timedelta(hours=8))
-WORK_REPORT_COLUMNS = (
-    "report_id",
-    "production_order_no",
-    "process_code",
-    "process_name",
-    "company_code",
-    "workshop_code",
-    "workshop_name",
-    "line_code",
-    "line_name",
-    "report_qty",
-    "report_time",
-    "operator_code",
-    "operator_name",
-    "section_leader_name",
-    "dispatch_no",
-    "product_code",
-    "product_name",
-    "product_specification",
-    "resource_group_name",
-    "resource_name",
-    "department_name",
-    "source_process_code",
-    "source_process_name",
-    "mold_code",
-    "support_count",
-    "weight_kg",
-    "cavity_count",
-    "total_cycle_time",
-    "production_quota",
-    "work_duration",
-    "clamp_or_assembly_weight",
-    "unit_weight",
-    "source_sheet_name",
-    "source_row_no",
-    "source_file_name",
-    "daily_capacity_compare_audit_id",
-    "daily_capacity_compare_qty",
-    "daily_capacity_compare_selected_at",
-    "updated_at",
-)
-REPORTING_IMPORT_REQUIRED_HEADER_MAP = {
-    "报工日期": "report_datetime",
-    "报工人编码": "operator_code",
-    "报工人名称": "operator_name",
-    "工段长": "section_leader_name",
-    "生产订单号": "production_order_no",
-    "生产资源组": "resource_group_name",
-    "生产资源": "resource_name",
-    "派工单号": "dispatch_no",
-    "产品编码": "product_code",
-    "产品名称": "product_name",
-    "规格": "product_specification",
-    "工序编码": "source_process_code",
-    "工序名称": "source_process_name",
-    "所属部门": "department_name",
-    "报工数量": "report_qty",
-}
-REPORTING_IMPORT_OPTIONAL_HEADER_MAP = {
-    "模具编码": "mold_code",
-    "支数": "support_count",
-    "公斤数": "weight_kg",
-    "实腔数": "cavity_count",
-    "全程时间": "total_cycle_time",
-    "生产定额": "production_quota",
-    "工作时长": "work_duration",
-    "注塑合模/组装公斤数": "clamp_or_assembly_weight",
-    "注塑个数/组装个重": "unit_weight",
-}
 
 
 def _today_text() -> str:
@@ -570,7 +499,7 @@ def _expected_start_shift_from_datetime_text(value: object) -> str:
 def _schedule_version_status_label(status: object) -> str:
     normalized = str(status or "").strip().upper()
     if normalized == "CURRENT":
-        return "当前方案"
+        return "褰撳墠鏂规"
     if normalized in {"SAVED", "PUBLISHED", "DRAFT", "ARCHIVED"}:
         return "已保存"
     return normalized or "-"
@@ -582,19 +511,37 @@ def _schedule_result_status_label(status: object) -> str:
     if normalized == "RISKY":
         return "有风险建议计划"
     if normalized == "BLOCKED":
-        return "阻断"
+        return "闃绘柇"
     return normalized or "-"
 
 
 class AppService:
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        runtime: LegacyAppRuntime | None = None,
+    ) -> None:
         self.connection = connection
-        self.factory = ServiceFactory(connection)
-        self.line_daily_capacity_service = LineDailyCapacityService(connection)
-        self.masterdata_gateway = UpstreamMasterdataGateway()
-        self.order_gateway = ERPOrderGateway()
-        self.inventory_gateway = ERPInventoryGateway()
-        self.supply_gateway = ERPSupplyGateway()
+        runtime = runtime or build_legacy_app_runtime(connection)
+        self.runtime = runtime
+        self.factory = runtime.factory
+        self.line_daily_capacity_service = runtime.line_daily_capacity_service
+        self.masterdata_gateway = runtime.masterdata_gateway
+        self.order_gateway = runtime.order_gateway
+        self.inventory_gateway = runtime.inventory_gateway
+        self.supply_gateway = runtime.supply_gateway
+        self.schedules_query_service = SchedulesQueryService(connection)
+        self.order_summary_query_service = OrderSummaryQueryService(self)
+        self.dashboard_query_service = DashboardQueryService(
+            self,
+            self.order_summary_query_service,
+        )
+        self.reporting_query_service = ReportingQueryService(self)
+        self.reporting_command_service = ReportingCommandService(self)
+        self.dispatch_command_service = DispatchCommandService(self)
+        self.masterdata_query_service = MasterdataQueryService(self)
+        self.masterdata_command_service = MasterdataCommandService(self)
 
     def list_order_pool(self, *, version_no: str | None = None) -> dict[str, Any]:
         rows = self._list_order_rows()
@@ -725,7 +672,7 @@ class AppService:
                     "reference_version_no": None,
                     "bottleneck_process_code": None,
                     "bottleneck_process_name_cn": None,
-                    "message": "暂无排产任务数据",
+                    "message": "鏆傛棤鎺掍骇浠诲姟鏁版嵁",
                 },
                 "process_items": [],
                 "selected_process_detail": self._build_empty_selected_process_detail(
@@ -743,7 +690,7 @@ class AppService:
                     "reference_version_no": reference_version_no,
                     "bottleneck_process_code": None,
                     "bottleneck_process_name_cn": None,
-                    "message": "暂无排产任务数据",
+                    "message": "鏆傛棤鎺掍骇浠诲姟鏁版嵁",
                 },
                 "process_items": [],
                 "selected_process_detail": self._build_empty_selected_process_detail(
@@ -923,7 +870,7 @@ class AppService:
         self._require_order(order_no)
         raise bad_request(
             code="ORDER_DELETE_FORBIDDEN",
-            message="生产订单不允许物理删除，请使用 ERP 同步失效/关闭或后续审批能力处理。",
+            message="生产订单不允许物理删除，请使用 ERP 同步失效、关闭或后续审核能力处理。",
         )
 
     def list_mes_reportings(
@@ -933,120 +880,14 @@ class AppService:
         end_time: str | None = None,
         current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        where_clauses: list[str] = []
-        parameters: list[Any] = []
-        if start_time:
-            where_clauses.append("report_time >= ?")
-            parameters.append(start_time)
-        if end_time:
-            where_clauses.append("report_time <= ?")
-            parameters.append(end_time)
-        manager_user_id = self._resolve_manager_user_id(current_user)
-        if manager_user_id is not None:
-            where_clauses.append(
-                """
-                EXISTS (
-                    SELECT 1
-                    FROM app_user_line_scopes scope
-                    WHERE scope.user_id = ?
-                      AND scope.workshop_code = work_reports.workshop_code
-                      AND scope.line_code = work_reports.line_code
-                )
-                """
-            )
-            parameters.append(manager_user_id)
-        where_sql = f"WHERE {' AND '.join(where_clauses)}" if where_clauses else ""
-        rows = fetch_all(
-            self.connection,
-            f"""
-            SELECT
-                report_id,
-                production_order_no,
-                report_scope,
-                process_code,
-                process_name,
-                workshop_code,
-                workshop_name,
-                line_code,
-                line_name,
-                report_qty,
-                report_time,
-                operator_code,
-                operator_name,
-                section_leader_name,
-                updated_at,
-                date(report_time, '+8 hours') AS report_local_date,
-                daily_capacity_compare_audit_id,
-                daily_capacity_compare_qty
-            FROM work_reports
-            {where_sql}
-            ORDER BY report_time DESC, report_id DESC
-            """,
-            tuple(parameters),
+        return self.reporting_query_service.list_mes_reportings(
+            start_time=start_time,
+            end_time=end_time,
+            current_user=current_user,
         )
-        return {
-            "items": [
-                {
-                    "report_id": row["report_id"],
-                    "order_no": row["production_order_no"],
-                    "process_code": row.get("process_code"),
-                    "process_name_cn": row.get("process_name") or row.get("process_code"),
-                    "workshop_code": row.get("workshop_code"),
-                    "workshop_name": row.get("workshop_name") or row.get("workshop_code"),
-                    "line_code": row.get("line_code"),
-                    "line_name": row.get("line_name") or row.get("line_code"),
-                    "report_qty": row.get("report_qty"),
-                    "report_time": row.get("report_time"),
-                    "report_local_date": _normalize_date_text(row.get("report_local_date")),
-                    "operator_code": row.get("operator_code"),
-                    "operator_name_cn": row.get("operator_name") or "系统填报",
-                    "section_leader_name": row.get("section_leader_name"),
-                    "updated_at": row.get("updated_at"),
-                    "daily_capacity_compare_audit_id": row.get("daily_capacity_compare_audit_id"),
-                    "daily_capacity_compare_qty": row.get("daily_capacity_compare_qty"),
-                }
-                for row in rows
-            ]
-        }
 
     def list_reporting_import_files(self, *, limit: int = 50) -> dict[str, Any]:
-        normalized_limit = max(1, min(200, int(limit or 50)))
-        rows = fetch_all(
-            self.connection,
-            """
-            SELECT
-                file_sha256,
-                source_file_name,
-                file_path,
-                original_file_name,
-                file_size_bytes,
-                sheet_names_json,
-                imported_by_user_id,
-                imported_by_username,
-                imported_by_display_name,
-                total_row_count,
-                imported_count,
-                skipped_existing_count,
-                failed_count,
-                created_missing_order_count,
-                created_at,
-                last_imported_at
-            FROM reporting_import_files
-            ORDER BY last_imported_at DESC, file_sha256 DESC
-            LIMIT ?
-            """,
-            (normalized_limit,),
-        )
-        items: list[dict[str, Any]] = []
-        for row in rows:
-            sheet_names = row.get("sheet_names_json")
-            parsed_sheet_names = (
-                loads(sheet_names)
-                if isinstance(sheet_names, str) and sheet_names.strip()
-                else []
-            )
-            items.append({**row, "sheet_names": parsed_sheet_names})
-        return {"items": items, "total": len(items)}
+        return self.reporting_query_service.list_reporting_import_files(limit=limit)
 
     def get_order_summary(
         self,
@@ -1056,262 +897,12 @@ class AppService:
         workshop_manager_user_id: str | None = None,
         current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        normalized_start_date = _normalize_date_text(start_date)
-        if normalized_start_date is None:
-            raise bad_request(
-                code="ORDER_SUMMARY_START_DATE_REQUIRED",
-                message="start_date must be a valid YYYY-MM-DD date.",
-            )
-        normalized_end_date = _normalize_date_text(end_date)
-        if normalized_end_date is None:
-            raise bad_request(
-                code="ORDER_SUMMARY_END_DATE_REQUIRED",
-                message="end_date must be a valid YYYY-MM-DD date.",
-            )
-        if normalized_end_date < normalized_start_date:
-            raise bad_request(
-                code="ORDER_SUMMARY_DATE_RANGE_INVALID",
-                message="end_date must be greater than or equal to start_date.",
-                details={
-                    "start_date": normalized_start_date,
-                    "end_date": normalized_end_date,
-                },
-            )
-
-        filters: list[str] = [
-            "date(work_reports.report_time, '+8 hours') >= ?",
-            "date(work_reports.report_time, '+8 hours') <= ?",
-        ]
-        parameters: list[Any] = [normalized_start_date, normalized_end_date]
-        manager_user_id = self._resolve_order_summary_scope_manager_user_id(
-            current_user=current_user,
+        return self.order_summary_query_service.get_order_summary(
+            start_date=start_date,
+            end_date=end_date,
             workshop_manager_user_id=workshop_manager_user_id,
+            current_user=current_user,
         )
-        if manager_user_id is not None:
-            filters.append(
-                """
-                EXISTS (
-                    SELECT 1
-                    FROM app_user_line_scopes scope
-                    WHERE scope.user_id = ?
-                      AND scope.workshop_code = work_reports.workshop_code
-                      AND scope.line_code = work_reports.line_code
-                )
-                """
-            )
-            parameters.append(manager_user_id)
-
-        where_sql = " AND ".join(filters)
-        grouped_report_rows = fetch_all(
-            self.connection,
-            f"""
-            SELECT
-                production_order_no,
-                process_code,
-                process_name,
-                SUM(report_qty) AS report_qty,
-                MAX(date(report_time, '+8 hours')) AS last_report_local_date
-            FROM work_reports
-            WHERE {where_sql}
-            GROUP BY production_order_no, process_code
-            ORDER BY production_order_no ASC, process_code ASC
-            """,
-            tuple(parameters),
-        )
-
-        process_name_by_code = self._process_name_by_code()
-        order_process_qty_map: dict[str, dict[str, float]] = defaultdict(dict)
-        order_process_last_date_map: dict[str, dict[str, str | None]] = defaultdict(dict)
-        process_agg_map: dict[str, dict[str, Any]] = {}
-        order_nos: set[str] = set()
-        for row in grouped_report_rows:
-            process_code = str(row.get("process_code") or "").strip().upper()
-            if not process_code:
-                continue
-            process_name = (
-                str(row.get("process_name") or process_name_by_code.get(process_code) or process_code).strip()
-                or process_code
-            )
-            report_qty = _to_number(row.get("report_qty"), 0)
-            last_report_local_date = _normalize_date_text(row.get("last_report_local_date"))
-            order_no = str(row.get("production_order_no") or "").strip()
-
-            process_agg = process_agg_map.get(process_code)
-            if process_agg is None:
-                process_agg = {
-                    "process_code": process_code,
-                    "process_name_cn": process_name,
-                    "report_qty_total": 0.0,
-                    "order_nos": set(),
-                    "last_report_date": None,
-                }
-                process_agg_map[process_code] = process_agg
-            process_agg["report_qty_total"] = _to_number(process_agg.get("report_qty_total"), 0) + report_qty
-            if last_report_local_date and (
-                process_agg["last_report_date"] is None or last_report_local_date > process_agg["last_report_date"]
-            ):
-                process_agg["last_report_date"] = last_report_local_date
-
-            if not order_no:
-                continue
-            order_nos.add(order_no)
-            process_agg["order_nos"].add(order_no)
-            order_process_qty_map[order_no][process_code] = report_qty
-            order_process_last_date_map[order_no][process_code] = last_report_local_date
-
-        if not order_nos and not process_agg_map:
-            return {
-                "range": {
-                    "start_date": normalized_start_date,
-                    "end_date": normalized_end_date,
-                },
-                "summary": {
-                    "order_count": 0,
-                    "completed_order_count": 0,
-                    "completion_rate": 0,
-                    "order_qty_total": 0,
-                    "final_process_completed_qty_total": 0,
-                    "process_count": 0,
-                    "process_report_qty_total": 0,
-                },
-                "order_items": [],
-                "process_items": [],
-            }
-
-        order_meta_by_no: dict[str, dict[str, Any]] = {}
-        if order_nos:
-            placeholders = ",".join("?" for _ in order_nos)
-            order_rows = fetch_all(
-                self.connection,
-                f"""
-                SELECT
-                    production_order_no,
-                    material_code,
-                    material_name,
-                    production_qty
-                FROM production_orders
-                WHERE production_order_no IN ({placeholders})
-                """,
-                tuple(sorted(order_nos)),
-            )
-            for row in order_rows:
-                order_no = str(row.get("production_order_no") or "").strip()
-                if not order_no:
-                    continue
-                order_meta_by_no[order_no] = row
-
-        product_codes = {
-            str((order_meta_by_no.get(order_no) or {}).get("material_code") or "").strip().upper()
-            for order_no in order_nos
-        }
-        product_codes.discard("")
-        final_process_by_product = self._resolve_final_process_meta_by_product(product_codes)
-
-        order_items: list[dict[str, Any]] = []
-        for order_no in sorted(order_nos):
-            order_meta = order_meta_by_no.get(order_no) or {}
-            product_code = str(order_meta.get("material_code") or "").strip().upper()
-            product_name = str(order_meta.get("material_name") or product_code or "-").strip() or "-"
-            order_qty = _to_number(order_meta.get("production_qty"), 0)
-            final_meta = final_process_by_product.get(product_code) or {}
-            final_process_code = str(final_meta.get("process_code") or "").strip().upper() or None
-            final_process_name_cn = str(final_meta.get("process_name_cn") or final_process_code or "-").strip() or "-"
-            process_qty_by_code = order_process_qty_map.get(order_no) or {}
-            process_last_date_by_code = order_process_last_date_map.get(order_no) or {}
-            final_process_completed_qty = (
-                _to_number(process_qty_by_code.get(final_process_code), 0) if final_process_code else 0.0
-            )
-            final_process_last_report_date = (
-                _normalize_date_text(process_last_date_by_code.get(final_process_code))
-                if final_process_code
-                else None
-            )
-            completed_flag = (
-                bool(final_process_code)
-                and order_qty > 0
-                and (final_process_completed_qty + SCHEDULE_NUMBER_EPSILON) >= order_qty
-            )
-            order_items.append(
-                {
-                    "order_no": order_no,
-                    "product_code": product_code or "-",
-                    "product_name_cn": product_name,
-                    "order_qty": order_qty,
-                    "reported_process_count": len(process_qty_by_code),
-                    "final_process_code": final_process_code,
-                    "final_process_name_cn": final_process_name_cn,
-                    "final_process_completed_qty": final_process_completed_qty,
-                    "final_process_last_report_date": final_process_last_report_date,
-                    "completed_flag": 1 if completed_flag else 0,
-                }
-            )
-
-        process_items: list[dict[str, Any]] = []
-        for process_code in sorted(process_agg_map):
-            process_agg = process_agg_map[process_code]
-            order_no_set = set(process_agg.get("order_nos") or set())
-            involved_order_count = len(order_no_set)
-            completed_order_count = 0
-            if involved_order_count > 0:
-                for order_no in order_no_set:
-                    order_meta = order_meta_by_no.get(order_no) or {}
-                    order_qty = _to_number(order_meta.get("production_qty"), 0)
-                    process_report_qty = _to_number(
-                        (order_process_qty_map.get(order_no) or {}).get(process_code),
-                        0,
-                    )
-                    if order_qty > 0 and (process_report_qty + SCHEDULE_NUMBER_EPSILON) >= order_qty:
-                        completed_order_count += 1
-            completion_rate = (
-                round(completed_order_count / involved_order_count * 100, 2)
-                if involved_order_count > 0
-                else 0
-            )
-            process_items.append(
-                {
-                    "process_code": process_code,
-                    "process_name_cn": str(process_agg.get("process_name_cn") or process_code).strip()
-                    or process_code,
-                    "report_qty_total": _to_number(process_agg.get("report_qty_total"), 0),
-                    "involved_order_count": involved_order_count,
-                    "completed_order_count": completed_order_count,
-                    "completion_rate": completion_rate,
-                    "last_report_date": _normalize_date_text(process_agg.get("last_report_date")),
-                }
-            )
-
-        order_count = len(order_items)
-        completed_order_count = sum(1 for item in order_items if int(item.get("completed_flag") or 0) == 1)
-        order_completion_rate = (
-            round(completed_order_count / order_count * 100, 2) if order_count > 0 else 0
-        )
-        order_qty_total = round(sum(_to_number(item.get("order_qty"), 0) for item in order_items), 4)
-        final_process_completed_qty_total = round(
-            sum(_to_number(item.get("final_process_completed_qty"), 0) for item in order_items),
-            4,
-        )
-        process_report_qty_total = round(
-            sum(_to_number(item.get("report_qty_total"), 0) for item in process_items),
-            4,
-        )
-
-        return {
-            "range": {
-                "start_date": normalized_start_date,
-                "end_date": normalized_end_date,
-            },
-            "summary": {
-                "order_count": order_count,
-                "completed_order_count": completed_order_count,
-                "completion_rate": order_completion_rate,
-                "order_qty_total": order_qty_total,
-                "final_process_completed_qty_total": final_process_completed_qty_total,
-                "process_count": len(process_items),
-                "process_report_qty_total": process_report_qty_total,
-            },
-            "order_items": order_items,
-            "process_items": process_items,
-        }
 
     def get_scheduler_dashboard(
         self,
@@ -1321,596 +912,21 @@ class AppService:
         top_n: int = 8,
         current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        normalized_start_date = _normalize_date_text(start_date)
-        if normalized_start_date is None:
-            raise bad_request(
-                code="DASHBOARD_START_DATE_REQUIRED",
-                message="start_date must be a valid YYYY-MM-DD date.",
-            )
-        normalized_end_date = _normalize_date_text(end_date)
-        if normalized_end_date is None:
-            raise bad_request(
-                code="DASHBOARD_END_DATE_REQUIRED",
-                message="end_date must be a valid YYYY-MM-DD date.",
-            )
-        if normalized_end_date < normalized_start_date:
-            raise bad_request(
-                code="DASHBOARD_DATE_RANGE_INVALID",
-                message="end_date must be greater than or equal to start_date.",
-                details={
-                    "start_date": normalized_start_date,
-                    "end_date": normalized_end_date,
-                },
-            )
-
-        normalized_top_n = int(_to_number(top_n, 0))
-        if normalized_top_n < 1 or normalized_top_n > 50:
-            raise bad_request(
-                code="DASHBOARD_TOP_N_INVALID",
-                message="top_n must be between 1 and 50.",
-            )
-
-        topology_count_row = fetch_one(
-            self.connection,
-            """
-            SELECT COUNT(1) AS total
-            FROM masterdata_line_topology
-            """,
-        )
-        topology_count = int(_to_number((topology_count_row or {}).get("total"), 0))
-        if topology_count <= 0:
-            raise server_error(
-                code="DASHBOARD_TOPOLOGY_EMPTY",
-                message="masterdata_line_topology contains no rows.",
-            )
-
-        order_summary = self.get_order_summary(
-            start_date=normalized_start_date,
-            end_date=normalized_end_date,
+        return self.dashboard_query_service.get_scheduler_dashboard(
+            start_date=start_date,
+            end_date=end_date,
+            top_n=top_n,
             current_user=current_user,
         )
-        order_items = (
-            order_summary.get("order_items")
-            if isinstance(order_summary.get("order_items"), list)
-            else []
-        )
-        if len(order_items) == 0:
-            raise bad_request(
-                code="DASHBOARD_ORDER_DATA_EMPTY",
-                message="No order summary rows exist for the requested date range.",
-                details={
-                    "start_date": normalized_start_date,
-                    "end_date": normalized_end_date,
-                },
-            )
-
-        start_date_value = date.fromisoformat(normalized_start_date)
-        end_date_value = date.fromisoformat(normalized_end_date)
-        current_date_value = start_date_value
-        calendar_dates: list[str] = []
-        previous_planned_capacity_qty: float | None = None
-        daily_capacity_items: list[dict[str, Any]] = []
-        total_default_capacity_qty = 0.0
-        total_planned_capacity_qty = 0.0
-        total_actual_capacity_qty = 0.0
-        failure_row_count = 0
-        evaluated_row_count = 0
-        line_meta_by_code: dict[str, dict[str, str]] = {}
-        process_meta_by_code: dict[str, dict[str, str]] = {}
-        line_planned_capacity_by_code: dict[str, dict[str, float]] = defaultdict(dict)
-        process_planned_capacity_by_code: dict[str, dict[str, float]] = defaultdict(dict)
-        line_daily_stats_by_key: dict[tuple[str, str], dict[str, Any]] = {}
-        process_daily_stats_by_key: dict[tuple[str, str], dict[str, Any]] = {}
-        daily_pressure_items: list[dict[str, Any]] = []
-        process_name_by_code = self._process_name_by_code()
-
-        while current_date_value <= end_date_value:
-            calendar_date = current_date_value.isoformat()
-            calendar_dates.append(calendar_date)
-            capacity_payload = self.list_line_daily_capacity(calendar_date)
-            capacity_rows = (
-                capacity_payload.get("items")
-                if isinstance(capacity_payload.get("items"), list)
-                else []
-            )
-            if len(capacity_rows) == 0:
-                raise bad_request(
-                    code="DASHBOARD_CAPACITY_DATA_EMPTY",
-                    message="No daily capacity rows exist for the requested date.",
-                    details={"calendar_date": calendar_date},
-                )
-
-            day_default_capacity_qty = 0.0
-            day_planned_capacity_qty = 0.0
-            day_actual_capacity_qty = 0.0
-            day_failure_row_count = 0
-            day_line_planned_capacity: dict[str, float] = defaultdict(float)
-            day_process_planned_capacity: dict[str, float] = defaultdict(float)
-            day_line_default_capacity: dict[str, float] = defaultdict(float)
-            day_line_actual_capacity: dict[str, float] = defaultdict(float)
-            day_process_default_capacity: dict[str, float] = defaultdict(float)
-            day_process_actual_capacity: dict[str, float] = defaultdict(float)
-            for row in capacity_rows:
-                default_capacity_qty = _to_number(row.get("default_capacity_qty"), 0)
-                planned_capacity_qty = _to_number(row.get("planned_capacity_qty"), 0)
-                actual_capacity_qty = _to_number(row.get("actual_capacity_qty"), 0)
-                machine_count = int(_to_number(row.get("machine_count"), 0))
-                required_machines = int(_to_number(row.get("required_machines"), 0))
-                line_code = _normalize_dashboard_code(row.get("line_code"))
-                if line_code:
-                    line_name = _normalize_dashboard_name(row.get("line_name"), line_code)
-                    line_meta_by_code.setdefault(
-                        line_code,
-                        {
-                            "line_code": line_code,
-                            "line_name": line_name,
-                        },
-                    )
-                    day_line_planned_capacity[line_code] += planned_capacity_qty
-                    day_line_default_capacity[line_code] += default_capacity_qty
-                    day_line_actual_capacity[line_code] += actual_capacity_qty
-                process_code = _normalize_dashboard_code(row.get("process_code"))
-                if process_code:
-                    process_name_cn = _normalize_dashboard_name(
-                        process_name_by_code.get(process_code),
-                        process_code,
-                    )
-                    process_meta_by_code.setdefault(
-                        process_code,
-                        {
-                            "process_code": process_code,
-                            "process_name_cn": process_name_cn,
-                        },
-                    )
-                    day_process_planned_capacity[process_code] += planned_capacity_qty
-                    day_process_default_capacity[process_code] += default_capacity_qty
-                    day_process_actual_capacity[process_code] += actual_capacity_qty
-                day_default_capacity_qty += default_capacity_qty
-                day_planned_capacity_qty += planned_capacity_qty
-                day_actual_capacity_qty += actual_capacity_qty
-                if required_machines > 0:
-                    evaluated_row_count += 1
-                    if machine_count < required_machines:
-                        day_failure_row_count += 1
-                        failure_row_count += 1
-
-            planned_capacity_change_qty = (
-                0
-                if previous_planned_capacity_qty is None
-                else round(day_planned_capacity_qty - previous_planned_capacity_qty, 4)
-            )
-            previous_planned_capacity_qty = day_planned_capacity_qty
-
-            day_failure_rate = (
-                round(day_failure_row_count / len(capacity_rows) * 100, 2)
-                if len(capacity_rows) > 0
-                else 0
-            )
-            daily_capacity_items.append(
-                {
-                    "calendar_date": calendar_date,
-                    "default_capacity_qty": round(day_default_capacity_qty, 4),
-                    "planned_capacity_qty": round(day_planned_capacity_qty, 4),
-                    "actual_capacity_qty": round(day_actual_capacity_qty, 4),
-                    "planned_capacity_change_qty": planned_capacity_change_qty,
-                    "failure_row_count": day_failure_row_count,
-                    "row_count": len(capacity_rows),
-                    "failure_rate": day_failure_rate,
-                }
-            )
-            for line_code, planned_capacity in day_line_planned_capacity.items():
-                line_planned_capacity_by_code[line_code][calendar_date] = planned_capacity
-                line_daily_stats_by_key[(calendar_date, line_code)] = {
-                    "calendar_date": calendar_date,
-                    "line_code": line_code,
-                    "line_name": str(
-                        (line_meta_by_code.get(line_code) or {}).get("line_name") or line_code
-                    ).strip()
-                    or line_code,
-                    "default_capacity_qty": round(day_line_default_capacity.get(line_code, 0), 4),
-                    "planned_capacity_qty": round(planned_capacity, 4),
-                    "actual_capacity_qty": round(day_line_actual_capacity.get(line_code, 0), 4),
-                }
-            for process_code, planned_capacity in day_process_planned_capacity.items():
-                process_planned_capacity_by_code[process_code][calendar_date] = planned_capacity
-                process_daily_stats_by_key[(calendar_date, process_code)] = {
-                    "calendar_date": calendar_date,
-                    "process_code": process_code,
-                    "process_name_cn": str(
-                        (process_meta_by_code.get(process_code) or {}).get("process_name_cn")
-                        or process_code
-                    ).strip()
-                    or process_code,
-                    "default_capacity_qty": round(day_process_default_capacity.get(process_code, 0), 4),
-                    "planned_capacity_qty": round(planned_capacity, 4),
-                    "actual_capacity_qty": round(day_process_actual_capacity.get(process_code, 0), 4),
-                }
-            day_line_stats = [line_daily_stats_by_key[(calendar_date, code)] for code in day_line_planned_capacity]
-            overload_line_count = sum(
-                1
-                for item in day_line_stats
-                if _to_number(item.get("planned_capacity_qty"), 0)
-                > _to_number(item.get("default_capacity_qty"), 0) + SCHEDULE_NUMBER_EPSILON
-            )
-            idle_line_count = sum(
-                1
-                for item in day_line_stats
-                if _to_number(item.get("planned_capacity_qty"), 0)
-                + SCHEDULE_NUMBER_EPSILON
-                < _to_number(item.get("default_capacity_qty"), 0)
-            )
-            utilization_rate = (
-                round(day_planned_capacity_qty / day_default_capacity_qty * 100, 2)
-                if day_default_capacity_qty > SCHEDULE_NUMBER_EPSILON
-                else 0
-            )
-            daily_pressure_items.append(
-                {
-                    "calendar_date": calendar_date,
-                    "default_capacity_qty": round(day_default_capacity_qty, 4),
-                    "planned_capacity_qty": round(day_planned_capacity_qty, 4),
-                    "actual_capacity_qty": round(day_actual_capacity_qty, 4),
-                    "utilization_rate": utilization_rate,
-                    "overload_qty": round(max(0.0, day_planned_capacity_qty - day_default_capacity_qty), 4),
-                    "idle_qty": round(max(0.0, day_default_capacity_qty - day_planned_capacity_qty), 4),
-                    "overload_line_count": overload_line_count,
-                    "idle_line_count": idle_line_count,
-                }
-            )
-            total_default_capacity_qty += day_default_capacity_qty
-            total_planned_capacity_qty += day_planned_capacity_qty
-            total_actual_capacity_qty += day_actual_capacity_qty
-            current_date_value = current_date_value + timedelta(days=1)
-
-        if evaluated_row_count <= 0:
-            raise server_error(
-                code="DASHBOARD_MACHINE_REQUIREMENT_EMPTY",
-                message="No machine-driven capacity rows exist in the requested range.",
-            )
-        if len(line_meta_by_code) == 0:
-            raise server_error(
-                code="DASHBOARD_LINE_SERIES_EMPTY",
-                message="No line capacity series can be built for the requested range.",
-            )
-        if len(process_meta_by_code) == 0:
-            raise server_error(
-                code="DASHBOARD_PROCESS_SERIES_EMPTY",
-                message="No process capacity series can be built for the requested range.",
-            )
-
-        equipment_failure_rate = round(failure_row_count / evaluated_row_count * 100, 2)
-        summary_row = (
-            order_summary.get("summary")
-            if isinstance(order_summary.get("summary"), dict)
-            else {}
-        )
-        order_count = int(_to_number(summary_row.get("order_count"), 0))
-        completed_order_count = int(_to_number(summary_row.get("completed_order_count"), 0))
-        order_completion_rate = _to_number(summary_row.get("completion_rate"), 0)
-
-        order_no_set: set[str] = set()
-        for item in order_items:
-            order_no = str(item.get("order_no") or "").strip()
-            if not order_no:
-                continue
-            order_no_set.add(order_no)
-
-        material_rows: list[dict[str, Any]] = []
-        if order_no_set:
-            placeholders = ",".join("?" for _ in order_no_set)
-            material_rows = fetch_all(
-                self.connection,
-                f"""
-                SELECT
-                    production_order_no,
-                    child_material_code,
-                    child_material_name,
-                    child_unit,
-                    issue_qty
-                FROM material_issue_items
-                WHERE production_order_no IN ({placeholders})
-                """,
-                tuple(sorted(order_no_set)),
-            )
-
-        if len(material_rows) == 0:
-            raise bad_request(
-                code="DASHBOARD_MATERIAL_DATA_EMPTY",
-                message="No material_issue_items rows exist for the requested orders.",
-                details={
-                    "order_count": len(order_no_set),
-                },
-            )
-
-        material_aggregate_map: dict[str, dict[str, Any]] = {}
-        for row in material_rows:
-            order_no = str(row.get("production_order_no") or "").strip()
-            material_code = str(row.get("child_material_code") or "").strip().upper()
-            if not order_no or not material_code:
-                continue
-            if order_no not in order_no_set:
-                continue
-            issue_qty = _to_number(row.get("issue_qty"), 0)
-            estimated_issue_qty = issue_qty
-            if estimated_issue_qty <= SCHEDULE_NUMBER_EPSILON:
-                continue
-            aggregate_row = material_aggregate_map.get(material_code)
-            if aggregate_row is None:
-                aggregate_row = {
-                    "material_code": material_code,
-                    "material_name_cn": str(row.get("child_material_name") or material_code).strip()
-                    or material_code,
-                    "unit": str(row.get("child_unit") or "").strip(),
-                    "estimated_issue_qty": 0.0,
-                    "order_no_set": set(),
-                }
-                material_aggregate_map[material_code] = aggregate_row
-            aggregate_row["estimated_issue_qty"] = (
-                _to_number(aggregate_row.get("estimated_issue_qty"), 0) + estimated_issue_qty
-            )
-            cast_order_set = aggregate_row.get("order_no_set")
-            if isinstance(cast_order_set, set):
-                cast_order_set.add(order_no)
-
-        ranked_material_items = sorted(
-            material_aggregate_map.values(),
-            key=lambda item: (
-                -_to_number(item.get("estimated_issue_qty"), 0),
-                str(item.get("material_code") or ""),
-            ),
-        )
-        if len(ranked_material_items) == 0:
-            raise bad_request(
-                code="DASHBOARD_MATERIAL_CONSUMPTION_EMPTY",
-                message="Material consumption ranking is empty in the requested range.",
-            )
-        material_ranking = ranked_material_items[:normalized_top_n]
-        material_consumption_items = [
-            {
-                "rank": index + 1,
-                "material_code": str(item.get("material_code") or ""),
-                "material_name_cn": str(item.get("material_name_cn") or ""),
-                "unit": str(item.get("unit") or ""),
-                "estimated_issue_qty": round(_to_number(item.get("estimated_issue_qty"), 0), 4),
-                "order_count": len(item.get("order_no_set") or set()),
-            }
-            for index, item in enumerate(material_ranking)
-        ]
-
-        line_overload_items = []
-        for item in line_daily_stats_by_key.values():
-            default_capacity_qty = _to_number(item.get("default_capacity_qty"), 0)
-            planned_capacity_qty = _to_number(item.get("planned_capacity_qty"), 0)
-            actual_capacity_qty = _to_number(item.get("actual_capacity_qty"), 0)
-            utilization_rate = (
-                round(planned_capacity_qty / default_capacity_qty * 100, 2)
-                if default_capacity_qty > SCHEDULE_NUMBER_EPSILON
-                else 0
-            )
-            overload_qty = max(0.0, planned_capacity_qty - default_capacity_qty)
-            idle_qty = max(0.0, default_capacity_qty - planned_capacity_qty)
-            line_overload_items.append(
-                {
-                    **item,
-                    "utilization_rate": utilization_rate,
-                    "overload_qty": round(overload_qty, 4),
-                    "idle_qty": round(idle_qty, 4),
-                    "actual_capacity_qty": round(actual_capacity_qty, 4),
-                }
-            )
-        line_overload_items.sort(
-            key=lambda item: (
-                -_to_number(item.get("overload_qty"), 0),
-                -_to_number(item.get("utilization_rate"), 0),
-                str(item.get("calendar_date") or ""),
-                str(item.get("line_code") or ""),
-            )
-        )
-
-        process_bottleneck_items = []
-        process_grouped_daily: dict[str, list[dict[str, Any]]] = defaultdict(list)
-        for item in process_daily_stats_by_key.values():
-            process_grouped_daily[str(item.get("process_code") or "")].append(item)
-        for process_code, grouped_items in process_grouped_daily.items():
-            peak_item = None
-            utilization_rates: list[float] = []
-            peak_utilization_rate = 0.0
-            for item in grouped_items:
-                default_capacity_qty = _to_number(item.get("default_capacity_qty"), 0)
-                planned_capacity_qty = _to_number(item.get("planned_capacity_qty"), 0)
-                utilization_rate = (
-                    round(planned_capacity_qty / default_capacity_qty * 100, 2)
-                    if default_capacity_qty > SCHEDULE_NUMBER_EPSILON
-                    else 0
-                )
-                utilization_rates.append(utilization_rate)
-                if peak_item is None or utilization_rate > peak_utilization_rate:
-                    peak_item = item
-                    peak_utilization_rate = utilization_rate
-            average_utilization_rate = (
-                round(sum(utilization_rates) / len(utilization_rates), 2)
-                if utilization_rates
-                else 0
-            )
-            process_bottleneck_items.append(
-                {
-                    "process_code": process_code,
-                    "process_name_cn": str(
-                        (peak_item or {}).get("process_name_cn") or process_code
-                    ).strip()
-                    or process_code,
-                    "peak_utilization_rate": peak_utilization_rate,
-                    "average_utilization_rate": average_utilization_rate,
-                    "peak_date": (peak_item or {}).get("calendar_date"),
-                    "peak_planned_capacity_qty": round(
-                        _to_number((peak_item or {}).get("planned_capacity_qty"), 0),
-                        4,
-                    ),
-                    "peak_default_capacity_qty": round(
-                        _to_number((peak_item or {}).get("default_capacity_qty"), 0),
-                        4,
-                    ),
-                }
-            )
-        process_bottleneck_items.sort(
-            key=lambda item: (
-                -_to_number(item.get("peak_utilization_rate"), 0),
-                -_to_number(item.get("average_utilization_rate"), 0),
-                str(item.get("process_code") or ""),
-            )
-        )
-
-        peak_overload_day = max(
-            daily_pressure_items,
-            key=lambda item: (
-                _to_number(item.get("overload_qty"), 0),
-                _to_number(item.get("utilization_rate"), 0),
-            ),
-            default={},
-        )
-        peak_idle_day = max(
-            daily_pressure_items,
-            key=lambda item: (
-                _to_number(item.get("idle_qty"), 0),
-                -_to_number(item.get("utilization_rate"), 0),
-            ),
-            default={},
-        )
-        top_overload_line = line_overload_items[0] if line_overload_items else {}
-        top_bottleneck_process = process_bottleneck_items[0] if process_bottleneck_items else {}
-
-        total_days = (end_date_value - start_date_value).days + 1
-        return {
-            "range": {
-                "start_date": normalized_start_date,
-                "end_date": normalized_end_date,
-                "total_days": total_days,
-            },
-            "summary": {
-                "order_count": order_count,
-                "completed_order_count": completed_order_count,
-                "order_completion_rate": round(order_completion_rate, 2),
-                "evaluated_machine_row_count": evaluated_row_count,
-                "failure_row_count": failure_row_count,
-                "equipment_failure_rate": equipment_failure_rate,
-                "total_capacity_qty": round(total_planned_capacity_qty, 4),
-                "total_default_capacity_qty": round(total_default_capacity_qty, 4),
-                "total_planned_capacity_qty": round(total_planned_capacity_qty, 4),
-                "total_actual_capacity_qty": round(total_actual_capacity_qty, 4),
-            },
-            "daily_capacity": {
-                "items": daily_capacity_items,
-            },
-            "capacity_change_by_line": {
-                "options": _build_dashboard_options(
-                    line_meta_by_code,
-                    code_key="line_code",
-                    name_key="line_name",
-                ),
-                "items": _build_dashboard_change_items(
-                    calendar_dates,
-                    line_planned_capacity_by_code,
-                    line_meta_by_code,
-                    code_key="line_code",
-                    name_key="line_name",
-                ),
-            },
-            "capacity_change_by_process": {
-                "options": _build_dashboard_options(
-                    process_meta_by_code,
-                    code_key="process_code",
-                    name_key="process_name_cn",
-                ),
-                "items": _build_dashboard_change_items(
-                    calendar_dates,
-                    process_planned_capacity_by_code,
-                    process_meta_by_code,
-                    code_key="process_code",
-                    name_key="process_name_cn",
-                ),
-            },
-            "material_consumption": {
-                "top_n": normalized_top_n,
-                "items": material_consumption_items,
-            },
-            "cockpit": {
-                "summary": {
-                    "peak_overload_date": peak_overload_day.get("calendar_date"),
-                    "peak_overload_qty": round(
-                        _to_number(peak_overload_day.get("overload_qty"), 0),
-                        4,
-                    ),
-                    "peak_idle_date": peak_idle_day.get("calendar_date"),
-                    "peak_idle_qty": round(_to_number(peak_idle_day.get("idle_qty"), 0), 4),
-                    "top_overload_line_code": top_overload_line.get("line_code"),
-                    "top_overload_line_name": top_overload_line.get("line_name"),
-                    "top_overload_line_date": top_overload_line.get("calendar_date"),
-                    "top_overload_line_utilization_rate": _to_number(
-                        top_overload_line.get("utilization_rate"),
-                        0,
-                    ),
-                    "top_bottleneck_process_code": top_bottleneck_process.get("process_code"),
-                    "top_bottleneck_process_name_cn": top_bottleneck_process.get(
-                        "process_name_cn"
-                    ),
-                    "top_bottleneck_process_peak_date": top_bottleneck_process.get("peak_date"),
-                    "top_bottleneck_process_peak_utilization_rate": _to_number(
-                        top_bottleneck_process.get("peak_utilization_rate"),
-                        0,
-                    ),
-                },
-                "line_overload_items": line_overload_items[:8],
-                "process_bottleneck_items": process_bottleneck_items[:8],
-                "daily_pressure_items": daily_pressure_items,
-            },
-        }
 
     def list_order_summary_workshop_managers(
         self,
         *,
         current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        if self._current_user_role_code(current_user) != ROLE_SCHEDULER:
-            raise forbidden(
-                code="ORDER_SUMMARY_WORKSHOP_MANAGER_FILTER_FORBIDDEN",
-                message="Only scheduler can list order summary workshop manager filters.",
-            )
-        rows = fetch_all(
-            self.connection,
-            """
-            SELECT
-                users.user_id,
-                users.username,
-                users.display_name,
-                COUNT(scope.line_code) AS line_scope_count
-            FROM app_users users
-            LEFT JOIN masterdata_workshop_manager_visibility visibility
-              ON visibility.user_id = users.user_id
-            JOIN app_user_line_scopes scope
-              ON scope.user_id = users.user_id
-            WHERE users.role_code = ?
-              AND users.enabled_flag = 1
-              AND COALESCE(visibility.visible_flag, 1) = 1
-            GROUP BY users.user_id, users.username, users.display_name
-            HAVING COUNT(scope.line_code) > 0
-            ORDER BY
-                LOWER(COALESCE(NULLIF(TRIM(users.display_name), ''), NULLIF(TRIM(users.username), ''), users.user_id)) ASC,
-                LOWER(COALESCE(users.username, '')) ASC,
-                users.user_id ASC
-            """,
-            (ROLE_WORKSHOP_MANAGER,),
+        return self.order_summary_query_service.list_order_summary_workshop_managers(
+            current_user=current_user,
         )
-        return {
-            "items": [
-                {
-                    "user_id": str(row.get("user_id") or "").strip(),
-                    "username": str(row.get("username") or "").strip(),
-                    "display_name": str(row.get("display_name") or "").strip(),
-                    "line_scope_count": int(_to_number(row.get("line_scope_count"), 0)),
-                }
-                for row in rows
-            ]
-        }
 
     def list_line_daily_capacity(
         self,
@@ -1921,7 +937,7 @@ class AppService:
         process_code: str | None = None,
         current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return self.line_daily_capacity_service.list_line_daily_capacity(
+        return self.masterdata_query_service.list_line_daily_capacity(
             calendar_date,
             workshop_code=workshop_code,
             line_code=line_code,
@@ -1943,7 +959,7 @@ class AppService:
         changed_only: bool = False,
         current_user: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        return self.line_daily_capacity_service.list_line_daily_capacity_audits(
+        return self.masterdata_query_service.list_line_daily_capacity_audits(
             calendar_date,
             workshop_code=workshop_code,
             line_code=line_code,
@@ -1964,985 +980,22 @@ class AppService:
             normalized_date
         )
 
+
     def create_reporting(self, payload: dict[str, Any]) -> dict[str, Any]:
-        order_no = str(payload.get("order_no") or "").strip() or None
-        process_code = str(payload.get("process_code") or "").strip().upper()
-        report_qty = _to_number(payload.get("report_qty"), -1)
-        report_scope = str(payload.get("report_scope") or "").strip().upper()
-        if not process_code:
-            raise bad_request(
-                code="PROCESS_CODE_REQUIRED",
-                message="process_code is required.",
-            )
-        if report_qty <= 0:
-            raise bad_request(
-                code="REPORT_QTY_INVALID",
-                message="report_qty must be greater than 0.",
-            )
-        if report_scope and report_scope not in {"ORDER", "LINE_OUTPUT"}:
-            raise bad_request(
-                code="REPORT_SCOPE_INVALID",
-                message="report_scope must be ORDER or LINE_OUTPUT.",
-            )
-        if order_no:
-            self._require_order(order_no)
-        elif report_scope == "ORDER":
-            raise bad_request(
-                code="REPORT_ORDER_REQUIRED",
-                message="订单报工必须指定 order_no。",
-            )
-        normalized_report_scope = report_scope or ("ORDER" if order_no else "LINE_OUTPUT")
-        process_name_by_code = self._process_name_by_code()
-        report_id = f"RPT-{uuid4().hex[:10].upper()}"
-        report_time_text = str(payload.get("report_time") or "").strip()
-        calendar_date_input = payload.get("calendar_date")
-        calendar_date_text = str(calendar_date_input or "").strip()
-        normalized_calendar_date = _normalize_date_text(calendar_date_input)
-        if calendar_date_text and normalized_calendar_date is None:
-            raise bad_request(
-                code="CALENDAR_DATE_INVALID",
-                message="calendar_date must be a valid YYYY-MM-DD date.",
-            )
-        local_timezone = LOCAL_TIMEZONE
-        if report_time_text:
-            try:
-                report_time_dt = datetime.fromisoformat(report_time_text)
-            except ValueError as exc:
-                raise bad_request(
-                    code="REPORT_TIME_INVALID",
-                    message="report_time must be a valid ISO datetime.",
-                ) from exc
-            if report_time_dt.tzinfo is None or report_time_dt.utcoffset() is None:
-                raise bad_request(
-                    code="REPORT_TIME_TIMEZONE_REQUIRED",
-                    message="report_time must include timezone offset.",
-                )
-            report_time = report_time_dt.astimezone(timezone.utc).replace(microsecond=0).isoformat()
-            reporting_local_date = report_time_dt.astimezone(local_timezone).date().isoformat()
-        elif normalized_calendar_date:
-            reporting_local_date = normalized_calendar_date
-            report_time = (
-                datetime.fromisoformat(f"{normalized_calendar_date}T10:00:00+08:00")
-                .astimezone(timezone.utc)
-                .replace(microsecond=0)
-                .isoformat()
-            )
-        else:
-            simulation_state = self._get_simulation_state()
-            reporting_local_date = _normalize_date_text(simulation_state.get("current_date"))
-            if reporting_local_date is None:
-                raise server_error(
-                    code="SIMULATION_CURRENT_DATE_INVALID",
-                    message="Current simulation date is invalid.",
-                    details={"current_date": simulation_state.get("current_date")},
-                )
-            report_time = (
-                datetime.fromisoformat(f"{reporting_local_date}T10:00:00+08:00")
-                .astimezone(timezone.utc)
-                .replace(microsecond=0)
-                .isoformat()
-            )
-        operator_name = (
-            str(
-                payload.get("operator_name_cn")
-                or payload.get("operator_name")
-                or "系统填报"
-            ).strip()
-            or "系统填报"
-        )
-        workshop_code = str(payload.get("workshop_code") or "").strip().upper() or None
-        workshop_name = str(payload.get("workshop_name") or workshop_code or "").strip() or workshop_code
-        line_code = str(payload.get("line_code") or "").strip().upper() or None
-        line_name = str(payload.get("line_name") or line_code or "").strip() or line_code
-        company_code = str(payload.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper() or DEFAULT_COMPANY_CODE
-        actor = payload.get("actor") if isinstance(payload.get("actor"), dict) else {}
-        if self._is_workshop_manager(actor):
-            if not workshop_code or not line_code:
-                raise bad_request(
-                    code="REPORT_LINE_REQUIRED",
-                    message="workshop_code and line_code are required for workshop manager reporting.",
-                )
-            self._assert_actor_can_access_line(
-                actor,
-                company_code=company_code,
-                workshop_code=workshop_code,
-                line_code=line_code,
-                missing_user_error_code="REPORT_ACTOR_USER_REQUIRED",
-                forbidden_error_code="REPORT_LINE_SCOPE_FORBIDDEN",
-                forbidden_message="Current workshop manager is not allowed to report on this line.",
-            )
-        with transaction(self.connection):
-            self.connection.execute(
-                """
-                INSERT INTO work_reports (
-                    report_id,
-                    production_order_no,
-                    report_scope,
-                    process_code,
-                    process_name,
-                    workshop_code,
-                    workshop_name,
-                    line_code,
-                    line_name,
-                    report_qty,
-                    report_time,
-                    operator_name,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    report_id,
-                    order_no,
-                    normalized_report_scope,
-                    process_code,
-                    process_name_by_code.get(process_code, process_code),
-                    workshop_code,
-                    workshop_name,
-                    line_code,
-                    line_name,
-                    report_qty,
-                    report_time,
-                    operator_name,
-                    report_time,
-                ),
-            )
-            if order_no:
-                self._sync_order_state_from_reporting(
-                    order_no=order_no,
-                    process_code=process_code,
-                )
-        if workshop_code and line_code:
-            self.rebuild_line_daily_actual_capacity({"calendar_date": reporting_local_date})
-        return {
-            "report_id": report_id,
-            "order_no": order_no,
-            "report_scope": normalized_report_scope,
-            "process_code": process_code,
-            "process_name_cn": process_name_by_code.get(process_code, process_code),
-            "report_qty": report_qty,
-            "report_time": report_time,
-            "operator_name_cn": operator_name,
-        }
-
-    def _sync_order_state_from_reporting(self, *, order_no: str, process_code: str) -> None:
-        base_row = self._require_order(order_no)
-        state_row = self._get_order_state(order_no) or {}
-        product_code = str(base_row.get("material_code") or "").strip().upper()
-        final_meta = self._resolve_final_process_meta_by_product({product_code}).get(product_code) or {}
-        final_process_code = str(final_meta.get("process_code") or "").strip().upper()
-        if not final_process_code or final_process_code != process_code:
-            return
-
-        final_report_row = fetch_one(
-            self.connection,
-            """
-            SELECT COALESCE(SUM(report_qty), 0) AS total_qty
-            FROM work_reports
-            WHERE production_order_no = ?
-              AND UPPER(TRIM(COALESCE(process_code, ''))) = ?
-            """,
-            (order_no, final_process_code),
-        )
-        completed_qty = _to_number((final_report_row or {}).get("total_qty"), 0)
-        production_qty = _to_number(base_row.get("production_qty"), 0)
-        remaining_qty = max(0.0, production_qty - completed_qty)
-        progress_rate = (completed_qty / production_qty * 100) if production_qty > 0 else 0
-        normalized_status = "DONE" if production_qty > 0 and completed_qty + SCHEDULE_NUMBER_EPSILON >= production_qty else "IN_PROGRESS" if completed_qty > 0 else "OPEN"
-        next_row = {
-            "production_order_no": order_no,
-            "promised_due_date": state_row.get("promised_due_date") or base_row.get("planned_end_date"),
-            "expected_start_date": state_row.get("expected_start_date") or base_row.get("planned_start_date"),
-            "expected_start_time": state_row.get("expected_start_time")
-            or _iso_at(state_row.get("expected_start_date") or base_row.get("planned_start_date"), "08:00:00"),
-            "expected_finish_time": state_row.get("expected_finish_time")
-            or _iso_at(state_row.get("promised_due_date") or base_row.get("planned_end_date"), "18:00:00"),
-            "priority_level": _normalize_priority_level(state_row.get("priority_level"), PRIORITY_LEVEL_MAX),
-            "urgent_flag": _urgent_flag_from_priority_level(state_row.get("priority_level")),
-            "lock_flag": int(_to_number(state_row.get("lock_flag"), 0)),
-            "frozen_flag": int(_to_number(state_row.get("frozen_flag"), 0)),
-            "status": normalized_status,
-            "order_status": normalized_status,
-            "completed_qty": completed_qty,
-            "remaining_qty": remaining_qty,
-            "progress_rate": min(100.0, round(progress_rate, 4)),
-            "production_batch_no": state_row.get("production_batch_no"),
-        }
-        self._upsert_order_state(next_row)
+        return self.reporting_command_service.create_reporting(payload)
 
     def import_mes_reportings_from_xlsx(self, payload: dict[str, Any]) -> dict[str, Any]:
-        file_path = str(payload.get("file_path") or "").strip()
-        if not file_path:
-            raise bad_request(
-                code="REPORTING_IMPORT_FILE_PATH_REQUIRED",
-                message="file_path is required.",
-            )
-        if not file_path.lower().endswith(".xlsx"):
-            raise bad_request(
-                code="REPORTING_IMPORT_FILE_TYPE_INVALID",
-                message="Only .xlsx files are supported.",
-                details={"file_path": file_path},
-            )
-        workbook_path = Path(file_path)
-        if not workbook_path.exists():
-            raise bad_request(
-                code="REPORTING_IMPORT_FILE_NOT_FOUND",
-                message="xlsx file does not exist.",
-                details={"file_path": file_path},
-            )
-
-        def _normalize_sha256(value: object) -> str | None:
-            raw = str(value or "").strip().lower()
-            if not raw:
-                return None
-            text = raw[7:] if raw.startswith("sha256:") else raw
-            if len(text) != 64:
-                return None
-            try:
-                binascii.unhexlify(text)
-            except binascii.Error:
-                return None
-            return text
-
-        file_sha256 = _normalize_sha256(payload.get("file_sha256"))
-        if file_sha256 is None:
-            file_sha256 = _normalize_sha256(payload.get("source_file_name"))
-        if file_sha256 is None:
-            hasher = hashlib.sha256()
-            with workbook_path.open("rb") as reader:
-                for chunk in iter(lambda: reader.read(1024 * 1024), b""):
-                    hasher.update(chunk)
-            file_sha256 = hasher.hexdigest()
-
-        sha_source_file_name = f"sha256:{file_sha256}"
-        explicit_source_file_name = str(payload.get("source_file_name") or "").strip()
-        source_file_names: list[str] = []
-        for candidate in (sha_source_file_name, explicit_source_file_name, file_path):
-            if candidate and candidate not in source_file_names:
-                source_file_names.append(candidate)
-
-        original_file_name = str(payload.get("original_file_name") or "").strip() or workbook_path.name
-        file_size_bytes = int(workbook_path.stat().st_size or 0)
-        size_input = str(payload.get("file_size_bytes") or "").strip()
-        if size_input:
-            try:
-                file_size_bytes = max(0, int(size_input))
-            except ValueError:
-                file_size_bytes = int(workbook_path.stat().st_size or 0)
-
-        company_code = (
-            str(payload.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper()
-            or DEFAULT_COMPANY_CODE
-        )
-        create_missing_orders = False
-        if payload.get("create_missing_orders") is not None:
-            try:
-                create_missing_orders = _parse_enabled_flag(
-                    payload.get("create_missing_orders")
-                ) == 1
-            except ValueError as exc:
-                raise bad_request(
-                    code="REPORTING_IMPORT_CREATE_MISSING_ORDERS_INVALID",
-                    message=str(exc),
-                ) from exc
-        sheet_names_payload = payload.get("sheet_names")
-        sheet_names: list[str] | None = None
-        if sheet_names_payload is not None:
-            if not isinstance(sheet_names_payload, list):
-                raise bad_request(
-                    code="REPORTING_IMPORT_SHEET_NAMES_INVALID",
-                    message="sheet_names must be an array of strings.",
-                )
-            normalized_sheet_names: list[str] = []
-            for item in sheet_names_payload:
-                name = str(item or "").strip()
-                if not name:
-                    raise bad_request(
-                        code="REPORTING_IMPORT_SHEET_NAMES_INVALID",
-                        message="sheet_names must not contain empty names.",
-                    )
-                if name not in normalized_sheet_names:
-                    normalized_sheet_names.append(name)
-            sheet_names = normalized_sheet_names
-
-        def parse_optional_text(value: object) -> str | None:
-            text = str(value or "").strip()
-            return text or None
-
-        def parse_optional_number(value: object) -> float | None:
-            if value is None:
-                return None
-            if isinstance(value, (int, float)):
-                number = float(value)
-                return number if number == number else None
-            text = str(value or "").strip()
-            if not text:
-                return None
-            try:
-                number = float(text)
-            except (TypeError, ValueError):
-                return None
-            return number if number == number else None
-
-        def parse_required_positive_number(value: object) -> float | None:
-            number = parse_optional_number(value)
-            if number is None or number <= 0:
-                return None
-            return number
-
-        def parse_report_datetime(value: object) -> datetime | None:
-            if isinstance(value, datetime):
-                return value
-            if isinstance(value, date):
-                return datetime.combine(value, datetime.min.time())
-            text = str(value or "").strip()
-            if not text:
-                return None
-            try:
-                return datetime.fromisoformat(text)
-            except ValueError:
-                return None
-
-        def to_utc_iso(value: datetime) -> str:
-            parsed = value
-            if parsed.tzinfo is None or parsed.utcoffset() is None:
-                parsed = parsed.replace(tzinfo=LOCAL_TIMEZONE)
-            return (
-                parsed.astimezone(timezone.utc).replace(microsecond=0).isoformat()
-            )
-
-        required_headers = ("报工日期", "生产订单号", "工序编码", "报工数量")
-        header_to_field: dict[str, str] = {
-            **REPORTING_IMPORT_REQUIRED_HEADER_MAP,
-            **REPORTING_IMPORT_OPTIONAL_HEADER_MAP,
-            "工序编码": "process_code",
-            "工序名称": "process_name",
-        }
-
-        try:
-            workbook = load_workbook(workbook_path, data_only=True, read_only=True)
-        except Exception as exc:
-            raise bad_request(
-                code="REPORTING_IMPORT_WORKBOOK_LOAD_FAILED",
-                message="Failed to read xlsx workbook.",
-                details={"file_path": file_path, "error": str(exc)},
-            ) from exc
-
-        try:
-            available_sheet_names = list(workbook.sheetnames)
-            selected_sheet_names = sheet_names or available_sheet_names
-            if not selected_sheet_names:
-                raise bad_request(
-                    code="REPORTING_IMPORT_SHEETS_EMPTY",
-                    message="xlsx workbook has no sheets.",
-                    details={"file_path": file_path},
-                )
-            missing_sheets = [
-                name
-                for name in selected_sheet_names
-                if name not in available_sheet_names
-            ]
-            if missing_sheets:
-                raise bad_request(
-                    code="REPORTING_IMPORT_SHEET_NOT_FOUND",
-                    message="Some sheets do not exist in workbook.",
-                    details={
-                        "file_path": file_path,
-                        "missing_sheet_names": missing_sheets,
-                        "available_sheet_names": available_sheet_names,
-                    },
-                )
-
-            imported_count = 0
-            skipped_existing_count = 0
-            failed_count = 0
-            total_row_count = 0
-            failures: list[dict[str, Any]] = []
-            order_exists_cache: dict[str, bool] = {}
-            created_missing_order_count = 0
-            created_missing_order_nos: list[str] = []
-
-            for sheet_name in selected_sheet_names:
-                sheet = workbook[sheet_name]
-                header_cells = [
-                    str(sheet.cell(1, c).value or "").strip()
-                    for c in range(1, sheet.max_column + 1)
-                ]
-                header_index: dict[str, int] = {}
-                for col_index, header in enumerate(header_cells, start=1):
-                    if header and header not in header_index:
-                        header_index[header] = col_index
-
-                missing_headers = [
-                    header for header in required_headers if header not in header_index
-                ]
-                if missing_headers:
-                    raise bad_request(
-                        code="REPORTING_IMPORT_REQUIRED_HEADERS_MISSING",
-                        message=f"Missing required header(s) in sheet '{sheet_name}'.",
-                        details={
-                            "sheet_name": sheet_name,
-                            "missing_headers": missing_headers,
-                        },
-                    )
-
-                sheet_columns: list[tuple[str, int]] = []
-                for header, field_name in header_to_field.items():
-                    col = header_index.get(header)
-                    if col is None:
-                        continue
-                    sheet_columns.append((field_name, col))
-
-                for row_no in range(2, sheet.max_row + 1):
-                    raw: dict[str, Any] = {
-                        field_name: sheet.cell(row_no, col).value
-                        for field_name, col in sheet_columns
-                    }
-                    report_datetime_raw = raw.get("report_datetime")
-                    order_no_raw = raw.get("production_order_no")
-                    process_code_raw = raw.get("process_code")
-                    report_qty_raw = raw.get("report_qty")
-                    if (
-                        report_datetime_raw is None
-                        and not parse_optional_text(order_no_raw)
-                        and not parse_optional_text(process_code_raw)
-                        and parse_optional_text(report_qty_raw) is None
-                    ):
-                        continue
-
-                    total_row_count += 1
-                    source_placeholder_sql = ",".join("?" for _ in source_file_names)
-                    existing = fetch_one(
-                        self.connection,
-                        f"""
-                        SELECT report_id
-                        FROM work_reports
-                        WHERE source_file_name IN ({source_placeholder_sql})
-                          AND source_sheet_name = ?
-                          AND source_row_no = ?
-                        LIMIT 1
-                        """,
-                        tuple(source_file_names + [sheet_name, row_no]),
-                    )
-                    if existing is not None:
-                        skipped_existing_count += 1
-                        continue
-
-                    report_dt = parse_report_datetime(report_datetime_raw)
-                    if report_dt is None:
-                        failed_count += 1
-                        failures.append(
-                            {
-                                "sheet_name": sheet_name,
-                                "row_no": row_no,
-                                "error": "报工日期无法解析。",
-                            }
-                        )
-                        continue
-                    report_time = to_utc_iso(report_dt)
-
-                    order_no_text = parse_optional_text(order_no_raw)
-                    if not order_no_text:
-                        failed_count += 1
-                        failures.append(
-                            {
-                                "sheet_name": sheet_name,
-                                "row_no": row_no,
-                                "error": "生产订单号为空。",
-                            }
-                        )
-                        continue
-                    base_order_no = str(order_no_text.split("-")[0]).strip()
-                    if not base_order_no:
-                        failed_count += 1
-                        failures.append(
-                            {
-                                "sheet_name": sheet_name,
-                                "row_no": row_no,
-                                "order_no": order_no_text,
-                                "error": "生产订单号格式无效。",
-                            }
-                        )
-                        continue
-
-                    process_code_text = parse_optional_text(process_code_raw)
-                    if not process_code_text:
-                        failed_count += 1
-                        failures.append(
-                            {
-                                "sheet_name": sheet_name,
-                                "row_no": row_no,
-                                "order_no": order_no_text,
-                                "error": "工序编码为空。",
-                            }
-                        )
-                        continue
-                    process_code = process_code_text.upper()
-
-                    report_qty = parse_required_positive_number(report_qty_raw)
-                    if report_qty is None:
-                        failed_count += 1
-                        failures.append(
-                            {
-                                "sheet_name": sheet_name,
-                                "row_no": row_no,
-                                "order_no": order_no_text,
-                                "process_code": process_code,
-                                "error": "报工数量必须大于 0。",
-                            }
-                        )
-                        continue
-
-                    if base_order_no not in order_exists_cache:
-                        order_exists_cache[base_order_no] = (
-                            fetch_one(
-                                self.connection,
-                                """
-                                SELECT production_order_no
-                                FROM production_orders
-                                WHERE production_order_no = ?
-                                LIMIT 1
-                                """,
-                                (base_order_no,),
-                            )
-                            is not None
-                        )
-
-                    if not order_exists_cache[base_order_no]:
-                        if not create_missing_orders:
-                            failed_count += 1
-                            failures.append(
-                                {
-                                    "sheet_name": sheet_name,
-                                    "row_no": row_no,
-                                    "order_no": order_no_text,
-                                    "base_order_no": base_order_no,
-                                    "process_code": process_code,
-                                    "error": (
-                                        "生产订单不存在，请先同步/导入生产订单后再导入报工。"
-                                    ),
-                                }
-                            )
-                            continue
-                        material_code = parse_optional_text(raw.get("product_code")) or "UNKNOWN"
-                        material_name = (
-                            parse_optional_text(raw.get("product_name"))
-                            or material_code
-                            or base_order_no
-                        )
-                        material_specification = parse_optional_text(
-                            raw.get("product_specification")
-                        )
-                        with transaction(self.connection):
-                            self.connection.execute(
-                                """
-                                INSERT INTO production_orders (
-                                    production_order_no,
-                                    material_code,
-                                    material_name,
-                                    material_specification,
-                                    production_qty,
-                                    status,
-                                    planned_start_date,
-                                    planned_end_date,
-                                    source_bill_no,
-                                    material_list_no,
-                                    updated_at
-                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                ON CONFLICT(production_order_no) DO NOTHING
-                                """,
-                                (
-                                    base_order_no,
-                                    material_code,
-                                    material_name,
-                                    material_specification,
-                                    0.0,
-                                    "OPEN",
-                                    None,
-                                    None,
-                                    None,
-                                    None,
-                                    report_time,
-                                ),
-                            )
-                        order_exists_cache[base_order_no] = True
-                        created_missing_order_count += 1
-                        if len(created_missing_order_nos) < 50:
-                            created_missing_order_nos.append(base_order_no)
-
-                    process_name = parse_optional_text(raw.get("process_name"))
-                    report_id = f"RPT-{uuid4().hex[:10].upper()}"
-                    row_payload: dict[str, Any] = {
-                        "report_id": report_id,
-                        "production_order_no": base_order_no,
-                        "process_code": process_code,
-                        "process_name": process_name,
-                        "company_code": company_code,
-                        "workshop_code": None,
-                        "workshop_name": None,
-                        "line_code": None,
-                        "line_name": None,
-                        "report_qty": float(report_qty),
-                        "report_time": report_time,
-                        "operator_code": parse_optional_text(raw.get("operator_code")),
-                        "operator_name": parse_optional_text(raw.get("operator_name")),
-                        "section_leader_name": parse_optional_text(
-                            raw.get("section_leader_name")
-                        ),
-                        "dispatch_no": parse_optional_text(raw.get("dispatch_no")),
-                        "product_code": parse_optional_text(raw.get("product_code")),
-                        "product_name": parse_optional_text(raw.get("product_name")),
-                        "product_specification": parse_optional_text(
-                            raw.get("product_specification")
-                        ),
-                        "resource_group_name": parse_optional_text(
-                            raw.get("resource_group_name")
-                        ),
-                        "resource_name": parse_optional_text(raw.get("resource_name")),
-                        "department_name": parse_optional_text(
-                            raw.get("department_name")
-                        ),
-                        "source_process_code": process_code,
-                        "source_process_name": process_name,
-                        "mold_code": parse_optional_text(raw.get("mold_code")),
-                        "support_count": parse_optional_number(raw.get("support_count")),
-                        "weight_kg": parse_optional_number(raw.get("weight_kg")),
-                        "cavity_count": parse_optional_number(raw.get("cavity_count")),
-                        "total_cycle_time": parse_optional_number(
-                            raw.get("total_cycle_time")
-                        ),
-                        "production_quota": parse_optional_number(
-                            raw.get("production_quota")
-                        ),
-                        "work_duration": parse_optional_number(raw.get("work_duration")),
-                        "clamp_or_assembly_weight": parse_optional_number(
-                            raw.get("clamp_or_assembly_weight")
-                        ),
-                        "unit_weight": parse_optional_number(raw.get("unit_weight")),
-                        "source_sheet_name": sheet_name,
-                        "source_row_no": row_no,
-                        "source_file_name": sha_source_file_name,
-                        "updated_at": report_time,
-                    }
-                    columns_sql = ", ".join(WORK_REPORT_COLUMNS)
-                    placeholders = ", ".join("?" for _ in WORK_REPORT_COLUMNS)
-                    values = tuple(row_payload.get(column) for column in WORK_REPORT_COLUMNS)
-                    with transaction(self.connection):
-                        self.connection.execute(
-                            f"INSERT INTO work_reports ({columns_sql}) VALUES ({placeholders})",
-                            values,
-                        )
-                    imported_count += 1
-
-            actor = payload.get("actor") if isinstance(payload.get("actor"), dict) else {}
-            imported_by_user_id = str(actor.get("user_id") or "").strip() or None
-            imported_by_username = str(actor.get("username") or "").strip() or None
-            imported_by_display_name = (
-                str(actor.get("display_name") or "").strip() or None
-            )
-            imported_at = utc_now()
-            previous_imported_at: str | None = None
-            existing_file_record = fetch_one(
-                self.connection,
-                """
-                SELECT last_imported_at
-                FROM reporting_import_files
-                WHERE file_sha256 = ?
-                """,
-                (file_sha256,),
-            )
-            if existing_file_record is not None:
-                previous_imported_at = str(
-                    existing_file_record.get("last_imported_at") or ""
-                ).strip() or None
-
-            with transaction(self.connection):
-                self.connection.execute(
-                    """
-                    INSERT INTO reporting_import_files (
-                        file_sha256,
-                        source_file_name,
-                        file_path,
-                        original_file_name,
-                        file_size_bytes,
-                        sheet_names_json,
-                        imported_by_user_id,
-                        imported_by_username,
-                        imported_by_display_name,
-                        total_row_count,
-                        imported_count,
-                        skipped_existing_count,
-                        failed_count,
-                        created_missing_order_count,
-                        created_at,
-                        last_imported_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(file_sha256) DO UPDATE SET
-                        source_file_name = excluded.source_file_name,
-                        file_path = excluded.file_path,
-                        original_file_name = excluded.original_file_name,
-                        file_size_bytes = excluded.file_size_bytes,
-                        sheet_names_json = excluded.sheet_names_json,
-                        imported_by_user_id = excluded.imported_by_user_id,
-                        imported_by_username = excluded.imported_by_username,
-                        imported_by_display_name = excluded.imported_by_display_name,
-                        total_row_count = excluded.total_row_count,
-                        imported_count = excluded.imported_count,
-                        skipped_existing_count = excluded.skipped_existing_count,
-                        failed_count = excluded.failed_count,
-                        created_missing_order_count = excluded.created_missing_order_count,
-                        last_imported_at = excluded.last_imported_at
-                    """,
-                    (
-                        file_sha256,
-                        sha_source_file_name,
-                        file_path,
-                        original_file_name,
-                        int(file_size_bytes),
-                        dumps(selected_sheet_names),
-                        imported_by_user_id,
-                        imported_by_username,
-                        imported_by_display_name,
-                        int(total_row_count),
-                        int(imported_count),
-                        int(skipped_existing_count),
-                        int(failed_count),
-                        int(created_missing_order_count),
-                        imported_at,
-                        imported_at,
-                    ),
-                )
-
-            return {
-                "file_path": file_path,
-                "source_file_name": sha_source_file_name,
-                "file_sha256": file_sha256,
-                "original_file_name": original_file_name,
-                "file_size_bytes": int(file_size_bytes),
-                "previous_imported_at": previous_imported_at,
-                "sheet_names": selected_sheet_names,
-                "total_row_count": total_row_count,
-                "imported_count": imported_count,
-                "skipped_existing_count": skipped_existing_count,
-                "failed_count": failed_count,
-                "created_missing_order_count": created_missing_order_count,
-                "created_missing_order_nos": created_missing_order_nos,
-                "failures": failures,
-            }
-        finally:
-            workbook.close()
+        return self.reporting_command_service.import_mes_reportings_from_xlsx(payload)
 
     def select_reporting_capacity_compare(self, payload: dict[str, Any]) -> dict[str, Any]:
-        report_id = str(payload.get("report_id") or "").strip()
-        if not report_id:
-            raise bad_request(
-                code="REPORT_ID_REQUIRED",
-                message="report_id is required.",
-            )
-        audit_id = str(payload.get("audit_id") or "").strip()
-        if not audit_id:
-            raise bad_request(
-                code="REPORT_CAPACITY_COMPARE_AUDIT_ID_REQUIRED",
-                message="audit_id is required.",
-            )
-        actor = payload.get("actor") if isinstance(payload.get("actor"), dict) else {}
-        existing = fetch_one(
-            self.connection,
-            """
-            SELECT
-                report_id,
-                process_code,
-                workshop_code,
-                line_code,
-                report_time,
-                daily_capacity_compare_audit_id,
-                daily_capacity_compare_qty
-            FROM work_reports
-            WHERE report_id = ?
-            """,
-            (report_id,),
-        )
-        if existing is None:
-            raise not_found(
-                code="REPORT_NOT_FOUND",
-                message="Report does not exist.",
-                details={"report_id": report_id},
-            )
-
-        workshop_code = str(existing.get("workshop_code") or "").strip().upper()
-        line_code = str(existing.get("line_code") or "").strip().upper()
-        process_code = str(existing.get("process_code") or "").strip().upper()
-        report_local_date = _local_date_from_iso_datetime(existing.get("report_time"))
-        if not report_local_date or not workshop_code or not line_code or not process_code:
-            raise bad_request(
-                code="REPORT_CAPACITY_COMPARE_REPORT_KEY_INVALID",
-                message=(
-                    "The report record is missing report_time, workshop_code, line_code, "
-                    "or process_code required for capacity comparison."
-                ),
-                details={"report_id": report_id},
-            )
-
-        if self._is_workshop_manager(actor):
-            self._assert_actor_can_access_line(
-                actor,
-                company_code=DEFAULT_COMPANY_CODE,
-                workshop_code=workshop_code,
-                line_code=line_code,
-                missing_user_error_code="REPORT_ACTOR_USER_REQUIRED",
-                forbidden_error_code="REPORT_LINE_SCOPE_FORBIDDEN",
-                forbidden_message=(
-                    "Current workshop manager is not allowed to select a capacity comparison for this reporting record."
-                ),
-            )
-
-        candidate_rows = fetch_all(
-            self.connection,
-            """
-            SELECT
-                audit_id,
-                new_planned_capacity_qty
-            FROM daily_line_capacity_plan_audit
-            WHERE calendar_date = ?
-              AND company_code = ?
-              AND workshop_code = ?
-              AND line_code = ?
-              AND process_code = ?
-            ORDER BY changed_at DESC, audit_id DESC
-            """,
-            (
-                report_local_date,
-                DEFAULT_COMPANY_CODE,
-                workshop_code,
-                line_code,
-                process_code,
-            ),
-        )
-        if len(candidate_rows) == 0:
-            raise bad_request(
-                code="REPORT_CAPACITY_COMPARE_AUDITS_EMPTY",
-                message="No same-day daily capacity audit records exist for this report.",
-                details={
-                    "report_id": report_id,
-                    "report_local_date": report_local_date,
-                    "workshop_code": workshop_code,
-                    "line_code": line_code,
-                    "process_code": process_code,
-                },
-            )
-
-        selected_audit = next(
-            (
-                row
-                for row in candidate_rows
-                if str(row.get("audit_id") or "").strip() == audit_id
-            ),
-            None,
-        )
-        if selected_audit is None:
-            any_audit = fetch_one(
-                self.connection,
-                """
-                SELECT audit_id
-                FROM daily_line_capacity_plan_audit
-                WHERE audit_id = ?
-                LIMIT 1
-                """,
-                (audit_id,),
-            )
-            if any_audit is None:
-                raise not_found(
-                    code="DAILY_CAPACITY_AUDIT_NOT_FOUND",
-                    message="Daily capacity audit does not exist.",
-                    details={"audit_id": audit_id},
-                )
-            raise bad_request(
-                code="REPORT_CAPACITY_COMPARE_AUDIT_SCOPE_MISMATCH",
-                message=(
-                    "The selected daily capacity audit does not match the report date, "
-                    "workshop, line, and process."
-                ),
-                details={
-                    "report_id": report_id,
-                    "audit_id": audit_id,
-                    "report_local_date": report_local_date,
-                    "workshop_code": workshop_code,
-                    "line_code": line_code,
-                    "process_code": process_code,
-                },
-            )
-
-        compare_qty = _to_number(selected_audit.get("new_planned_capacity_qty"), 0)
-        selected_at = utc_now()
-        with transaction(self.connection):
-            self.connection.execute(
-                """
-                UPDATE work_reports
-                SET daily_capacity_compare_audit_id = ?,
-                    daily_capacity_compare_qty = ?,
-                    daily_capacity_compare_selected_at = ?
-                WHERE report_id = ?
-                """,
-                (audit_id, compare_qty, selected_at, report_id),
-            )
-        return {
-            "report_id": report_id,
-            "report_local_date": report_local_date,
-            "daily_capacity_compare_audit_id": audit_id,
-            "daily_capacity_compare_qty": compare_qty,
-            "daily_capacity_compare_selected_at": selected_at,
-        }
+        return self.reporting_command_service.select_reporting_capacity_compare(payload)
 
     def delete_reporting(
         self,
         report_id: str,
         actor: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
-        existing = fetch_one(
-            self.connection,
-            """
-            SELECT report_id, process_code, workshop_code, line_code, report_time
-            FROM work_reports
-            WHERE report_id = ?
-            """,
-            (report_id,),
-        )
-        if existing is None:
-            raise not_found(
-                code="REPORT_NOT_FOUND",
-                message="Report does not exist.",
-                details={"report_id": report_id},
-            )
-        normalized_actor = actor if isinstance(actor, dict) else {}
-        workshop_code = str(existing.get("workshop_code") or "").strip().upper()
-        line_code = str(existing.get("line_code") or "").strip().upper()
-        if self._is_workshop_manager(normalized_actor):
-            if not workshop_code or not line_code:
-                raise forbidden(
-                    code="REPORT_LINE_SCOPE_FORBIDDEN",
-                    message="Current workshop manager is not allowed to delete this reporting record.",
-                    details={"report_id": report_id},
-                )
-            self._assert_actor_can_access_line(
-                normalized_actor,
-                company_code=DEFAULT_COMPANY_CODE,
-                workshop_code=workshop_code,
-                line_code=line_code,
-                missing_user_error_code="REPORT_ACTOR_USER_REQUIRED",
-                forbidden_error_code="REPORT_LINE_SCOPE_FORBIDDEN",
-                forbidden_message="Current workshop manager is not allowed to delete this reporting record.",
-            )
-        with transaction(self.connection):
-            self.connection.execute(
-                "DELETE FROM work_reports WHERE report_id = ?",
-                (report_id,),
-            )
-        process_code = str(existing.get("process_code") or "").strip().upper()
-        report_time_text = str(existing.get("report_time") or "").strip()
-        if workshop_code and line_code and process_code and report_time_text:
-            local_date = _local_date_from_iso_datetime(report_time_text)
-            if local_date:
-                self.rebuild_line_daily_actual_capacity({"calendar_date": local_date})
-        return {"ok": True}
+        return self.reporting_command_service.delete_reporting(report_id, actor)
 
     def list_schedule_versions(self) -> dict[str, Any]:
         rows = fetch_all(
@@ -3033,92 +1086,13 @@ class AppService:
         }
 
     def get_current_schedule(self) -> dict[str, Any]:
-        row = fetch_one(
-            self.connection,
-            """
-            SELECT singleton_key, strategy_code, result_status, result_summary, updated_at
-            FROM current_schedule_meta
-            WHERE singleton_key = 'CURRENT'
-            """,
-        )
-        if row is None:
-            return {
-                "has_schedule": False,
-                "schedule_id": CURRENT_SCHEDULE_VERSION_NO,
-                "result_status": None,
-                "result_status_label": None,
-                "result_summary": "",
-                "updated_at": None,
-            }
-        return {
-            "has_schedule": True,
-            "schedule_id": CURRENT_SCHEDULE_VERSION_NO,
-            "result_status": row.get("result_status"),
-            "result_status_label": _schedule_result_status_label(row.get("result_status")),
-            "result_summary": row.get("result_summary"),
-            "updated_at": row.get("updated_at"),
-            "strategy_code": row.get("strategy_code"),
-        }
+        return self.schedules_query_service.get_current_schedule()
 
     def list_current_schedule_tasks(self) -> dict[str, Any]:
-        rows = fetch_all(
-            self.connection,
-            """
-            SELECT
-                production_order_no,
-                process_code,
-                process_name_cn,
-                workshop_code,
-                line_code,
-                calendar_date,
-                shift_code,
-                plan_qty,
-                plan_start_time
-            FROM current_schedule_tasks
-            ORDER BY task_no ASC
-            """,
-        )
-        return {
-            "items": [
-                {
-                    "order_no": row["production_order_no"],
-                    "process_code": row["process_code"],
-                    "process_name_cn": row.get("process_name_cn") or row["process_code"],
-                    "workshop_code": row.get("workshop_code"),
-                    "line_code": row.get("line_code"),
-                    "calendar_date": row["calendar_date"],
-                    "shift_code": row["shift_code"],
-                    "plan_qty": row["plan_qty"],
-                    "plan_start_time": row.get("plan_start_time"),
-                }
-                for row in rows
-            ]
-        }
+        return self.schedules_query_service.list_current_schedule_tasks()
 
     def list_schedule_snapshots(self) -> dict[str, Any]:
-        rows = fetch_all(
-            self.connection,
-            """
-            SELECT snapshot_id, snapshot_name, strategy_code, created_at, result_status, result_summary
-            FROM schedule_snapshots
-            ORDER BY created_at DESC, snapshot_id DESC
-            """,
-        )
-        return {
-            "items": [
-                {
-                    "snapshot_id": str(row.get("snapshot_id") or "").strip(),
-                    "snapshot_name": str(row.get("snapshot_name") or "").strip(),
-                    "created_at": row.get("created_at"),
-                    "result_status": row.get("result_status"),
-                    "result_status_label": _schedule_result_status_label(row.get("result_status")),
-                    "result_summary": row.get("result_summary"),
-                    "strategy_code": row.get("strategy_code"),
-                }
-                for row in rows
-                if str(row.get("snapshot_id") or "").strip()
-            ]
-        }
+        return self.schedules_query_service.list_schedule_snapshots()
 
     def _clone_schedule_version(
         self,
@@ -3903,7 +1877,7 @@ class AppService:
             "process_name_cn": process_code,
             "current_order_finish_time": None,
             "order_timeline_items": [],
-            "message": "暂无排产任务数据",
+            "message": "鏆傛棤鎺掍骇浠诲姟鏁版嵁",
         }
 
     def _build_selected_process_timeline_detail(
@@ -4045,7 +2019,7 @@ class AppService:
             "order_timeline_items": order_timeline_items,
         }
         if len(order_timeline_items) == 0:
-            detail["message"] = "暂无排产任务数据"
+            detail["message"] = "鏆傛棤鎺掍骇浠诲姟鏁版嵁"
         return detail
 
     def _pick_schedule_compare_version(self, version_no: str) -> dict[str, Any] | None:
@@ -4680,8 +2654,8 @@ class AppService:
             )
             if material_items:
                 first_material_name = str(
-                    first_item.get("material_name") or first_item.get("material_code") or "物料"
-                ).strip() or "物料"
+                    first_item.get("material_name") or first_item.get("material_code") or "鐗╂枡"
+                ).strip() or "鐗╂枡"
                 if len(material_items) == 1:
                     order_summary["summary_text"] = first_material_name
                 else:
@@ -4767,545 +2741,31 @@ class AppService:
         return {"items": items}
 
     def get_masterdata_config(self) -> dict[str, Any]:
-        self._ensure_masterdata_seeded()
-        rules = self.get_schedule_calendar_rules()["data"]
-        line_skeletons = self._list_line_skeleton_rows()
-        line_topology = self._list_line_topology_rows()
-        workshop_manager_users = self._list_enabled_workshop_manager_users()
-        workshop_manager_visible_by_user_id = {
-            str(row.get("user_id") or "").strip(): (
-                1 if int(row.get("visible_flag") or 0) == 1 else 0
-            )
-            for row in self._list_workshop_manager_visibility_rows()
-            if str(row.get("user_id") or "").strip()
-        }
-        workshop_manager_users = [
-            {
-                **row,
-                "visible_flag": workshop_manager_visible_by_user_id.get(
-                    str(row.get("user_id") or "").strip(),
-                    1,
-                ),
-            }
-            for row in workshop_manager_users
-        ]
-        workshop_manager_line_scopes = self._list_workshop_manager_line_scope_rows()
-        route_rows = self._list_route_rows()
-        process_seen: dict[str, str] = {}
-        for row in route_rows:
-            process_code = str(row.get("process_code") or "").strip().upper()
-            if process_code and process_code not in process_seen:
-                process_seen[process_code] = str(
-                    row.get("process_name_cn") or process_code
-                )
-        for row in line_topology:
-            process_code = str(row.get("process_code") or "").strip().upper()
-            if process_code and process_code not in process_seen:
-                process_seen[process_code] = process_code
-        process_configs = [
-            {"process_code": code, "process_name_cn": name}
-            for code, name in sorted(process_seen.items())
-        ]
-        backup_repository = BackupRepository(self.connection)
-        backup_config = backup_repository.get_backup_config()
-        backup_records = backup_repository.list_backup_records()
-        return {
-            "data": {
-                "horizon_start_date": rules["horizon_start_date"],
-                "horizon_days": rules["horizon_days"],
-                "skip_statutory_holidays": rules["skip_statutory_holidays"],
-                "weekend_rest_mode": rules["weekend_rest_mode"],
-                "date_shift_mode_by_date": rules["date_shift_mode_by_date"],
-                "process_configs": process_configs,
-                "line_skeletons": line_skeletons,
-                "line_topology": line_topology,
-                "workshop_manager_users": workshop_manager_users,
-                "workshop_manager_line_scopes": workshop_manager_line_scopes,
-                "resource_pool": [],
-                "material_availability": [],
-                "backup_config": backup_config,
-                "backup_records": backup_records,
-            }
-        }
+        return self.masterdata_query_service.get_masterdata_config()
 
     def save_masterdata_config(self, payload: dict[str, Any]) -> dict[str, Any]:
-        line_skeletons = payload.get("line_skeletons")
-        if not isinstance(line_skeletons, list) or len(line_skeletons) == 0:
-            raise bad_request(
-                code="LINE_SKELETONS_REQUIRED",
-                message="line_skeletons must be a non-empty array.",
-            )
-        line_topology = payload.get("line_topology")
-        if line_topology is None:
-            line_topology = []
-        if not isinstance(line_topology, list):
-            raise bad_request(
-                code="LINE_TOPOLOGY_REQUIRED",
-                message="line_topology must be an array.",
-            )
-        workshop_manager_line_scopes = payload.get("workshop_manager_line_scopes")
-        if not isinstance(workshop_manager_line_scopes, list):
-            raise bad_request(
-                code="WORKSHOP_MANAGER_LINE_SCOPES_REQUIRED",
-                message="workshop_manager_line_scopes must be an array.",
-            )
-        workshop_manager_users_payload = payload.get("workshop_manager_users")
-        if not isinstance(workshop_manager_users_payload, list):
-            raise bad_request(
-                code="WORKSHOP_MANAGER_USERS_REQUIRED",
-                message="workshop_manager_users must be an array.",
-            )
-        workshop_manager_users = self._list_enabled_workshop_manager_users()
-        workshop_manager_user_ids = {
-            str(row.get("user_id") or "").strip()
-            for row in workshop_manager_users
-            if str(row.get("user_id") or "").strip()
-        }
-        updated_at = utc_now()
-        backup_config_payload = payload.get("backup_config")
-        backup_config_update: tuple[int, int, int] | None = None
-        if backup_config_payload is not None:
-            if not isinstance(backup_config_payload, dict):
-                raise bad_request(
-                    code="BACKUP_CONFIG_INVALID",
-                    message="backup_config must be an object.",
-                )
-            try:
-                enabled_flag = _parse_enabled_flag(
-                    backup_config_payload.get("enabled_flag")
-                )
-            except ValueError as exc:
-                raise bad_request(
-                    code="BACKUP_CONFIG_ENABLED_FLAG_INVALID",
-                    message=str(exc),
-                )
-            try:
-                frequency_minutes = _parse_int_in_range(
-                    backup_config_payload.get("frequency_minutes"),
-                    field_name="frequency_minutes",
-                    min_value=1,
-                    max_value=525600,
-                )
-            except ValueError as exc:
-                raise bad_request(
-                    code="BACKUP_CONFIG_FREQUENCY_INVALID",
-                    message=str(exc),
-                )
-            try:
-                max_backups = _parse_int_in_range(
-                    backup_config_payload.get("max_backups"),
-                    field_name="max_backups",
-                    min_value=1,
-                    max_value=1000,
-                )
-            except ValueError as exc:
-                raise bad_request(
-                    code="BACKUP_CONFIG_MAX_BACKUPS_INVALID",
-                    message=str(exc),
-                )
-            backup_config_update = (enabled_flag, frequency_minutes, max_backups)
-        payload_workshop_manager_user_ids: set[str] = set()
-        workshop_manager_visibility_rows: list[tuple[Any, ...]] = []
-        for item in workshop_manager_users_payload:
-            user_id = str(item.get("user_id") or "").strip()
-            if not user_id:
-                raise bad_request(
-                    code="WORKSHOP_MANAGER_USER_ROW_INVALID",
-                    message="workshop_manager_users row must include user_id.",
-                )
-            if user_id not in workshop_manager_user_ids:
-                raise bad_request(
-                    code="WORKSHOP_MANAGER_USER_INVALID",
-                    message="workshop_manager_users contains unknown or disabled workshop manager user.",
-                    details={"user_id": user_id},
-                )
-            if user_id in payload_workshop_manager_user_ids:
-                raise bad_request(
-                    code="WORKSHOP_MANAGER_USER_DUPLICATE",
-                    message="workshop_manager_users contains duplicate rows.",
-                    details={"user_id": user_id},
-                )
-            payload_workshop_manager_user_ids.add(user_id)
-            workshop_manager_visibility_rows.append(
-                (
-                    user_id,
-                    1 if int(item.get("visible_flag") or 0) == 1 else 0,
-                    updated_at,
-                )
-            )
-        if payload_workshop_manager_user_ids != workshop_manager_user_ids:
-            raise bad_request(
-                code="WORKSHOP_MANAGER_USERS_MISMATCH",
-                message="workshop_manager_users must include every enabled workshop manager exactly once.",
-                details={
-                    "missing_user_ids": sorted(workshop_manager_user_ids - payload_workshop_manager_user_ids),
-                    "extra_user_ids": sorted(payload_workshop_manager_user_ids - workshop_manager_user_ids),
-                },
-            )
-        skeleton_rows: list[tuple[Any, ...]] = []
-        skeleton_map: dict[tuple[str, str, str], dict[str, Any]] = {}
-        for item in line_skeletons:
-            company_code = str(item.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
-            workshop_code = str(item.get("workshop_code") or "").strip().upper()
-            line_code = str(item.get("line_code") or "").strip().upper()
-            if not workshop_code or not line_code:
-                raise bad_request(
-                    code="LINE_SKELETON_ROW_INVALID",
-                    message="workshop_code and line_code are required in line_skeletons.",
-                )
-            key = (company_code, workshop_code, line_code)
-            if key in skeleton_map:
-                raise bad_request(
-                    code="LINE_SKELETON_DUPLICATE",
-                    message="line_skeletons contains duplicate workshop/line rows.",
-                    details={
-                        "company_code": company_code,
-                        "workshop_code": workshop_code,
-                        "line_code": line_code,
-                    },
-                )
-            skeleton_row = {
-                "company_code": company_code,
-                "workshop_code": workshop_code,
-                "workshop_name": str(item.get("workshop_name") or workshop_code).strip() or workshop_code,
-                "line_code": line_code,
-                "line_name": str(item.get("line_name") or line_code).strip() or line_code,
-                "enabled_flag": 1 if int(item.get("enabled_flag") or 0) == 1 else 0,
-            }
-            skeleton_map[key] = skeleton_row
-            skeleton_rows.append(
-                (
-                    company_code,
-                    skeleton_row["workshop_code"],
-                    skeleton_row["workshop_name"],
-                    skeleton_row["line_code"],
-                    skeleton_row["line_name"],
-                    skeleton_row["enabled_flag"],
-                    updated_at,
-                )
-            )
-        rows = []
-        for item in line_topology:
-            company_code = str(item.get("company_code") or "COMPANY-MAIN").strip().upper() or "COMPANY-MAIN"
-            workshop_code = str(item.get("workshop_code") or "").strip().upper()
-            line_code = str(item.get("line_code") or "").strip().upper()
-            process_code = str(item.get("process_code") or "").strip().upper()
-            if not workshop_code or not line_code or not process_code:
-                raise bad_request(
-                    code="LINE_TOPOLOGY_ROW_INVALID",
-                    message="workshop_code, line_code and process_code are required.",
-                )
-            skeleton_row = skeleton_map.get((company_code, workshop_code, line_code))
-            if skeleton_row is None:
-                raise bad_request(
-                    code="LINE_TOPOLOGY_SKELETON_MISSING",
-                    message="line_topology row must reference an existing line_skeleton.",
-                    details={
-                        "company_code": company_code,
-                        "workshop_code": workshop_code,
-                        "line_code": line_code,
-                        "process_code": process_code,
-                    },
-                )
-            capacity_per_shift = _to_number(item.get("capacity_per_shift"), 0)
-            required_workers = int(_to_number(item.get("required_workers"), 0))
-            required_machines = int(_to_number(item.get("required_machines"), 0))
-            if capacity_per_shift <= 0 or required_workers <= 0 or required_machines < 0:
-                raise bad_request(
-                    code="LINE_TOPOLOGY_CAPACITY_INVALID",
-                    message="capacity_per_shift and required_workers must be greater than 0, required_machines must be >= 0.",
-                    details={
-                        "company_code": company_code,
-                        "workshop_code": workshop_code,
-                        "line_code": line_code,
-                        "process_code": process_code,
-                    },
-                )
-            rows.append(
-                (
-                    company_code,
-                    workshop_code,
-                    skeleton_row["workshop_name"],
-                    line_code,
-                    skeleton_row["line_name"],
-                    process_code,
-                    capacity_per_shift,
-                    required_workers,
-                    required_machines,
-                    int(item.get("enabled_flag") or 0),
-                    updated_at,
-                )
-            )
-        scope_rows: list[tuple[Any, ...]] = []
-        scope_seen: set[tuple[str, str, str, str]] = set()
-        for item in workshop_manager_line_scopes:
-            user_id = str(item.get("user_id") or "").strip()
-            company_code = str(item.get("company_code") or DEFAULT_COMPANY_CODE).strip().upper() or DEFAULT_COMPANY_CODE
-            workshop_code = str(item.get("workshop_code") or "").strip().upper()
-            line_code = str(item.get("line_code") or "").strip().upper()
-            if not user_id or not workshop_code or not line_code:
-                raise bad_request(
-                    code="WORKSHOP_MANAGER_LINE_SCOPE_ROW_INVALID",
-                    message="user_id, workshop_code and line_code are required in workshop_manager_line_scopes.",
-                )
-            if user_id not in workshop_manager_user_ids:
-                raise bad_request(
-                    code="WORKSHOP_MANAGER_USER_INVALID",
-                    message="workshop_manager_line_scopes contains unknown or disabled workshop manager user.",
-                    details={"user_id": user_id},
-                )
-            scope_key = (user_id, company_code, workshop_code, line_code)
-            if scope_key in scope_seen:
-                raise bad_request(
-                    code="WORKSHOP_MANAGER_LINE_SCOPE_DUPLICATE",
-                    message="workshop_manager_line_scopes contains duplicate rows.",
-                    details={
-                        "user_id": user_id,
-                        "company_code": company_code,
-                        "workshop_code": workshop_code,
-                        "line_code": line_code,
-                    },
-                )
-            scope_seen.add(scope_key)
-            if (company_code, workshop_code, line_code) not in skeleton_map:
-                raise bad_request(
-                    code="WORKSHOP_MANAGER_LINE_SCOPE_SKELETON_MISSING",
-                    message="workshop_manager_line_scopes row must reference an existing line_skeleton.",
-                    details={
-                        "user_id": user_id,
-                        "company_code": company_code,
-                        "workshop_code": workshop_code,
-                        "line_code": line_code,
-                    },
-                )
-            scope_rows.append(
-                (
-                    user_id,
-                    company_code,
-                    workshop_code,
-                    line_code,
-                    updated_at,
-                )
-            )
-        with transaction(self.connection):
-            self.connection.execute("DELETE FROM masterdata_line_skeletons")
-            self.connection.executemany(
-                """
-                INSERT INTO masterdata_line_skeletons (
-                    company_code,
-                    workshop_code,
-                    workshop_name,
-                    line_code,
-                    line_name,
-                    enabled_flag,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                skeleton_rows,
-            )
-            self.connection.execute("DELETE FROM masterdata_line_topology")
-            if rows:
-                self.connection.executemany(
-                    """
-                    INSERT INTO masterdata_line_topology (
-                        company_code,
-                        workshop_code,
-                        workshop_name,
-                        line_code,
-                        line_name,
-                        process_code,
-                        capacity_per_shift,
-                        required_workers,
-                        required_machines,
-                        enabled_flag,
-                        updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    rows,
-                )
-            self.connection.execute("DELETE FROM app_user_line_scopes")
-            if scope_rows:
-                self.connection.executemany(
-                    """
-                    INSERT INTO app_user_line_scopes (
-                        user_id,
-                        company_code,
-                        workshop_code,
-                        line_code,
-                        updated_at
-                    ) VALUES (?, ?, ?, ?, ?)
-                    """,
-                    scope_rows,
-                )
-            self.connection.execute("DELETE FROM masterdata_workshop_manager_visibility")
-            if workshop_manager_visibility_rows:
-                self.connection.executemany(
-                    """
-                    INSERT INTO masterdata_workshop_manager_visibility (
-                        user_id,
-                        visible_flag,
-                        updated_at
-                    ) VALUES (?, ?, ?)
-                    """,
-                    workshop_manager_visibility_rows,
-                )
-            if backup_config_update is not None:
-                enabled_flag, frequency_minutes, max_backups = backup_config_update
-                BackupRepository(self.connection).upsert_backup_config(
-                    enabled_flag=enabled_flag,
-                    frequency_minutes=frequency_minutes,
-                    max_backups=max_backups,
-                    updated_at=updated_at,
-                )
-        return self.get_masterdata_config()
+        return self.masterdata_command_service.save_masterdata_config(payload)
 
     def list_process_routes(self) -> dict[str, Any]:
-        self._ensure_masterdata_seeded()
-        return {"items": self._list_route_rows()}
+        return self.masterdata_query_service.list_process_routes()
 
     def create_process_routes(self, payload: dict[str, Any]) -> dict[str, Any]:
-        product_code = str(payload.get("product_code") or "").strip().upper()
-        if not product_code:
-            raise bad_request(
-                code="PRODUCT_CODE_REQUIRED",
-                message="product_code is required.",
-            )
-        existing = fetch_one(
-            self.connection,
-            """
-            SELECT 1
-            FROM masterdata_process_routes
-            WHERE product_code = ?
-            LIMIT 1
-            """,
-            (product_code,),
-        )
-        if existing is not None:
-            raise bad_request(
-                code="ROUTE_ALREADY_EXISTS",
-                message="Route already exists for product.",
-                details={"product_code": product_code},
-            )
-        self._replace_process_routes(product_code, payload.get("steps"), source_product_code=None)
-        return {"ok": True}
+        return self.masterdata_command_service.create_process_routes(payload)
 
     def update_process_routes(self, payload: dict[str, Any]) -> dict[str, Any]:
-        product_code = str(payload.get("product_code") or "").strip().upper()
-        if not product_code:
-            raise bad_request(
-                code="PRODUCT_CODE_REQUIRED",
-                message="product_code is required.",
-            )
-        self._replace_process_routes(product_code, payload.get("steps"), source_product_code=product_code)
-        return {"ok": True}
+        return self.masterdata_command_service.update_process_routes(payload)
 
     def copy_process_routes(self, payload: dict[str, Any]) -> dict[str, Any]:
-        source_product_code = str(payload.get("source_product_code") or "").strip().upper()
-        target_product_code = str(payload.get("target_product_code") or "").strip().upper()
-        if not source_product_code or not target_product_code:
-            raise bad_request(
-                code="PRODUCT_CODE_REQUIRED",
-                message="source_product_code and target_product_code are required.",
-            )
-        self._replace_process_routes(
-            target_product_code,
-            payload.get("steps"),
-            source_product_code=source_product_code,
-        )
-        return {"ok": True}
+        return self.masterdata_command_service.copy_process_routes(payload)
 
     def delete_process_routes(self, payload: dict[str, Any]) -> dict[str, Any]:
-        product_code = str(payload.get("product_code") or "").strip().upper()
-        if not product_code:
-            raise bad_request(
-                code="PRODUCT_CODE_REQUIRED",
-                message="product_code is required.",
-            )
-        with transaction(self.connection):
-            self.connection.execute(
-                "DELETE FROM masterdata_process_routes WHERE product_code = ?",
-                (product_code,),
-            )
-        return {"ok": True}
+        return self.masterdata_command_service.delete_process_routes(payload)
 
     def get_schedule_calendar_rules(self) -> dict[str, Any]:
-        row = self._get_rules_row()
-        simulation_state = self._get_simulation_state()
-        return {
-            "data": {
-                "horizon_start_date": row["horizon_start_date"],
-                "horizon_days": row["horizon_days"],
-                "skip_statutory_holidays": bool(row["skip_statutory_holidays"]),
-                "weekend_rest_mode": row["weekend_rest_mode"],
-                "date_shift_mode_by_date": loads(row["date_shift_mode_by_date_json"]) or {},
-                "current_date": simulation_state["current_date"],
-            }
-        }
+        return self.masterdata_query_service.get_schedule_calendar_rules()
 
     def save_schedule_calendar_rules(self, payload: dict[str, Any]) -> dict[str, Any]:
-        current = self._get_rules_row()
-        weekend_rest_mode = self._normalize_weekend_rest_mode(
-            payload.get("weekend_rest_mode")
-            if "weekend_rest_mode" in payload
-            else current["weekend_rest_mode"]
-        )
-        date_shift_mode_by_date = self._normalize_date_shift_mode_by_date(
-            payload.get("date_shift_mode_by_date")
-            if "date_shift_mode_by_date" in payload
-            else (loads(current["date_shift_mode_by_date_json"]) or {})
-        )
-        next_row = {
-            "singleton_key": RULES_SINGLETON_KEY,
-            "horizon_start_date": _normalize_date_text(
-                payload.get("horizon_start_date") or current["horizon_start_date"]
-            )
-            or _today_text(),
-            "horizon_days": int(
-                _to_number(payload.get("horizon_days"), current["horizon_days"])
-            )
-            or 31,
-            "skip_statutory_holidays": 1
-            if payload.get("skip_statutory_holidays") is True
-            else (
-                current["skip_statutory_holidays"]
-                if "skip_statutory_holidays" not in payload
-                else 0
-            ),
-            "weekend_rest_mode": weekend_rest_mode,
-            "date_shift_mode_by_date_json": dumps(date_shift_mode_by_date),
-            "updated_at": utc_now(),
-        }
-        with transaction(self.connection):
-            self.connection.execute(
-                """
-                INSERT INTO schedule_calendar_rules (
-                    singleton_key,
-                    horizon_start_date,
-                    horizon_days,
-                    skip_statutory_holidays,
-                    weekend_rest_mode,
-                    date_shift_mode_by_date_json,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(singleton_key) DO UPDATE SET
-                    horizon_start_date = excluded.horizon_start_date,
-                    horizon_days = excluded.horizon_days,
-                    skip_statutory_holidays = excluded.skip_statutory_holidays,
-                    weekend_rest_mode = excluded.weekend_rest_mode,
-                    date_shift_mode_by_date_json = excluded.date_shift_mode_by_date_json,
-                    updated_at = excluded.updated_at
-                """,
-                (
-                    next_row["singleton_key"],
-                    next_row["horizon_start_date"],
-                    next_row["horizon_days"],
-                    next_row["skip_statutory_holidays"],
-                    next_row["weekend_rest_mode"],
-                    next_row["date_shift_mode_by_date_json"],
-                    next_row["updated_at"],
-                ),
-            )
-        return self.get_schedule_calendar_rules()
+        return self.masterdata_command_service.save_schedule_calendar_rules(payload)
 
     def generate_schedule(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.factory.build_inventory_refresh_service().refresh_inventory([])
@@ -5317,13 +2777,7 @@ class AppService:
         use_order_state_window = self._normalize_use_order_state_window(
             payload.get("use_order_state_window")
         )
-        base_version_no = str(payload.get("base_version_no") or "").strip()
-        base_schedule_hints: dict[str, dict[str, Any]] = {}
-        if base_version_no:
-            self.get_schedule_version(base_version_no)
-            base_schedule_hints = self._build_base_schedule_hints(base_version_no)
         planning_rules = self._build_planning_rules_from_current_config()
-        current_version_no = self._pick_current_schedule_version_no()
         version_no = CURRENT_SCHEDULE_VERSION_NO
         order_rows = self._list_order_rows()
         route_rows_by_product = self._group_routes_by_product(self._list_route_rows())
@@ -5341,8 +2795,6 @@ class AppService:
         )
 
         schedule_candidates: list[dict[str, Any]] = []
-        fixed_orders: dict[str, dict[str, Any]] = {}
-        missing_fixed_order_nos: list[str] = []
         day_mode_cache: dict[str, str] = {}
         simulation_state = self._get_simulation_state()
         simulation_start = _parse_date_or_today(simulation_state.get("current_date"))
@@ -5369,15 +2821,7 @@ class AppService:
 
             lock_flag = int(_to_number(state_row.get("lock_flag"), 0))
             frozen_flag = int(_to_number(state_row.get("frozen_flag"), 0))
-            base_hint = base_schedule_hints.get(order_no) or {}
             if lock_flag == 1 or frozen_flag == 1:
-                if base_version_no and base_hint:
-                    fixed_orders[order_no] = {
-                        "order_no": order_no,
-                        "product_code": str(order_row["material_code"]),
-                    }
-                else:
-                    missing_fixed_order_nos.append(order_no)
                 continue
 
             process_contexts = self._build_schedule_process_contexts(
@@ -5461,16 +2905,7 @@ class AppService:
                     "slack_days": slack_days,
                     "min_capacity_per_shift": _to_number(min_capacity, 0),
                     "total_capacity_per_shift": total_capacity,
-                    "base_first_task_no": int(base_hint.get("first_task_no") or 10**9),
-                    "base_process_first_slot": base_hint.get("process_first_slot", {}),
                 }
-            )
-
-        if missing_fixed_order_nos:
-            raise bad_request(
-                code="SCHEDULE_FIXED_ORDER_MISSING_FROM_BASE",
-                message="存在锁定或冻结订单未出现在基准版本中，已禁止继续重排。",
-                details={"order_nos": sorted(set(missing_fixed_order_nos))},
             )
 
         pending_candidates = self._sort_schedule_candidates(
@@ -5481,144 +2916,6 @@ class AppService:
         tasks: list[tuple[Any, ...]] = []
         used_capacity_by_slot: dict[tuple[Any, ...], float] = {}
         task_no = 1
-        if base_version_no and fixed_orders:
-            fixed_order_nos = list(fixed_orders.keys())
-            placeholders = ",".join("?" for _ in fixed_order_nos)
-            fixed_task_rows = fetch_all(
-                self.connection,
-                f"""
-                SELECT
-                    task_no,
-                    production_order_no,
-                    report_scope,
-                    process_code,
-                    process_name_cn,
-                    workshop_code,
-                    line_code,
-                    calendar_date,
-                    shift_code,
-                    plan_qty,
-                    plan_start_time
-                FROM schedule_tasks
-                WHERE version_no = ?
-                  AND production_order_no IN ({placeholders})
-                ORDER BY task_no ASC
-                """,
-                tuple([base_version_no, *fixed_order_nos]),
-            )
-
-            fixed_process_locations: dict[str, dict[str, set[tuple[str, str]]]] = {}
-            for order_no, meta in fixed_orders.items():
-                contexts = self._build_schedule_process_contexts(
-                    order_no=order_no,
-                    product_code=str(meta.get("product_code") or ""),
-                    capacity_rows=capacity_map.get(order_no, []),
-                    route_rows=route_rows_by_product.get(str(meta.get("product_code") or ""), []),
-                    topology_by_process=topology_by_process,
-                    capacity_resolver=capacity_resolver,
-                )
-                location_map: dict[str, set[tuple[str, str]]] = {}
-                for context in contexts:
-                    process_code = str(context.get("process_code") or "").strip().upper()
-                    candidate_contexts = context.get("candidate_contexts") if isinstance(context.get("candidate_contexts"), list) else []
-                    if not process_code:
-                        continue
-                    location_map[process_code] = {
-                        (
-                            str(item.get("workshop_code") or "").strip().upper(),
-                            str(item.get("line_code") or "").strip().upper(),
-                        )
-                        for item in candidate_contexts
-                        if str(item.get("workshop_code") or "").strip() and str(item.get("line_code") or "").strip()
-                    }
-                fixed_process_locations[order_no] = location_map
-
-            for row in fixed_task_rows:
-                order_no = str(row.get("production_order_no") or "").strip()
-                process_code = str(row.get("process_code") or "").strip().upper()
-                calendar_date = _normalize_date_text(row.get("calendar_date"))
-                if not order_no or not process_code or not calendar_date:
-                    raise server_error(
-                        code="BASE_SCHEDULE_TASK_INVALID",
-                        message="Base schedule task is invalid.",
-                        details={
-                            "version_no": base_version_no,
-                            "task_no": row.get("task_no"),
-                        },
-                    )
-                shift_code = _normalize_shift_code(row.get("shift_code"))
-                plan_qty = _to_number(row.get("plan_qty"), 0)
-                if plan_qty < -SCHEDULE_NUMBER_EPSILON:
-                    raise server_error(
-                        code="BASE_SCHEDULE_TASK_PLAN_QTY_INVALID",
-                        message="Base schedule task plan_qty must be non-negative.",
-                        details={
-                            "version_no": base_version_no,
-                            "task_no": row.get("task_no"),
-                            "order_no": order_no,
-                            "process_code": process_code,
-                            "plan_qty": row.get("plan_qty"),
-                        },
-                    )
-
-                tasks.append(
-                    (
-                        version_no,
-                        task_no,
-                        order_no,
-                        process_code,
-                        str(row.get("process_name_cn") or process_code),
-                        str(row.get("workshop_code") or "").strip().upper() or None,
-                        str(row.get("line_code") or "").strip().upper() or None,
-                        calendar_date,
-                        shift_code,
-                        plan_qty,
-                        row.get("plan_start_time"),
-                    )
-                )
-                task_no += 1
-
-                workshop_code = str(row.get("workshop_code") or "").strip().upper()
-                line_code = str(row.get("line_code") or "").strip().upper()
-                allowed_mappings = fixed_process_locations.get(order_no, {}).get(process_code)
-                if not workshop_code or not line_code:
-                    raise server_error(
-                        code="BASE_SCHEDULE_TASK_LOCATION_MISSING",
-                        message="Base schedule task workshop/line mapping is missing for fixed schedule.",
-                        details={
-                            "version_no": base_version_no,
-                            "task_no": row.get("task_no"),
-                            "order_no": order_no,
-                            "process_code": process_code,
-                        },
-                    )
-                if allowed_mappings is not None and (workshop_code, line_code) not in allowed_mappings:
-                    raise server_error(
-                        code="BASE_SCHEDULE_TASK_LOCATION_INVALID",
-                        message="Base schedule task workshop/line is no longer available in candidate lines.",
-                        details={
-                            "version_no": base_version_no,
-                            "task_no": row.get("task_no"),
-                            "order_no": order_no,
-                            "process_code": process_code,
-                            "workshop_code": workshop_code,
-                            "line_code": line_code,
-                        },
-                    )
-                slot_index = _slot_index_from_text(calendar_date, shift_code)
-                key = self._capacity_usage_key(
-                    process_context={
-                        "company_code": DEFAULT_COMPANY_CODE,
-                        "workshop_code": workshop_code,
-                        "line_code": line_code,
-                        "process_code": process_code,
-                    },
-                    slot_index=slot_index,
-                    calendar_date=calendar_date,
-                    shift_code=shift_code,
-                    capacity_resolver=capacity_resolver,
-                )
-                used_capacity_by_slot[key] = _to_number(used_capacity_by_slot.get(key), 0) + plan_qty
 
         while pending_candidates:
             selected_index = self._select_next_candidate_index(
@@ -5632,16 +2929,9 @@ class AppService:
             candidate = pending_candidates.pop(selected_index)
             order_no = str(candidate["order_no"])
             next_start_slot = int(candidate["start_slot"])
-            process_base_first_slot = candidate.get("base_process_first_slot", {})
             for context in candidate["process_contexts"]:
                 context_start_slot = next_start_slot
                 process_code = str(context["process_code"])
-                base_process_slot = process_base_first_slot.get(process_code)
-                if (
-                    (int(candidate["lock_flag"]) == 1 or int(candidate["frozen_flag"]) == 1)
-                    and base_process_slot is not None
-                ):
-                    context_start_slot = max(context_start_slot, int(base_process_slot))
 
                 allocations, last_slot = self._allocate_process_tasks(
                     order_no=order_no,
@@ -5692,7 +2982,7 @@ class AppService:
             raise bad_request(
                 code="SCHEDULE_MATERIAL_SHORTAGE_BLOCKED",
                 message=(
-                    f"排产失败：存在 {shortage_result['summary']['shortage_material_count']} 项缺料，"
+                    f"鎺掍骇澶辫触锛氬瓨鍦?{shortage_result['summary']['shortage_material_count']} 椤圭己鏂欙紝"
                     f"影响 {shortage_result['summary']['impacted_order_count']} 张订单。"
                     f"{' 缺料示例：' + preview if preview else ''}"
                 ),
@@ -5701,7 +2991,7 @@ class AppService:
 
         result_status = "RISKY" if shortage_result["items"] else "FEASIBLE"
         result_summary = (
-            f"存在 {shortage_result['summary']['shortage_material_count']} 项物料短缺风险，"
+            f"瀛樺湪 {shortage_result['summary']['shortage_material_count']} 椤圭墿鏂欑煭缂洪闄╋紝"
             f"影响 {shortage_result['summary']['impacted_order_count']} 张订单。"
             if shortage_result["items"]
             else "已生成班次级建议计划。"
@@ -5730,11 +3020,6 @@ class AppService:
     def generate_schedule_by_fact(self, payload: dict[str, Any]) -> dict[str, Any]:
         self.factory.build_inventory_refresh_service().refresh_inventory([])
         self._ensure_masterdata_seeded()
-        if str(payload.get("base_version_no") or "").strip():
-            raise bad_request(
-                code="FACT_SCHEDULE_BASE_VERSION_FORBIDDEN",
-                message="Fact replan does not accept base_version_no.",
-            )
         strategy_code = self._normalize_strategy_code(payload.get("strategy_code"))
         capacity_source_mode = self._normalize_fact_replan_capacity_source_mode(
             payload.get("capacity_source_mode")
@@ -5875,8 +3160,6 @@ class AppService:
                     "slack_days": slack_days,
                     "min_capacity_per_shift": _to_number(min_capacity, 0),
                     "total_capacity_per_shift": total_capacity,
-                    "base_first_task_no": 10**9,
-                    "base_process_first_slot": {},
                 }
             )
 
@@ -5974,10 +3257,10 @@ class AppService:
         )
         result_status = "RISKY" if shortage_result["items"] else "FEASIBLE"
         result_summary = (
-            f"瀛樺湪 {shortage_result['summary']['shortage_material_count']} 椤圭墿鏂欑煭缂洪闄╋紝"
-            f"褰卞搷 {shortage_result['summary']['impacted_order_count']} 寮犺鍗曘€?"
+            f"鐎涙ê婀?{shortage_result['summary']['shortage_material_count']} 妞ゅ湱澧块弬娆戠叚缂傛椽顥撻梽鈺嬬礉"
+            f"瑜板崬鎼?{shortage_result['summary']['impacted_order_count']} 瀵姾顓归崡鏇樷偓?"
             if shortage_result["items"]
-            else "宸叉寜浜嬪疄杈圭晫鐢熸垚鍚庣画鐝鎺掍骇銆?"
+            else "瀹稿弶瀵滄禍瀣杽鏉堝湱鏅悽鐔稿灇閸氬海鐢婚悵顓燁偧閹烘帊楠囬妴?"
         )
         created_at = utc_now()
         self._replace_current_schedule(
@@ -6001,186 +3284,17 @@ class AppService:
         }
 
     def create_dispatch_command(self, payload: dict[str, Any]) -> dict[str, Any]:
-        order_no = str(payload.get("target_order_no") or "").strip()
-        command_type = str(payload.get("command_type") or "").strip().upper()
-        if not order_no or not command_type:
-            raise bad_request(
-                code="DISPATCH_COMMAND_INVALID",
-                message="target_order_no and command_type are required.",
-            )
-        self._require_order(order_no)
-        with transaction(self.connection):
-            command_id = self._insert_dispatch_command_record(
-                target_order_no=order_no,
-                command_type=command_type,
-                payload=payload,
-            )
-        return {"command_id": command_id}
+        return self.dispatch_command_service.create_dispatch_command(payload)
 
     def approve_dispatch_command(
         self,
         command_id: str,
         payload: dict[str, Any],
     ) -> dict[str, Any]:
-        row = fetch_one(
-            self.connection,
-            """
-            SELECT command_id, target_order_no, command_type, status
-            FROM dispatch_commands
-            WHERE command_id = ?
-            """,
-            (command_id,),
-        )
-        if row is None:
-            raise not_found(
-                code="DISPATCH_COMMAND_NOT_FOUND",
-                message="Dispatch command does not exist.",
-                details={"command_id": command_id},
-            )
-        with transaction(self.connection):
-            self._approve_dispatch_command_record(
-                command_id=command_id,
-                target_order_no=str(row["target_order_no"]),
-                command_type=str(row["command_type"]),
-                previous_status=str(row["status"] or ""),
-                payload=payload,
-            )
-        return {"ok": True}
+        return self.dispatch_command_service.approve_dispatch_command(command_id, payload)
 
     def batch_dispatch_commands(self, payload: dict[str, Any]) -> dict[str, Any]:
-        command_type = str(payload.get("command_type") or "").strip().upper()
-        if command_type not in {"LOCK", "UNLOCK", "PRIORITY_UP", "PRIORITY_DOWN"}:
-            raise bad_request(
-                code="ORDER_BATCH_DISPATCH_COMMAND_INVALID",
-                message="command_type must be LOCK, UNLOCK, PRIORITY_UP or PRIORITY_DOWN.",
-                details={"command_type": command_type or None},
-            )
-
-        order_nos = self._normalize_batch_dispatch_order_nos(payload.get("order_nos"))
-        if len(order_nos) == 0:
-            raise bad_request(
-                code="ORDER_BATCH_DISPATCH_EMPTY",
-                message="order_nos must contain at least one order.",
-            )
-
-        order_rows_by_no = self._get_order_rows_by_nos(order_nos)
-        missing_order_nos = [order_no for order_no in order_nos if order_no not in order_rows_by_no]
-        if len(missing_order_nos) > 0:
-            raise not_found(
-                code="ORDER_BATCH_DISPATCH_ORDER_NOT_FOUND",
-                message="Some orders do not exist.",
-                details={"order_nos": missing_order_nos},
-            )
-
-        state_rows_by_no = self._get_order_state_map(order_nos)
-        completed_order_nos: list[str] = []
-        frozen_order_nos: list[str] = []
-        invalid_lock_state_order_nos: list[str] = []
-        invalid_priority_state_order_nos: list[str] = []
-        for order_no in order_nos:
-            order_row = order_rows_by_no[order_no]
-            state_row = state_rows_by_no.get(order_no)
-            if self._is_order_completed_for_dispatch(order_row, state_row):
-                completed_order_nos.append(order_no)
-            if int(_to_number((state_row or {}).get("frozen_flag"), 0)) == 1:
-                frozen_order_nos.append(order_no)
-            is_locked = int(_to_number((state_row or {}).get("lock_flag"), 0)) == 1
-            if command_type == "LOCK" and is_locked:
-                invalid_lock_state_order_nos.append(order_no)
-            if command_type == "UNLOCK" and not is_locked:
-                invalid_lock_state_order_nos.append(order_no)
-            if (
-                command_type == "PRIORITY_UP"
-                and _normalize_priority_level((state_row or {}).get("priority_level"), PRIORITY_LEVEL_MAX)
-                <= PRIORITY_LEVEL_MIN
-            ):
-                invalid_priority_state_order_nos.append(order_no)
-            if (
-                command_type == "PRIORITY_DOWN"
-                and _normalize_priority_level((state_row or {}).get("priority_level"), PRIORITY_LEVEL_MAX)
-                >= PRIORITY_LEVEL_MAX
-            ):
-                invalid_priority_state_order_nos.append(order_no)
-
-        if len(completed_order_nos) > 0:
-            raise bad_request(
-                code="ORDER_BATCH_DISPATCH_COMPLETED",
-                message="Completed orders cannot be batch dispatched.",
-                details={"order_nos": completed_order_nos, "command_type": command_type},
-            )
-        if len(frozen_order_nos) > 0:
-            raise bad_request(
-                code="ORDER_BATCH_DISPATCH_FROZEN",
-                message="Frozen orders cannot be batch dispatched.",
-                details={"order_nos": frozen_order_nos, "command_type": command_type},
-            )
-        if len(invalid_lock_state_order_nos) > 0:
-            raise bad_request(
-                code="ORDER_BATCH_DISPATCH_LOCK_STATE_INVALID",
-                message=(
-                    "Selected orders are already locked."
-                    if command_type == "LOCK"
-                    else "Selected orders are not locked."
-                ),
-                details={"order_nos": invalid_lock_state_order_nos, "command_type": command_type},
-            )
-        if len(invalid_priority_state_order_nos) > 0:
-            raise bad_request(
-                code="ORDER_BATCH_DISPATCH_PRIORITY_STATE_INVALID",
-                message=(
-                    "Selected orders are already at the highest priority."
-                    if command_type == "PRIORITY_UP"
-                    else "Selected orders are already at the lowest priority."
-                ),
-                details={"order_nos": invalid_priority_state_order_nos, "command_type": command_type},
-            )
-
-        actor_name = self._resolve_dispatch_actor_name(payload.get("actor"))
-        reason = str(payload.get("reason") or "").strip() or (
-            "Batch lock production orders"
-            if command_type == "LOCK"
-            else "Batch unlock production orders"
-            if command_type == "UNLOCK"
-            else "Batch priority-up production orders"
-            if command_type == "PRIORITY_UP"
-            else "Batch priority-down production orders"
-        )
-        decision_reason = str(payload.get("decision_reason") or "").strip() or (
-            "Batch dispatch auto approval"
-        )
-        effective_time = payload.get("effective_time") or utc_now()
-        decision_time = payload.get("decision_time") or effective_time
-        command_ids: list[str] = []
-        with transaction(self.connection):
-            for order_no in order_nos:
-                command_id = self._insert_dispatch_command_record(
-                    target_order_no=order_no,
-                    command_type=command_type,
-                    payload={
-                        "effective_time": effective_time,
-                        "reason": reason,
-                        "created_by": actor_name,
-                    },
-                )
-                self._approve_dispatch_command_record(
-                    command_id=command_id,
-                    target_order_no=order_no,
-                    command_type=command_type,
-                    previous_status="PENDING",
-                    payload={
-                        "approver": actor_name,
-                        "decision": "APPROVED",
-                        "decision_reason": decision_reason,
-                        "decision_time": decision_time,
-                    },
-                )
-                command_ids.append(command_id)
-        return {
-            "command_type": command_type,
-            "order_nos": order_nos,
-            "command_ids": command_ids,
-            "count": len(order_nos),
-        }
+        return self.dispatch_command_service.batch_dispatch_commands(payload)
 
     def advance_simulation_one_day(self, payload: dict[str, Any]) -> dict[str, Any]:
         current = self._get_simulation_state()
@@ -7043,7 +4157,7 @@ class AppService:
                 message="material_code is required.",
             )
         completed = payload.get("completed") is True
-        product_name = "导丝保护组件" if random_guidewire else material_code
+        product_name = "瀵间笣淇濇姢缁勪欢" if random_guidewire else material_code
         updated_at = utc_now()
         next_number = self._next_import_order_sequence()
         order_nos: list[str] = []
@@ -7795,7 +4909,7 @@ class AppService:
             published_version_status
         )
         if published_in_reference_version:
-            reference_schedule_version_label = f"当前方案 {reference_version_no}"
+            reference_schedule_version_label = f"褰撳墠鏂规 {reference_version_no}"
         elif scheduled_in_reference_version and reference_version_no:
             reference_schedule_version_label = (
                 f"参考排程 {reference_version_no}（{reference_schedule_version_status_label}）"
@@ -7805,12 +4919,12 @@ class AppService:
         viewing_schedule_version_label = (
             f"当前方案 {reference_version_no}（{reference_schedule_version_status_label}）"
             if reference_version_no
-            else "暂无当前方案"
+            else "鏆傛棤褰撳墠鏂规"
         )
         published_schedule_version_label = (
-            f"当前方案 {published_version_no}"
+            f"褰撳墠鏂规 {published_version_no}"
             if published_version_no
-            else "暂无当前方案"
+            else "鏆傛棤褰撳墠鏂规"
         )
         return {
             "order_no": base_row["production_order_no"],
@@ -7897,7 +5011,7 @@ class AppService:
         expected_start_date = _normalize_date_text(row.get("expected_start_date"))
         expected_start_shift = _normalize_shift_code(row.get("expected_start_shift"))
         expected_start_text = (
-            f"{expected_start_date} {'夜班' if expected_start_shift == 'NIGHT' else '白班'}"
+            f"{expected_start_date} {'澶滅彮' if expected_start_shift == 'NIGHT' else '鐧界彮'}"
             if expected_start_date
             else "未设置"
         )
@@ -7916,17 +5030,17 @@ class AppService:
         has_schedule_conflict = viewing_conflict or published_conflict
         causes_unavoidable_delay = bool(row.get("is_naturally_overdue"))
         requires_reschedule = has_schedule_conflict
-        summary_items = [f"手工开工硬约束已设为：{expected_start_text}"]
+        summary_items = [f"鎵嬪伐寮€宸ョ‖绾︽潫宸茶涓猴細{expected_start_text}"]
         if impacts_published_version and published_version_no:
-            summary_items.append(f"会影响当前方案 {published_version_no}")
+            summary_items.append(f"浼氬奖鍝嶅綋鍓嶆柟妗?{published_version_no}")
         else:
-            summary_items.append("当前不会直接改写当前方案")
+            summary_items.append("褰撳墠涓嶄細鐩存帴鏀瑰啓褰撳墠鏂规")
         if impacts_viewing_version and viewing_version_no:
             summary_items.append(f"会影响当前排程口径 {viewing_version_no} 的判断")
         if has_schedule_conflict:
             summary_items.append("与现有排程事实冲突")
         if causes_unavoidable_delay:
-            summary_items.append("该订单已必然延期")
+            summary_items.append("璇ヨ鍗曞凡蹇呯劧寤舵湡")
         if requires_reschedule:
             summary_items.append("需要立即重排")
         return {
@@ -8749,54 +5863,6 @@ class AppService:
             )
         return out
 
-    def _build_base_schedule_hints(self, version_no: str) -> dict[str, dict[str, Any]]:
-        rows = fetch_all(
-            self.connection,
-            """
-            SELECT
-                task_no,
-                production_order_no,
-                process_code,
-                calendar_date,
-                shift_code
-            FROM schedule_tasks
-            WHERE version_no = ?
-            ORDER BY task_no ASC
-            """,
-            (version_no,),
-        )
-        hints: dict[str, dict[str, Any]] = {}
-        for row in rows:
-            order_no = str(row.get("production_order_no") or "").strip()
-            process_code = str(row.get("process_code") or "").strip().upper()
-            calendar_date = _normalize_date_text(row.get("calendar_date"))
-            if not order_no or not process_code or not calendar_date:
-                raise server_error(
-                    code="BASE_SCHEDULE_TASK_INVALID",
-                    message="Base schedule task is invalid.",
-                    details={"version_no": version_no, "task_no": row.get("task_no")},
-                )
-            shift_code = _normalize_shift_code(row.get("shift_code"))
-            slot_index = _slot_index_from_text(calendar_date, shift_code)
-            task_no = int(_to_number(row.get("task_no"), 0))
-            hint = hints.setdefault(
-                order_no,
-                {
-                    "first_task_no": task_no,
-                    "first_slot": slot_index,
-                    "process_first_slot": {},
-                },
-            )
-            if task_no < int(hint["first_task_no"]):
-                hint["first_task_no"] = task_no
-            if slot_index < int(hint["first_slot"]):
-                hint["first_slot"] = slot_index
-            process_first_slot = hint["process_first_slot"]
-            existing_process_slot = process_first_slot.get(process_code)
-            if existing_process_slot is None or slot_index < int(existing_process_slot):
-                process_first_slot[process_code] = slot_index
-        return hints
-
     def _build_fact_replan_boundary(self, *, simulation_start: date) -> dict[str, Any]:
         latest_report_row = fetch_one(
             self.connection,
@@ -8949,13 +6015,16 @@ class AppService:
         for _ in range(SCHEDULE_SLOT_SEARCH_GUARD):
             day_value, shift_code = _slot_to_date_shift(slot_cursor)
             date_text = day_value.isoformat()
-            if allow_exact_start_slot and slot_cursor == max(0, int(start_slot)):
-                return slot_cursor, date_text, shift_code
             day_mode = self._resolve_day_shift_mode(
                 date_text=date_text,
                 planning_rules=planning_rules,
                 day_mode_cache=day_mode_cache,
             )
+            if allow_exact_start_slot and slot_cursor == max(0, int(start_slot)):
+                if shift_code in self._allowed_shifts_for_day_mode(day_mode):
+                    return slot_cursor, date_text, shift_code
+                slot_cursor += 1
+                continue
             if shift_code in self._allowed_shifts_for_day_mode(day_mode):
                 return slot_cursor, date_text, shift_code
             slot_cursor += 1
@@ -9161,7 +6230,6 @@ class AppService:
                     -int(item.get("frozen_flag") or 0),
                     -int(item.get("lock_flag") or 0),
                     _normalize_priority_level(item.get("priority_level"), PRIORITY_LEVEL_MAX),
-                    int(item.get("base_first_task_no") or 10**9),
                     item.get("start_date"),
                     item.get("due_date"),
                     -updated_rank(str(item.get("updated_at") or "")),
@@ -9177,7 +6245,6 @@ class AppService:
                     _normalize_priority_level(item.get("priority_level"), PRIORITY_LEVEL_MAX),
                     -_to_number(item.get("total_capacity_per_shift"), 0),
                     -_to_number(item.get("min_capacity_per_shift"), 0),
-                    int(item.get("base_first_task_no") or 10**9),
                     item.get("start_date"),
                     item.get("due_date"),
                     str(item.get("order_no") or ""),
@@ -9193,7 +6260,6 @@ class AppService:
                     int(_to_number(item.get("slack_days"), 0)),
                     item.get("due_date"),
                     item.get("start_date"),
-                    int(item.get("base_first_task_no") or 10**9),
                     str(item.get("order_no") or ""),
                 ),
             )
@@ -9272,29 +6338,14 @@ class AppService:
             )
 
         first_context = process_contexts[0]
-        first_process_code = str(first_context.get("process_code") or "").strip().upper()
         first_slot = int(candidate.get("start_slot") or 0)
-        base_process_first_slot = candidate.get("base_process_first_slot", {})
-        first_process_base_slot = base_process_first_slot.get(first_process_code)
-        if (
-            (int(candidate.get("lock_flag") or 0) == 1 or int(candidate.get("frozen_flag") or 0) == 1)
-            and first_process_base_slot is not None
-        ):
-            first_slot = max(first_slot, int(first_process_base_slot))
 
         simulated_used_capacity = dict(used_capacity_by_slot)
         first_ready_slot = None
         projected_finish_slot = first_slot
         next_start_slot = first_slot
         for process_context in process_contexts:
-            process_code = str(process_context.get("process_code") or "").strip().upper()
             context_start_slot = next_start_slot
-            base_process_slot = base_process_first_slot.get(process_code)
-            if (
-                (int(candidate.get("lock_flag") or 0) == 1 or int(candidate.get("frozen_flag") or 0) == 1)
-                and base_process_slot is not None
-            ):
-                context_start_slot = max(context_start_slot, int(base_process_slot))
             allocations, last_slot = self._allocate_process_tasks(
                 order_no=str(candidate.get("order_no") or ""),
                 process_context=process_context,
@@ -9362,10 +6413,7 @@ class AppService:
                 -int(candidate.get("lock_flag") or 0),
                 _normalize_priority_level(candidate.get("priority_level"), PRIORITY_LEVEL_MAX),
             )
-            base_tail = (
-                int(candidate.get("base_first_task_no") or 10**9),
-                str(candidate.get("order_no") or ""),
-            )
+            base_tail = (str(candidate.get("order_no") or ""),)
 
             if strategy_code == "KEY_ORDER_FIRST":
                 key = (
@@ -9993,267 +7041,6 @@ class AppService:
             }
         return out
 
-    def _is_workshop_manager(self, user: dict[str, Any] | None) -> bool:
-        role_code = str((user or {}).get("role_code") or "").strip().upper()
-        return role_code == ROLE_WORKSHOP_MANAGER
-
-    def _current_user_role_code(self, user: dict[str, Any] | None) -> str:
-        return str((user or {}).get("role_code") or "").strip().upper()
-
-    def _resolve_manager_user_id(self, user: dict[str, Any] | None) -> str | None:
-        if not self._is_workshop_manager(user):
-            return None
-        user_id = str((user or {}).get("user_id") or "").strip()
-        if not user_id:
-            raise forbidden(
-                code="WORKSHOP_MANAGER_USER_ID_REQUIRED",
-                message="Current workshop manager user_id is missing.",
-            )
-        return user_id
-
-    def _resolve_order_summary_scope_manager_user_id(
-        self,
-        *,
-        current_user: dict[str, Any] | None,
-        workshop_manager_user_id: str | None,
-    ) -> str | None:
-        role_code = self._current_user_role_code(current_user)
-        requested_user_id = str(workshop_manager_user_id or "").strip()
-        if workshop_manager_user_id is not None and not requested_user_id:
-            raise bad_request(
-                code="ORDER_SUMMARY_WORKSHOP_MANAGER_USER_ID_REQUIRED",
-                message="workshop_manager_user_id must be non-empty when provided.",
-            )
-        if role_code == ROLE_WORKSHOP_MANAGER:
-            actor_user_id = self._resolve_manager_user_id(current_user)
-            assert actor_user_id is not None
-            if requested_user_id and requested_user_id != actor_user_id:
-                raise forbidden(
-                    code="ORDER_SUMMARY_WORKSHOP_MANAGER_FILTER_FORBIDDEN",
-                    message="Current workshop manager is not allowed to access another workshop manager scope.",
-                    details={
-                        "requested_user_id": requested_user_id,
-                        "allowed_user_id": actor_user_id,
-                    },
-                )
-            return actor_user_id
-        if role_code == ROLE_SCHEDULER:
-            if not requested_user_id:
-                return None
-            return self._validate_order_summary_scheduler_filter_target(requested_user_id)
-        raise forbidden(
-            code="ORDER_SUMMARY_ROLE_FORBIDDEN",
-            message="Current role is not allowed to access order summary.",
-            details={"role_code": role_code},
-        )
-
-    def _validate_order_summary_scheduler_filter_target(
-        self,
-        workshop_manager_user_id: str,
-    ) -> str:
-        normalized_user_id = str(workshop_manager_user_id or "").strip()
-        if not normalized_user_id:
-            raise bad_request(
-                code="ORDER_SUMMARY_WORKSHOP_MANAGER_USER_ID_REQUIRED",
-                message="workshop_manager_user_id must be non-empty when provided.",
-            )
-        row = fetch_one(
-            self.connection,
-            """
-            SELECT
-                users.user_id,
-                users.role_code,
-                users.enabled_flag,
-                COALESCE(visibility.visible_flag, 1) AS visible_flag,
-                COUNT(scope.line_code) AS line_scope_count
-            FROM app_users users
-            LEFT JOIN masterdata_workshop_manager_visibility visibility
-              ON visibility.user_id = users.user_id
-            LEFT JOIN app_user_line_scopes scope
-              ON scope.user_id = users.user_id
-            WHERE users.user_id = ?
-            GROUP BY users.user_id, users.role_code, users.enabled_flag, COALESCE(visibility.visible_flag, 1)
-            LIMIT 1
-            """,
-            (normalized_user_id,),
-        )
-        if row is None:
-            raise bad_request(
-                code="ORDER_SUMMARY_WORKSHOP_MANAGER_NOT_FOUND",
-                message="workshop_manager_user_id does not exist.",
-                details={"workshop_manager_user_id": normalized_user_id},
-            )
-        role_code = str(row.get("role_code") or "").strip().upper()
-        if role_code != ROLE_WORKSHOP_MANAGER:
-            raise bad_request(
-                code="ORDER_SUMMARY_WORKSHOP_MANAGER_ROLE_INVALID",
-                message="workshop_manager_user_id must reference an enabled workshop manager user.",
-                details={"workshop_manager_user_id": normalized_user_id},
-            )
-        if int(row.get("enabled_flag") or 0) != 1:
-            raise bad_request(
-                code="ORDER_SUMMARY_WORKSHOP_MANAGER_DISABLED",
-                message="workshop_manager_user_id references a disabled workshop manager user.",
-                details={"workshop_manager_user_id": normalized_user_id},
-            )
-        if int(row.get("visible_flag") or 0) != 1:
-            raise bad_request(
-                code="ORDER_SUMMARY_WORKSHOP_MANAGER_HIDDEN",
-                message="workshop_manager_user_id references a hidden workshop manager user.",
-                details={"workshop_manager_user_id": normalized_user_id},
-            )
-        if int(_to_number(row.get("line_scope_count"), 0)) <= 0:
-            raise bad_request(
-                code="ORDER_SUMMARY_WORKSHOP_MANAGER_LINE_SCOPE_EMPTY",
-                message="workshop_manager_user_id must have at least one assigned line scope.",
-                details={"workshop_manager_user_id": normalized_user_id},
-            )
-        return normalized_user_id
-
-    def _list_user_line_scope_rows(self, user_id: str) -> list[dict[str, Any]]:
-        normalized_user_id = str(user_id or "").strip()
-        if not normalized_user_id:
-            return []
-        return fetch_all(
-            self.connection,
-            """
-            SELECT
-                user_id,
-                company_code,
-                workshop_code,
-                line_code
-            FROM app_user_line_scopes
-            WHERE user_id = ?
-            """,
-            (normalized_user_id,),
-        )
-
-    def _build_line_scope_key(
-        self,
-        *,
-        company_code: str | None,
-        workshop_code: str | None,
-        line_code: str | None,
-    ) -> tuple[str, str, str]:
-        return (
-            str(company_code or DEFAULT_COMPANY_CODE).strip().upper() or DEFAULT_COMPANY_CODE,
-            str(workshop_code or "").strip().upper(),
-            str(line_code or "").strip().upper(),
-        )
-
-    def _user_line_scope_key_set(self, user_id: str) -> set[tuple[str, str, str]]:
-        rows = self._list_user_line_scope_rows(user_id)
-        return {
-            self._build_line_scope_key(
-                company_code=row.get("company_code"),
-                workshop_code=row.get("workshop_code"),
-                line_code=row.get("line_code"),
-            )
-            for row in rows
-        }
-
-    def _assert_actor_can_access_line(
-        self,
-        actor: dict[str, Any] | None,
-        *,
-        company_code: str,
-        workshop_code: str,
-        line_code: str,
-        missing_user_error_code: str,
-        forbidden_error_code: str,
-        forbidden_message: str,
-    ) -> None:
-        if not self._is_workshop_manager(actor):
-            return
-        actor_user_id = str((actor or {}).get("user_id") or "").strip()
-        if not actor_user_id:
-            raise bad_request(
-                code=missing_user_error_code,
-                message="workshop manager actor.user_id is required.",
-            )
-        scope_key = self._build_line_scope_key(
-            company_code=company_code,
-            workshop_code=workshop_code,
-            line_code=line_code,
-        )
-        allowed_scope_keys = self._user_line_scope_key_set(actor_user_id)
-        if scope_key not in allowed_scope_keys:
-            raise forbidden(
-                code=forbidden_error_code,
-                message=forbidden_message,
-                details={
-                    "user_id": actor_user_id,
-                    "company_code": scope_key[0],
-                    "workshop_code": scope_key[1],
-                    "line_code": scope_key[2],
-                },
-            )
-
-    def _list_enabled_workshop_manager_users(self) -> list[dict[str, Any]]:
-        return fetch_all(
-            self.connection,
-            """
-            SELECT
-                user_id,
-                username,
-                display_name,
-                role_code,
-                enabled_flag
-            FROM app_users
-            WHERE role_code = ?
-              AND enabled_flag = 1
-            ORDER BY username ASC, user_id ASC
-            """,
-            (ROLE_WORKSHOP_MANAGER,),
-        )
-
-    def _list_workshop_manager_visibility_rows(self) -> list[dict[str, Any]]:
-        return fetch_all(
-            self.connection,
-            """
-            SELECT
-                user_id,
-                visible_flag
-            FROM masterdata_workshop_manager_visibility
-            ORDER BY user_id ASC
-            """,
-        )
-
-    def _list_workshop_manager_line_scope_rows(self) -> list[dict[str, Any]]:
-        return fetch_all(
-            self.connection,
-            """
-            SELECT
-                scope.user_id,
-                scope.company_code,
-                scope.workshop_code,
-                scope.line_code
-            FROM app_user_line_scopes scope
-            JOIN app_users users
-              ON users.user_id = scope.user_id
-            WHERE users.role_code = ?
-              AND users.enabled_flag = 1
-            ORDER BY scope.user_id ASC, scope.company_code ASC, scope.workshop_code ASC, scope.line_code ASC
-            """,
-            (ROLE_WORKSHOP_MANAGER,),
-        )
-
-    def _list_line_skeleton_rows(self) -> list[dict[str, Any]]:
-        return fetch_all(
-            self.connection,
-            """
-            SELECT
-                company_code,
-                workshop_code,
-                workshop_name,
-                line_code,
-                line_name,
-                enabled_flag
-            FROM masterdata_line_skeletons
-            ORDER BY workshop_code ASC, line_code ASC
-            """,
-        )
-
     def _list_line_topology_rows(self) -> list[dict[str, Any]]:
         return fetch_all(
             self.connection,
@@ -10406,135 +7193,6 @@ class AppService:
             grouped[product_code].sort(key=lambda item: int(item.get("sequence_no") or 0))
         return grouped
 
-    def _replace_process_routes(
-        self,
-        product_code: str,
-        steps: Any,
-        *,
-        source_product_code: str | None,
-    ) -> None:
-        normalized_steps = steps if isinstance(steps, list) else []
-        if len(normalized_steps) == 0:
-            raise bad_request(
-                code="ROUTE_STEPS_REQUIRED",
-                message="steps must be a non-empty array.",
-            )
-        product_name = (
-            self._lookup_product_name(product_code)
-            or self._lookup_product_name(source_product_code)
-            or product_code
-        )
-        process_name_by_code = self._process_name_by_code()
-        updated_at = utc_now()
-        rows_to_insert: list[dict[str, Any]] = []
-        marked_final_count = 0
-        for index, step in enumerate(normalized_steps):
-            process_code = str(step.get("process_code") or "").strip().upper()
-            if not process_code:
-                raise bad_request(
-                    code="ROUTE_STEP_INVALID",
-                    message="Each route step requires process_code.",
-                )
-            dependency_type = str(step.get("dependency_type") or "FS").strip().upper() or "FS"
-            raw_final_process_flag = step.get("is_final_process")
-            if raw_final_process_flag is None:
-                is_final_process = 0
-            elif isinstance(raw_final_process_flag, bool):
-                is_final_process = 1 if raw_final_process_flag else 0
-            else:
-                normalized_final_process_flag = (
-                    str(raw_final_process_flag).strip().lower()
-                )
-                if normalized_final_process_flag in {"1", "true"}:
-                    is_final_process = 1
-                elif normalized_final_process_flag in {"0", "false", ""}:
-                    is_final_process = 0
-                else:
-                    raise bad_request(
-                        code="ROUTE_STEP_INVALID",
-                        message="is_final_process must be 0 or 1.",
-                    )
-            if is_final_process == 1:
-                marked_final_count += 1
-            rows_to_insert.append(
-                {
-                    "product_code": product_code,
-                    "sequence_no": index + 1,
-                    "process_code": process_code,
-                    "process_name_cn": process_name_by_code.get(
-                        process_code,
-                        process_code,
-                    ),
-                    "dependency_type": dependency_type,
-                    "route_no": f"ROUTE-{product_code}",
-                    "route_name_cn": product_name,
-                    "product_name_cn": product_name,
-                    "is_final_process": is_final_process,
-                    "updated_at": updated_at,
-                }
-            )
-        if marked_final_count > 1:
-            raise bad_request(
-                code="ROUTE_FINAL_PROCESS_INVALID",
-                message="Only one step can be marked as final process.",
-            )
-        if marked_final_count == 0 and rows_to_insert:
-            rows_to_insert[-1]["is_final_process"] = 1
-        with transaction(self.connection):
-            self.connection.execute(
-                "DELETE FROM masterdata_process_routes WHERE product_code = ?",
-                (product_code,),
-            )
-            self.connection.executemany(
-                """
-                INSERT INTO masterdata_process_routes (
-                    product_code,
-                    sequence_no,
-                    process_code,
-                    process_name_cn,
-                    dependency_type,
-                    route_no,
-                    route_name_cn,
-                    product_name_cn,
-                    is_final_process,
-                    updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        row["product_code"],
-                        row["sequence_no"],
-                        row["process_code"],
-                        row["process_name_cn"],
-                        row["dependency_type"],
-                        row["route_no"],
-                        row["route_name_cn"],
-                        row["product_name_cn"],
-                        row["is_final_process"],
-                        row["updated_at"],
-                    )
-                    for row in rows_to_insert
-                ],
-            )
-
-    def _lookup_product_name(self, product_code: str | None) -> str | None:
-        if not product_code:
-            return None
-        row = fetch_one(
-            self.connection,
-            """
-            SELECT material_name
-            FROM production_orders
-            WHERE material_code = ?
-            ORDER BY updated_at DESC
-            LIMIT 1
-            """,
-            (product_code,),
-        )
-        if row is None:
-            return None
-        return str(row.get("material_name") or "").strip() or None
-
     def _next_schedule_version_no(self) -> str:
         today = datetime.now().strftime("%Y.%m.%d")
         prefix = f"V{today}-D"
@@ -10549,182 +7207,6 @@ class AppService:
         )
         next_index = int(row["total"]) + 1 if row else 1
         return f"{prefix}{next_index}"
-
-    def _normalize_batch_dispatch_order_nos(self, value: object) -> list[str]:
-        if not isinstance(value, list):
-            raise bad_request(
-                code="ORDER_BATCH_DISPATCH_ORDER_NOS_INVALID",
-                message="order_nos must be an array.",
-            )
-        normalized_order_nos: list[str] = []
-        seen_order_nos: set[str] = set()
-        for item in value:
-            order_no = str(item or "").strip()
-            if not order_no or order_no in seen_order_nos:
-                continue
-            seen_order_nos.add(order_no)
-            normalized_order_nos.append(order_no)
-        return normalized_order_nos
-
-    def _is_order_completed_for_dispatch(
-        self,
-        base_row: dict[str, Any],
-        state_row: dict[str, Any] | None,
-    ) -> bool:
-        explicit_status = str(
-            (state_row or {}).get("order_status") or (state_row or {}).get("status") or ""
-        ).strip().upper()
-        if explicit_status in {"OPEN", "IN_PROGRESS"}:
-            return False
-        if explicit_status in {"DONE", "COMPLETED", "CLOSED"}:
-            return True
-
-        production_qty = _to_number(base_row.get("production_qty"), 0)
-        completed_qty = _to_number((state_row or {}).get("completed_qty"), 0)
-        remaining_qty = (state_row or {}).get("remaining_qty")
-        if remaining_qty is not None and _to_number(remaining_qty, 0) <= SCHEDULE_NUMBER_EPSILON:
-            return True
-        if (
-            production_qty > SCHEDULE_NUMBER_EPSILON
-            and completed_qty + SCHEDULE_NUMBER_EPSILON >= production_qty
-        ):
-            return True
-
-        progress_rate = (state_row or {}).get("progress_rate")
-        if progress_rate is not None and _to_number(progress_rate, 0) >= 99.999:
-            return True
-        return False
-
-    def _resolve_dispatch_actor_name(self, actor: object) -> str:
-        if isinstance(actor, dict):
-            for field in ("username", "display_name", "user_id"):
-                value = str(actor.get(field) or "").strip()
-                if value:
-                    return value
-        return "system"
-
-    def _insert_dispatch_command_record(
-        self,
-        *,
-        target_order_no: str,
-        command_type: str,
-        payload: dict[str, Any],
-    ) -> str:
-        command_id = f"CMD-{uuid4().hex[:10].upper()}"
-        now = utc_now()
-        self.connection.execute(
-            """
-            INSERT INTO dispatch_commands (
-                command_id,
-                target_order_no,
-                command_type,
-                status,
-                effective_time,
-                reason,
-                created_by,
-                approver,
-                decision,
-                decision_reason,
-                decision_time,
-                created_at,
-                updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                command_id,
-                target_order_no,
-                command_type,
-                "PENDING",
-                payload.get("effective_time"),
-                payload.get("reason"),
-                payload.get("created_by"),
-                None,
-                None,
-                None,
-                None,
-                now,
-                now,
-            ),
-        )
-        return command_id
-
-    def _approve_dispatch_command_record(
-        self,
-        *,
-        command_id: str,
-        target_order_no: str,
-        command_type: str,
-        previous_status: str,
-        payload: dict[str, Any],
-    ) -> None:
-        decision = str(payload.get("decision") or "").strip().upper() or "APPROVED"
-        now = utc_now()
-        self.connection.execute(
-            """
-            UPDATE dispatch_commands
-            SET status = ?,
-                approver = ?,
-                decision = ?,
-                decision_reason = ?,
-                decision_time = ?,
-                updated_at = ?
-            WHERE command_id = ?
-            """,
-            (
-                decision,
-                payload.get("approver"),
-                decision,
-                payload.get("decision_reason"),
-                payload.get("decision_time") or now,
-                now,
-                command_id,
-            ),
-        )
-        if decision == "APPROVED" and previous_status.strip().upper() != "APPROVED":
-            self._apply_dispatch_command(
-                target_order_no=target_order_no,
-                command_type=command_type,
-            )
-
-    def _apply_dispatch_command(self, *, target_order_no: str, command_type: str) -> None:
-        current = self._get_order_state(target_order_no) or {
-            "production_order_no": target_order_no,
-        }
-        next_row = {
-            "production_order_no": target_order_no,
-            "promised_due_date": current.get("promised_due_date"),
-            "expected_start_date": current.get("expected_start_date"),
-            "expected_start_time": current.get("expected_start_time"),
-            "expected_finish_time": current.get("expected_finish_time"),
-            "priority_level": _normalize_priority_level(current.get("priority_level"), PRIORITY_LEVEL_MAX),
-            "urgent_flag": _urgent_flag_from_priority_level(current.get("priority_level")),
-            "lock_flag": int(current.get("lock_flag") or 0),
-            "frozen_flag": int(current.get("frozen_flag") or 0),
-            "status": current.get("status"),
-            "order_status": current.get("order_status"),
-            "completed_qty": current.get("completed_qty"),
-            "remaining_qty": current.get("remaining_qty"),
-            "progress_rate": current.get("progress_rate"),
-            "production_batch_no": current.get("production_batch_no"),
-        }
-        normalized = str(command_type or "").strip().upper()
-        if normalized == "LOCK":
-            next_row["lock_flag"] = 1
-        elif normalized == "UNLOCK":
-            next_row["lock_flag"] = 0
-        elif normalized == "PRIORITY_UP":
-            next_row["priority_level"] = max(PRIORITY_LEVEL_MIN, next_row["priority_level"] - 1)
-            next_row["urgent_flag"] = _urgent_flag_from_priority_level(next_row["priority_level"])
-        elif normalized == "PRIORITY_DOWN":
-            next_row["priority_level"] = min(PRIORITY_LEVEL_MAX, next_row["priority_level"] + 1)
-            next_row["urgent_flag"] = _urgent_flag_from_priority_level(next_row["priority_level"])
-        elif normalized == "PRIORITY":
-            next_row["priority_level"] = PRIORITY_LEVEL_MIN
-            next_row["urgent_flag"] = 1
-        elif normalized == "UNPRIORITY":
-            next_row["priority_level"] = PRIORITY_LEVEL_MAX
-            next_row["urgent_flag"] = 0
-        self._upsert_order_state(next_row)
 
     def _find_material_reference(self, material_code: str) -> dict[str, Any]:
         row = fetch_one(
@@ -10773,3 +7255,4 @@ class AppService:
             if digits:
                 numbers.append(int(digits))
         return max(numbers, default=9000) + 1
+

@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from backend.app.db import managed_connection  # noqa: E402
-from backend.app.services.app_service import AppService  # noqa: E402
+from backend.app.services.app_service_provider import create_app_service  # noqa: E402
 
 
 def main() -> None:
@@ -45,7 +45,7 @@ def main() -> None:
     }
 
     with managed_connection() as connection:
-        service = AppService(connection)
+        service = create_app_service(connection)
         result = service.import_mes_reportings_from_xlsx(payload)
 
     imported_count = int(result.get("imported_count") or 0)

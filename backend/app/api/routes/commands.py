@@ -552,7 +552,7 @@ def generate_schedule(
         connection,
         job_type="LEGACY_SCHEDULE_GENERATE",
         target_type="SCHEDULE_VERSION",
-        target_key=str(payload.get("base_version_no") or "NEW"),
+        target_key="CURRENT",
         request_id=str(payload.get("request_id") or "").strip() or None,
         payload=payload,
     )

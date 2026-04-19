@@ -6,7 +6,6 @@ import unittest
 from pathlib import Path
 
 from backend.app.db import initialize_database
-from backend.app.errors import AppError
 from backend.app.services.app_service import AppService
 
 
@@ -53,21 +52,29 @@ class AppServiceMultiLineScheduleTestCase(unittest.TestCase):
             [("WS-1", "LINE-1", 10.0), ("WS-1", "LINE-2", 5.0)],
         )
 
-    def test_generate_schedule_blocks_locked_order_missing_from_base_version(self) -> None:
+    def test_generate_schedule_skips_locked_order(self) -> None:
         self._seed_route_and_topology("MAT-A", "PROC-A", [("WS-1", "LINE-1")], 10)
+        self._seed_order("MO-OPEN-001", "MAT-A", 10)
         self._seed_order("MO-LOCK-001", "MAT-A", 10, lock_flag=1)
 
-        with self.assertRaises(AppError) as ctx:
-            self.service.generate_schedule(
-                {
-                    "base_version_no": "V-BASE-001",
-                    "strategy_code": "KEY_ORDER_FIRST",
-                    "capacity_source_mode": "DEFAULT",
-                    "use_order_state_window": True,
-                }
-            )
+        generated = self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
 
-        self.assertEqual(ctx.exception.code, "SCHEDULE_FIXED_ORDER_MISSING_FROM_BASE")
+        rows = self.connection.execute(
+            """
+            SELECT production_order_no
+            FROM schedule_tasks
+            WHERE version_no = ?
+            ORDER BY task_no
+            """,
+            (generated["version_no"],),
+        ).fetchall()
+        self.assertEqual([str(row["production_order_no"]) for row in rows], ["MO-OPEN-001"])
 
     def _seed_route_and_topology(
         self,

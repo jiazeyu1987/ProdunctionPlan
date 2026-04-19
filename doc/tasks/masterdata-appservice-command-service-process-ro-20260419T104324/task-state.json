@@ -1,0 +1,31 @@
+{
+  "schema_version": 2,
+  "task_id": "masterdata-appservice-command-service-process-ro-20260419T104324",
+  "mode": "full",
+  "status": "planning",
+  "current_phase": null,
+  "phase_statuses": [],
+  "planner_review_status": "pending",
+  "test_status": "not_started",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 0,
+    "test_loops": 0
+  },
+  "created_at": "2026-04-19T10:43:24",
+  "updated_at": "2026-04-19T10:43:24",
+  "branch": "master",
+  "baseline_revision": "85c66725c3c28e23453fcc74b7745fd30103c86a",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\masterdata-appservice-command-service-process-ro-20260419T104324",
+  "goal": "继续模块化重构：将 masterdata 命令域从 AppService 下沉到独立 command service，优先处理 process_routes 与 schedule_calendar_rules 命令并保持 commands/job_dispatcher 入口稳定",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\masterdata-appservice-command-service-process-ro-20260419T104324\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\masterdata-appservice-command-service-process-ro-20260419T104324\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\masterdata-appservice-command-service-process-ro-20260419T104324\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\masterdata-appservice-command-service-process-ro-20260419T104324\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\masterdata-appservice-command-service-process-ro-20260419T104324\\test-report.md"
+  }
+}
