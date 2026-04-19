@@ -2821,6 +2821,8 @@ class AppService:
 
             lock_flag = int(_to_number(state_row.get("lock_flag"), 0))
             frozen_flag = int(_to_number(state_row.get("frozen_flag"), 0))
+            if frozen_flag == 1:
+                continue
 
             process_contexts = self._build_schedule_process_contexts(
                 order_no=order_no,
@@ -3071,6 +3073,8 @@ class AppService:
 
             lock_flag = int(_to_number(state_row.get("lock_flag"), 0))
             frozen_flag = int(_to_number(state_row.get("frozen_flag"), 0))
+            if frozen_flag == 1:
+                continue
 
             process_contexts = self._build_schedule_process_contexts(
                 order_no=order_no,

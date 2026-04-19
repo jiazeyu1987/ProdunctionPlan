@@ -1,0 +1,205 @@
+{
+  "schema_version": 2,
+  "task_id": "prd-20260420T000918",
+  "mode": "full",
+  "status": "ready_for_execution",
+  "current_phase": "P1",
+  "phase_statuses": [
+    {
+      "phase_id": "P1",
+      "title": "建立分层重构基线与边界契约",
+      "status": "pending",
+      "objective": "明确系统的入口层、应用编排层、领域能力层、基础设施层边界，冻结“前端界面不变、API 契约不随意变化”的重构约束，并为后续拆分建立目标模块图。",
+      "owned_paths": [
+        "`backend/app/api/**`",
+        "`backend/app/services/app_service.py`",
+        "`backend/app/services/job_dispatcher.py`",
+        "`fronted/src/app/**`",
+        "`fronted/src/components/**`",
+        "`fronted/src/legacy/app-shell/**`",
+        "`fronted/src/legacy/pages/**`"
+      ],
+      "dependencies": [
+        "当前 API 路由、前端页面入口、角色权限与现有测试清单"
+      ],
+      "deliverables": [
+        "目标分层说明、模块职责矩阵、禁止变更清单、迁移顺序说明"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P1-AC1",
+          "text": "明确给出当前系统“需要重构”的结论，并用代码现状证明耦合点主要集中在后端 `AppService`、`JobDispatcher` 与前端超大 page controller。",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P1-AC2",
+          "text": "明确前端不变更范围，包括页面布局、样式、路由、导航、主要交互路径和 API 外部契约。",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P1-AC3",
+          "text": "给出目标分层结构，至少包含入口层、应用编排层、领域能力层、基础设施层，并说明各层依赖方向只能自上而下。",
+          "status": "pending",
+          "evidence": []
+        }
+      ],
+      "evidence": [],
+      "notes": "",
+      "last_reviewed_at": null
+    },
+    {
+      "phase_id": "P2",
+      "title": "后端按业务域拆分命令编排，收缩 AppService",
+      "status": "pending",
+      "objective": "将 `AppService` 从“大一统应用服务”重构为按业务域划分的应用编排器，至少形成订单池、排程、主数据、报工/执行、测试工具等清晰边界，并让命令入口与 JobDispatcher 面向显式服务接口而不是继续堆叠 `LEGACY_*` 分支。",
+      "owned_paths": [
+        "`backend/app/services/app_service.py`",
+        "`backend/app/services/job_dispatcher.py`",
+        "`backend/app/services/*_command_service.py`",
+        "`backend/app/services/*_provider.py`",
+        "`backend/app/api/routes/commands.py`"
+      ],
+      "dependencies": [
+        "P1 输出的边界契约；现有 facade/provider 组织方式；仓储和 gateway 现状"
+      ],
+      "deliverables": [
+        "新的后端模块划分方案、候选服务清单、命令路由到应用服务的映射规则、迁移优先级"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P2-AC1",
+          "text": "后端重构方案不再允许 `AppService` 持续承载跨域职责，必须给出可拆分的域服务清单。",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P2-AC2",
+          "text": "命令入口与 JobDispatcher 的职责必须被定义为“路由/派发 + 应用服务调用”，而不是继续扩散业务细节。",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P2-AC3",
+          "text": "查询侧已有 facade/provider 模式要被保留并作为命令侧重构参考，不允许回退为更粗粒度耦合结构。",
+          "status": "pending",
+          "evidence": []
+        }
+      ],
+      "evidence": [],
+      "notes": "",
+      "last_reviewed_at": null
+    },
+    {
+      "phase_id": "P3",
+      "title": "前端在不改界面的前提下拆分 page controller",
+      "status": "pending",
+      "objective": "保留现有页面 JSX、样式类名、路由与可见交互，将超大 controller 拆成查询 hook、命令 hook、筛选/选择状态 hook、URL 状态同步 hook、派生 view-model 计算模块与纯工具模块，降低页面与业务逻辑耦合。",
+      "owned_paths": [
+        "`fronted/src/legacy/features/orders-pool/**`",
+        "`fronted/src/legacy/features/schedule-calendar/**`",
+        "`fronted/src/legacy/features/masterdata/**`",
+        "`fronted/src/legacy/features/lite-scheduler/**`",
+        "`fronted/src/legacy/features/execution-wip/**`"
+      ],
+      "dependencies": [
+        "P1 的页面不变约束；P2 的后端契约稳定面；现有 `queryClient` / `commandClient` / `service` 文件"
+      ],
+      "deliverables": [
+        "前端控制器拆分策略、共享 API 调用边界、页面保形清单、模块目录建议"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P3-AC1",
+          "text": "前端 Orders Pool、Schedule Calendar 等超大 controller 必须拆为多个职责单一的 hook 或纯函数模块，页面组件接口保持稳定。",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P3-AC2",
+          "text": "共享 API 调用必须下沉到 feature service 或 shared api 层，页面与大型 controller 不再直接混合查询、命令、派生计算和持久化逻辑。",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P3-AC3",
+          "text": "拆分方案必须保证 JSX 结构、CSS 类名和用户可见文案不因重构被意外改写。",
+          "status": "pending",
+          "evidence": []
+        }
+      ],
+      "evidence": [],
+      "notes": "",
+      "last_reviewed_at": null
+    },
+    {
+      "phase_id": "P4",
+      "title": "建立分阶段回归与验收机制",
+      "status": "pending",
+      "objective": "在每次模块迁移后用后端单测、API 契约验证与前端真实浏览器回归确认行为不变，确保重构是“低耦合迁移”而不是“功能重写”。",
+      "owned_paths": [
+        "`backend/tests/**`",
+        "`fronted/tests/e2e/**`",
+        "`fronted/playwright.config.ts`",
+        "`doc/tasks/prd-20260420T000918/**`"
+      ],
+      "dependencies": [
+        "P1-P3 输出的接受标准和模块边界"
+      ],
+      "deliverables": [
+        "分层回归矩阵、关键冒烟清单、执行顺序与放行规则"
+      ],
+      "evidence_expectation": "",
+      "acceptance_criteria": [
+        {
+          "ac_id": "P4-AC1",
+          "text": "每个阶段都要定义最小可验证回归集，覆盖后端契约、前端页面冒烟和关键业务流。",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P4-AC2",
+          "text": "UI 验证必须使用真实浏览器，不允许仅依赖静态阅读或假定页面未变。",
+          "status": "pending",
+          "evidence": []
+        },
+        {
+          "ac_id": "P4-AC3",
+          "text": "若任一重构步骤导致接口或页面行为偏离现状，必须阻塞继续执行，而不是加 fallback 掩盖差异。",
+          "status": "pending",
+          "evidence": []
+        }
+      ],
+      "evidence": [],
+      "notes": "",
+      "last_reviewed_at": null
+    }
+  ],
+  "planner_review_status": "approved",
+  "test_status": "not_started",
+  "blocking_prereqs": [],
+  "iteration_counts": {
+    "planner_revisions": 0,
+    "executor_loops": 0,
+    "test_loops": 0
+  },
+  "created_at": "2026-04-20T00:09:19",
+  "updated_at": "2026-04-20T00:13:21",
+  "branch": "master",
+  "baseline_revision": "02c71e5614144baa18b46abd617fa6a36b54a034",
+  "workspace_root": "D:\\ProjectPackage\\ProductionPlan",
+  "tasks_root": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks",
+  "task_dir": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\prd-20260420T000918",
+  "goal": "查看当前系统是否需要重构,如需要则在保持前端界面不变的前提下，整理自上而下模块化、低耦合重构方案并写入PRD",
+  "artifacts": {
+    "prd": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\prd-20260420T000918\\prd.md",
+    "test_plan": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\prd-20260420T000918\\test-plan.md",
+    "task_state": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\prd-20260420T000918\\task-state.json",
+    "execution_log": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\prd-20260420T000918\\execution-log.md",
+    "test_report": "D:\\ProjectPackage\\ProductionPlan\\doc\\tasks\\prd-20260420T000918\\test-report.md"
+  }
+}

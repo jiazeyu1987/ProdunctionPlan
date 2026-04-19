@@ -104,7 +104,7 @@ class ScheduleFactReplanTestCase(unittest.TestCase):
         self.assertEqual(row["scheduled_start_date"], "2026-04-14")
         self.assertEqual(timeline["summary"]["reference_version_no"], "V-DRF-LEGACY-002")
 
-    def test_generate_schedule_by_fact_prioritizes_locked_and_frozen_orders(self) -> None:
+    def test_generate_schedule_by_fact_skips_frozen_orders_but_keeps_locked_orders(self) -> None:
         self._seed_simulation_date("2026-04-13")
         self._seed_route_and_topology("MAT-FACT-A", "PROC-A", capacity_per_shift=10)
         self._seed_order("MO-FACT-OPEN-001", material_code="MAT-FACT-A")
@@ -140,9 +140,32 @@ class ScheduleFactReplanTestCase(unittest.TestCase):
         self.assertEqual(generated["capacity_source_mode"], "PLANNED")
         ordered_order_nos = [str(row["production_order_no"]) for row in rows]
         self.assertEqual(
-            ordered_order_nos[1:4],
-            ["MO-FACT-FROZEN-001", "MO-FACT-LOCK-001", "MO-FACT-OPEN-001"],
+            ordered_order_nos[1:3],
+            ["MO-FACT-LOCK-001", "MO-FACT-OPEN-001"],
         )
+        self.assertNotIn("MO-FACT-FROZEN-001", ordered_order_nos)
+
+    def test_generate_schedule_by_fact_skips_frozen_orders_without_routes(self) -> None:
+        self._seed_simulation_date("2026-04-13")
+        self._seed_route_and_topology("MAT-FACT-OK", "PROC-A", capacity_per_shift=10)
+        self._seed_order("MO-FACT-OPEN-ROUTE-001", material_code="MAT-FACT-OK")
+        self._seed_order(
+            "MO-FACT-FROZEN-NO-ROUTE-001",
+            material_code="MAT-FACT-MISSING",
+            frozen_flag=1,
+        )
+
+        generated = self.service.generate_schedule_by_fact(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "PLANNED",
+                "use_order_state_window": True,
+            }
+        )
+
+        rows = self._list_tasks(str(generated["version_no"]))
+        generated_order_nos = [str(row["production_order_no"]) for row in rows]
+        self.assertEqual(generated_order_nos, ["MO-FACT-OPEN-ROUTE-001"])
 
     def test_generate_schedule_by_fact_accepts_actual_mode_without_base_version(self) -> None:
         self._seed_simulation_date("2026-04-13")
