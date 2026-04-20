@@ -1356,3 +1356,785 @@ https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/
 [96798470ms] [LOG] [Fast Refresh] done in 50ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
 [96803607ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
 [96803623ms] [LOG] [Fast Refresh] done in 61ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[96968200ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[96968231ms] [LOG] [Fast Refresh] done in 30ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97200371ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97200537ms] [ERROR] ./src/legacy/App.jsx:6:1
+Module not found: Can't resolve './app-shell/navigation'
+  4 | import { AppRoutes } from "./app-shell/AppRoutes";
+  5 | import { AppSidebar } from "./app-shell/AppSidebar";
+> 6 | import { hasRoleAccess, MAIN_LINKS } from "./app-shell/navigation";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 |
+  8 | function AppShell() {
+  9 |   const { currentUser, logout } = useAuth();
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97200537ms] [ERROR] ./src/legacy/app-shell/AppRoutes.jsx:13:1
+Module not found: Can't resolve './navigation'
+  11 | import TestToolsPage from "../pages/TestToolsPage";
+  12 | import { ProtectedRoute } from "./ProtectedRoute";
+> 13 | import { ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER } from "./navigation";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  14 |
+  15 | export function AppRoutes({ currentUser, defaultPath }) {
+  16 |   return (
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97200537ms] [ERROR] ./src/legacy/app-shell/AppSidebar.jsx:2:1
+Module not found: Can't resolve './navigation'
+  1 | import { NavLink } from "react-router-dom";
+> 2 | import { hasRoleAccess, MAIN_LINKS, navTestId } from "./navigation";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | export function AppSidebar({ currentUser, isLiteSchedulerPage, defaultPath, logout }) {
+  5 |   const allowedLinks = MAIN_LINKS.filter((item) => hasRoleAccess(currentUser, item.roles));
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/app-shell/AppSidebar.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97200538ms] [ERROR] ./src/legacy/app-shell/ProtectedRoute.jsx:2:1
+Module not found: Can't resolve './navigation'
+  1 | import { Navigate } from "react-router-dom";
+> 2 | import { hasRoleAccess } from "./navigation";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | export function ProtectedRoute({ currentUser, allowedRoles, element, fallbackPath }) {
+  5 |   if (!hasRoleAccess(currentUser, allowedRoles)) {
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/app-shell/ProtectedRoute.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97200629ms] [ERROR] ./src/legacy/App.jsx:6:1
+Module not found: Can't resolve './app-shell/navigation'
+  4 | import { AppRoutes } from "./app-shell/AppRoutes";
+  5 | import { AppSidebar } from "./app-shell/AppSidebar";
+> 6 | import { hasRoleAccess, MAIN_LINKS } from "./app-shell/navigation";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 |
+  8 | function AppShell() {
+  9 |   const { currentUser, logout } = useAuth();
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97200629ms] [ERROR] ./src/legacy/app-shell/AppRoutes.jsx:13:1
+Module not found: Can't resolve './navigation'
+  11 | import TestToolsPage from "../pages/TestToolsPage";
+  12 | import { ProtectedRoute } from "./ProtectedRoute";
+> 13 | import { ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER } from "./navigation";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  14 |
+  15 | export function AppRoutes({ currentUser, defaultPath }) {
+  16 |   return (
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97200629ms] [ERROR] ./src/legacy/app-shell/AppSidebar.jsx:2:1
+Module not found: Can't resolve './navigation'
+  1 | import { NavLink } from "react-router-dom";
+> 2 | import { hasRoleAccess, MAIN_LINKS, navTestId } from "./navigation";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | export function AppSidebar({ currentUser, isLiteSchedulerPage, defaultPath, logout }) {
+  5 |   const allowedLinks = MAIN_LINKS.filter((item) => hasRoleAccess(currentUser, item.roles));
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/app-shell/AppSidebar.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97200629ms] [ERROR] ./src/legacy/app-shell/ProtectedRoute.jsx:2:1
+Module not found: Can't resolve './navigation'
+  1 | import { Navigate } from "react-router-dom";
+> 2 | import { hasRoleAccess } from "./navigation";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 |
+  4 | export function ProtectedRoute({ currentUser, allowedRoles, element, fallbackPath }) {
+  5 |   if (!hasRoleAccess(currentUser, allowedRoles)) {
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/app-shell/ProtectedRoute.jsx [Client Component Browser]
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97200689ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97215572ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97215619ms] [LOG] [Fast Refresh] done in 51ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97222465ms] [ERROR] ./src/legacy/App.jsx:5:1
+Module not found: Can't resolve './app-shell/AppSidebar'
+  3 | import { useAuth } from "./auth/AuthContext";
+  4 | import { AppRoutes } from "./app-shell/AppRoutes";
+> 5 | import { AppSidebar } from "./app-shell/AppSidebar";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  6 | import { hasRoleAccess, MAIN_LINKS } from "./app-shell/navigation";
+  7 |
+  8 | function AppShell() {
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97222474ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97237697ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97237776ms] [LOG] [Fast Refresh] done in 41ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97275425ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97275535ms] [ERROR] ./src/components/legacy-app-page.tsx:3:48
+Module not found: Can't resolve '@/legacy/App'
+  1 | ﻿"use client";
+  2 |
+> 3 | import { BrowserRouter } from "react-router-dom";
+    |                                                ^
+> 4 | import LegacyApp from "@/legacy/App";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 | import { AuthProvider } from "@/legacy/auth/AuthContext";
+  6 |
+  7 | export function LegacyAppPage() {
+
+Import map: aliased to relative './src/legacy/App' inside of [project]/
+
+Import trace:
+  Client Component Browser:
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97293096ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97293645ms] [LOG] [Fast Refresh] done in 533ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97300990ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97301166ms] [ERROR] ./src/app/layout.tsx:3:1
+Module not found: Can't resolve '../legacy/styles/base.css'
+  1 | import type { Metadata } from "next";
+  2 | import "./globals.css";
+> 3 | import "../legacy/styles/base.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97301284ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97302179ms] [ERROR] ./src/app/layout.tsx:3:1
+Module not found: Can't resolve '../legacy/styles/base.css'
+  1 | import type { Metadata } from "next";
+  2 | import "./globals.css";
+> 3 | import "../legacy/styles/base.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97302179ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/?_rsc=1s9v7:0
+[97302240ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/?_rsc=1s9v7:0
+[97302278ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/:0
+[97302416ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_react-dom_0bruynb._.js:15305
+[97302482ms] Error: ./src/app/layout.tsx:3:1
+Module not found: Can't resolve '../legacy/styles/base.css'
+  1 | import type { Metadata } from "next";
+  2 | import "./globals.css";
+> 3 | import "../legacy/styles/base.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+    at <unknown> (Error: ./src/app/layout.tsx:3:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at Object.getCompilationErrors (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\hot-reloader-turbopack.js:1186:59)
+    at DevBundlerService.getCompilationError (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\lib\dev-bundler-service.js:44:55)
+    at DevServer.getCompilationError (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\next-dev-server.js:719:42)
+    at DevServer.findPageComponents (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\next-dev-server.js:689:43)
+    at async DevServer.renderErrorToResponseImpl (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\base-server.js:1745:26)
+[97302477ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97302501ms] [ERROR] ./src/app/layout.tsx:3:1
+Module not found: Can't resolve '../legacy/styles/base.css'
+  1 | import type { Metadata } from "next";
+  2 | import "./globals.css";
+> 3 | import "../legacy/styles/base.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97302530ms] [ERROR] ./src/app/layout.tsx:3:1
+Module not found: Can't resolve '../legacy/styles/base.css'
+  1 | import type { Metadata } from "next";
+  2 | import "./globals.css";
+> 3 | import "../legacy/styles/base.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97302575ms] [ERROR] ./src/app/layout.tsx:3:1
+Module not found: Can't resolve '../legacy/styles/base.css'
+  1 | import type { Metadata } from "next";
+  2 | import "./globals.css";
+> 3 | import "../legacy/styles/base.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97302634ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97313042ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97313199ms] [LOG] [Fast Refresh] done in 198ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97313325ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97313386ms] [LOG] [Fast Refresh] done in 169ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97313477ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97313536ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97313612ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97313612ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97319124ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97319259ms] [ERROR] ./src/app/layout.tsx:4:1
+Module not found: Can't resolve '../legacy/styles/layout.css'
+  2 | import "./globals.css";
+  3 | import "../legacy/styles/base.css";
+> 4 | import "../legacy/styles/layout.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+  7 | import "../legacy/styles/tables.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97319303ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/?_rsc=1s9v7:0
+[97319315ms] [ERROR] ./src/app/layout.tsx:4:1
+Module not found: Can't resolve '../legacy/styles/layout.css'
+  2 | import "./globals.css";
+  3 | import "../legacy/styles/base.css";
+> 4 | import "../legacy/styles/layout.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+  7 | import "../legacy/styles/tables.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97319354ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/?_rsc=1s9v7:0
+[97319356ms] [ERROR] ./src/app/layout.tsx:4:1
+Module not found: Can't resolve '../legacy/styles/layout.css'
+  2 | import "./globals.css";
+  3 | import "../legacy/styles/base.css";
+> 4 | import "../legacy/styles/layout.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+  7 | import "../legacy/styles/tables.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97319376ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/:0
+[97319429ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_react-dom_0bruynb._.js:15305
+[97319438ms] Error: ./src/app/layout.tsx:4:1
+Module not found: Can't resolve '../legacy/styles/layout.css'
+  2 | import "./globals.css";
+  3 | import "../legacy/styles/base.css";
+> 4 | import "../legacy/styles/layout.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+  7 | import "../legacy/styles/tables.css";
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+    at <unknown> (Error: ./src/app/layout.tsx:4:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at Object.getCompilationErrors (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\hot-reloader-turbopack.js:1186:59)
+    at DevBundlerService.getCompilationError (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\lib\dev-bundler-service.js:44:55)
+    at DevServer.getCompilationError (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\next-dev-server.js:719:42)
+    at DevServer.findPageComponents (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\next-dev-server.js:689:43)
+    at async DevServer.renderErrorToResponseImpl (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\base-server.js:1745:26)
+[97319448ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97319454ms] [ERROR] ./src/app/layout.tsx:4:1
+Module not found: Can't resolve '../legacy/styles/layout.css'
+  2 | import "./globals.css";
+  3 | import "../legacy/styles/base.css";
+> 4 | import "../legacy/styles/layout.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+  7 | import "../legacy/styles/tables.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97319501ms] [ERROR] ./src/app/layout.tsx:4:1
+Module not found: Can't resolve '../legacy/styles/layout.css'
+  2 | import "./globals.css";
+  3 | import "../legacy/styles/base.css";
+> 4 | import "../legacy/styles/layout.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+  7 | import "../legacy/styles/tables.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97319596ms] [ERROR] ./src/app/layout.tsx:4:1
+Module not found: Can't resolve '../legacy/styles/layout.css'
+  2 | import "./globals.css";
+  3 | import "../legacy/styles/base.css";
+> 4 | import "../legacy/styles/layout.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 | import "../legacy/styles/toolbar.css";
+  6 | import "../legacy/styles/forms.css";
+  7 | import "../legacy/styles/tables.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97319670ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97365512ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97365662ms] [LOG] [Fast Refresh] done in 181ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97365792ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97365839ms] [LOG] [Fast Refresh] done in 159ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97365916ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97365933ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97365972ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97365972ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97403509ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97403644ms] [ERROR] ./src/app/layout.tsx:6:1
+Module not found: Can't resolve '../legacy/styles/forms.css'
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+> 6 | import "../legacy/styles/forms.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 | import "../legacy/styles/tables.css";
+  8 | import "../legacy/styles/components.css";
+  9 | import "../legacy/styles/pages/lite-scheduler.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97403694ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/?_rsc=1s9v7:0
+[97403704ms] [ERROR] ./src/app/layout.tsx:6:1
+Module not found: Can't resolve '../legacy/styles/forms.css'
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+> 6 | import "../legacy/styles/forms.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 | import "../legacy/styles/tables.css";
+  8 | import "../legacy/styles/components.css";
+  9 | import "../legacy/styles/pages/lite-scheduler.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97403729ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/?_rsc=1s9v7:0
+[97403763ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/:0
+[97403835ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_react-dom_0bruynb._.js:15305
+[97403844ms] Error: ./src/app/layout.tsx:6:1
+Module not found: Can't resolve '../legacy/styles/forms.css'
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+> 6 | import "../legacy/styles/forms.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 | import "../legacy/styles/tables.css";
+  8 | import "../legacy/styles/components.css";
+  9 | import "../legacy/styles/pages/lite-scheduler.css";
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+    at <unknown> (Error: ./src/app/layout.tsx:6:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at Object.getCompilationErrors (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\hot-reloader-turbopack.js:1186:59)
+    at DevBundlerService.getCompilationError (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\lib\dev-bundler-service.js:44:55)
+    at DevServer.getCompilationError (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\next-dev-server.js:719:42)
+    at DevServer.findPageComponents (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\next-dev-server.js:689:43)
+    at async DevServer.renderErrorToResponseImpl (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\base-server.js:1745:26)
+[97403848ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97403859ms] [ERROR] ./src/app/layout.tsx:6:1
+Module not found: Can't resolve '../legacy/styles/forms.css'
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+> 6 | import "../legacy/styles/forms.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 | import "../legacy/styles/tables.css";
+  8 | import "../legacy/styles/components.css";
+  9 | import "../legacy/styles/pages/lite-scheduler.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97403887ms] [ERROR] ./src/app/layout.tsx:6:1
+Module not found: Can't resolve '../legacy/styles/forms.css'
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+> 6 | import "../legacy/styles/forms.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 | import "../legacy/styles/tables.css";
+  8 | import "../legacy/styles/components.css";
+  9 | import "../legacy/styles/pages/lite-scheduler.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97403993ms] [ERROR] ./src/app/layout.tsx:6:1
+Module not found: Can't resolve '../legacy/styles/forms.css'
+  4 | import "../legacy/styles/layout.css";
+  5 | import "../legacy/styles/toolbar.css";
+> 6 | import "../legacy/styles/forms.css";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  7 | import "../legacy/styles/tables.css";
+  8 | import "../legacy/styles/components.css";
+  9 | import "../legacy/styles/pages/lite-scheduler.css";
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97404052ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97415671ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97415881ms] [LOG] [Fast Refresh] done in 245ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97416010ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97416118ms] [LOG] [Fast Refresh] done in 215ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97416195ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97416218ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97416261ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97416264ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97433717ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97433759ms] [LOG] [Fast Refresh] done in 19ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97442588ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97442619ms] [LOG] [Fast Refresh] done in 28ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97477650ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97477667ms] [ERROR] ./src/legacy/app-shell/AppRoutes.jsx:10:1
+Module not found: Can't resolve '../pages/SchedulerDashboardPage'
+   8 | import OrdersPoolPage from "../pages/OrdersPoolPage";
+   9 | import ScheduleCalendarPage from "../pages/ScheduleCalendarPage";
+> 10 | import SchedulerDashboardPage from "../pages/SchedulerDashboardPage";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  11 | import TestToolsPage from "../pages/TestToolsPage";
+  12 | import { ProtectedRoute } from "./ProtectedRoute";
+  13 | import { ROLE_SCHEDULER, ROLE_WORKSHOP_MANAGER } from "./navigation";
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97558275ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97558317ms] [LOG] [Fast Refresh] done in 87ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97567204ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97567305ms] [ERROR] ./src/app/layout.tsx:12:1
+Module not found: Can't resolve '../legacy/styles/pages/scheduler-dashboard.css'
+  10 | import "../legacy/styles/pages/schedule-calendar.css";
+  11 | import "../legacy/styles/pages/masterdata-topology.css";
+> 12 | import "../legacy/styles/pages/scheduler-dashboard.css";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  13 | import "../legacy/styles/theme-wechat.css";
+  14 | import "../legacy/styles/responsive.css";
+  15 |
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[97567337ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/?_rsc=1s9v7:0
+[97567357ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/?_rsc=1s9v7:0
+[97567393ms] [ERROR] Failed to load resource: the server responded with a status of 500 (Internal Server Error) @ http://127.0.0.1:2798/:0
+[97567446ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_react-dom_0bruynb._.js:15305
+[97567456ms] Error: ./src/app/layout.tsx:12:1
+Module not found: Can't resolve '../legacy/styles/pages/scheduler-dashboard.css'
+  10 | import "../legacy/styles/pages/schedule-calendar.css";
+  11 | import "../legacy/styles/pages/masterdata-topology.css";
+> 12 | import "../legacy/styles/pages/scheduler-dashboard.css";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  13 | import "../legacy/styles/theme-wechat.css";
+  14 | import "../legacy/styles/responsive.css";
+  15 |
+
+
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+    at <unknown> (Error: ./src/app/layout.tsx:12:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+    at Object.getCompilationErrors (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\hot-reloader-turbopack.js:1186:59)
+    at DevBundlerService.getCompilationError (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\lib\dev-bundler-service.js:44:55)
+    at DevServer.getCompilationError (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\next-dev-server.js:719:42)
+    at DevServer.findPageComponents (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\dev\next-dev-server.js:689:43)
+    at async DevServer.renderErrorToResponseImpl (file://D:\ProjectPackage\ProductionPlan\fronted\node_modules\next\dist\server\base-server.js:1745:26)
+[97567458ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97567468ms] [ERROR] ./src/app/layout.tsx:12:1
+Module not found: Can't resolve '../legacy/styles/pages/scheduler-dashboard.css'
+  10 | import "../legacy/styles/pages/schedule-calendar.css";
+  11 | import "../legacy/styles/pages/masterdata-topology.css";
+> 12 | import "../legacy/styles/pages/scheduler-dashboard.css";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  13 | import "../legacy/styles/theme-wechat.css";
+  14 | import "../legacy/styles/responsive.css";
+  15 |
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97567507ms] [ERROR] ./src/app/layout.tsx:12:1
+Module not found: Can't resolve '../legacy/styles/pages/scheduler-dashboard.css'
+  10 | import "../legacy/styles/pages/schedule-calendar.css";
+  11 | import "../legacy/styles/pages/masterdata-topology.css";
+> 12 | import "../legacy/styles/pages/scheduler-dashboard.css";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  13 | import "../legacy/styles/theme-wechat.css";
+  14 | import "../legacy/styles/responsive.css";
+  15 |
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97567552ms] [ERROR] ./src/app/layout.tsx:12:1
+Module not found: Can't resolve '../legacy/styles/pages/scheduler-dashboard.css'
+  10 | import "../legacy/styles/pages/schedule-calendar.css";
+  11 | import "../legacy/styles/pages/masterdata-topology.css";
+> 12 | import "../legacy/styles/pages/scheduler-dashboard.css";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  13 | import "../legacy/styles/theme-wechat.css";
+  14 | import "../legacy/styles/responsive.css";
+  15 |
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97567613ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97606092ms] [ERROR] ./src/app/layout.tsx:12:1
+Module not found: Can't resolve '../legacy/styles/pages/scheduler-dashboard.css'
+  10 | import "../legacy/styles/pages/schedule-calendar.css";
+  11 | import "../legacy/styles/pages/masterdata-topology.css";
+> 12 | import "../legacy/styles/pages/scheduler-dashboard.css";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  13 | import "../legacy/styles/theme-wechat.css";
+  14 | import "../legacy/styles/responsive.css";
+  15 |
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97606147ms] [ERROR] ./src/app/layout.tsx:12:1
+Module not found: Can't resolve '../legacy/styles/pages/scheduler-dashboard.css'
+  10 | import "../legacy/styles/pages/schedule-calendar.css";
+  11 | import "../legacy/styles/pages/masterdata-topology.css";
+> 12 | import "../legacy/styles/pages/scheduler-dashboard.css";
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  13 | import "../legacy/styles/theme-wechat.css";
+  14 | import "../legacy/styles/responsive.css";
+  15 |
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1945
+[97606222ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97630871ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97631021ms] [LOG] [Fast Refresh] done in 171ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97631142ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97631210ms] [LOG] [Fast Refresh] done in 172ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_0u_w_5s._.js:1226
+[97631290ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97631328ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97631377ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97631377ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97780353ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=5gRTtDKIFSZbviWBhItSF' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[97782744ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97783330ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97783363ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97783403ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[97783404ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98027029ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98027034ms] [LOG] [Fast Refresh] done in 60ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98035782ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98035813ms] [LOG] [Fast Refresh] done in 45ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98177905ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98177936ms] [LOG] [Fast Refresh] done in 119ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98240430ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98240557ms] [LOG] [Fast Refresh] done in 25ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98408821ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98408850ms] [LOG] [Fast Refresh] done in 63ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98409541ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98409570ms] [LOG] [Fast Refresh] done in 16ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98426094ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98426126ms] [LOG] [Fast Refresh] done in 29ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98449713ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98449751ms] [LOG] [Fast Refresh] done in 22ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98478026ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98478100ms] [LOG] [Fast Refresh] done in 79ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98502793ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98502809ms] [LOG] [Fast Refresh] done in 96ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98547041ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98547069ms] [LOG] [Fast Refresh] done in 33ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98554899ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98554974ms] [LOG] [Fast Refresh] done in 47ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98616087ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98616113ms] [LOG] [Fast Refresh] done in 51ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98652127ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98652154ms] [LOG] [Fast Refresh] done in 34ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98653583ms] [ERROR] ./src/legacy/app-shell/AppRoutes.jsx:4:1
+Module not found: Can't resolve '../pages/ExecutionWipPage'
+  2 | import DailyCapacityAuditPage from "../pages/DailyCapacityAuditPage";
+  3 | import DailyCapacityPage from "../pages/DailyCapacityPage";
+> 4 | import ExecutionWipPage from "../pages/ExecutionWipPage";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 | import LiteSchedulerPage from "../pages/LiteSchedulerPage";
+  6 | import MasterdataPage from "../pages/MasterdataPage";
+  7 | import OrderSummaryPage from "../pages/OrderSummaryPage";
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[98653644ms] [ERROR] ./src/legacy/app-shell/AppRoutes.jsx:4:1
+Module not found: Can't resolve '../pages/ExecutionWipPage'
+  2 | import DailyCapacityAuditPage from "../pages/DailyCapacityAuditPage";
+  3 | import DailyCapacityPage from "../pages/DailyCapacityPage";
+> 4 | import ExecutionWipPage from "../pages/ExecutionWipPage";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  5 | import LiteSchedulerPage from "../pages/LiteSchedulerPage";
+  6 | import MasterdataPage from "../pages/MasterdataPage";
+  7 | import OrderSummaryPage from "../pages/OrderSummaryPage";
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/app-shell/AppRoutes.jsx [Client Component Browser]
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[98653698ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98683379ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[98683499ms] [LOG] [Fast Refresh] done in 67ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99131048ms] [ERROR] ./src/legacy/App.jsx:2:1
+Module not found: Can't resolve './auth/AuthScreen'
+  1 | import { useLocation } from "react-router-dom";
+> 2 | import { AuthScreen } from "./auth/AuthScreen";
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  3 | import { useAuth } from "./auth/AuthContext";
+  4 | import { AppRoutes } from "./app-shell/AppRoutes";
+  5 | import { AppSidebar } from "./app-shell/AppSidebar";
+
+Import trace:
+  Client Component Browser:
+    ./src/legacy/App.jsx [Client Component Browser]
+    ./src/components/legacy-app-page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Client Component Browser]
+    ./src/app/[[...slug]]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:3272
+[99131078ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99181247ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99181307ms] [LOG] [Fast Refresh] done in 53ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99247893ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99247924ms] [LOG] [Fast Refresh] done in 45ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99478779ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99478809ms] [LOG] [Fast Refresh] done in 31ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99525629ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99525661ms] [LOG] [Fast Refresh] done in 30ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99576198ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99576227ms] [LOG] [Fast Refresh] done in 17ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99584100ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[99584130ms] [LOG] [Fast Refresh] done in 17ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[100548373ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[100548397ms] [LOG] [Fast Refresh] done in 100ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[100587762ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[100587788ms] [LOG] [Fast Refresh] done in 65ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[100630805ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[100630831ms] [LOG] [Fast Refresh] done in 67ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[100668629ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[100668643ms] [LOG] [Fast Refresh] done in 64ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[100909002ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[100909032ms] [LOG] [Fast Refresh] done in 16ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101056337ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101056367ms] [LOG] [Fast Refresh] done in 31ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101064655ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101064662ms] [LOG] [Fast Refresh] done in 116ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101170003ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101170029ms] [LOG] [Fast Refresh] done in 53ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101279488ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101279501ms] [LOG] [Fast Refresh] done in 50ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101394363ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101394389ms] [LOG] [Fast Refresh] done in 35ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101425656ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101425695ms] [LOG] [Fast Refresh] done in 21ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101868457ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=IDD9NUS8147zDW-vz5-qn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[101870641ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101871215ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101871230ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101871273ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101871274ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101871348ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[101871364ms] [LOG] [Fast Refresh] done in 118ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[102146045ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102149091ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102152144ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102155207ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102158254ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102165333ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102172394ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102179432ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102186495ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102193611ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102200737ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102207891ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=EXrs-_Kl0pGFCdV0PCDNn' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102312336ms] [INFO] %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[102312420ms] [LOG] [HMR] connected @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[102312519ms] [WARNING] ⚠️ React Router Future Flag Warning: React Router will begin wrapping state updates in `React.startTransition` in v7. You can use the `v7_startTransition` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_starttransition. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[102312519ms] [WARNING] ⚠️ React Router Future Flag Warning: Relative route resolution within Splat routes is changing in v7. You can use the `v7_relativeSplatPath` future flag to opt-in early. For more information, see https://reactrouter.com/v6/upgrading/future#v7_relativesplatpath. @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[102312596ms] [LOG] [Fast Refresh] rebuilding @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[102312597ms] [LOG] [Fast Refresh] done in 147ms @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_115brz8._.js:2431
+[102795724ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102798780ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102801822ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102804860ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102807904ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102814968ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102822033ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102829104ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102836171ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102843252ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102850384ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
+[102857587ms] [ERROR] WebSocket connection to 'ws://127.0.0.1:2798/_next/webpack-hmr?id=UOUCwcZzw90V9hX34ihnO' failed: Error in connection establishment: net::ERR_CONNECTION_REFUSED @ http://127.0.0.1:2798/_next/static/chunks/node_modules_next_dist_client_0fhqo1d._.js:13299
