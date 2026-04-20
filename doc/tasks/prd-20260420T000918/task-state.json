@@ -2,7 +2,7 @@
   "schema_version": 2,
   "task_id": "prd-20260420T000918",
   "mode": "full",
-  "status": "ready_for_execution",
+  "status": "blocked",
   "current_phase": "P1",
   "phase_statuses": [
     {
@@ -47,7 +47,7 @@
         }
       ],
       "evidence": [],
-      "notes": "",
+      "notes": "Current smallest task is to strengthen P1-AC1 evidence in prd.md. Execution is blocked because repeated Worker subagent attempts fail before producing output due to upstream 502 Bad Gateway errors.",
       "last_reviewed_at": null
     },
     {
@@ -181,7 +181,9 @@
   ],
   "planner_review_status": "approved",
   "test_status": "not_started",
-  "blocking_prereqs": [],
+  "blocking_prereqs": [
+    "Worker subagent execution is currently unavailable because the subagent responses service repeatedly returns upstream 502 Bad Gateway errors; the current supervised task cannot proceed until that runtime recovers."
+  ],
   "iteration_counts": {
     "planner_revisions": 0,
     "executor_loops": 0,

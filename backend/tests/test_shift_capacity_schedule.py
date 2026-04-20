@@ -196,6 +196,57 @@ class ShiftCapacityScheduleTestCase(unittest.TestCase):
             "2026-04-14T20:00:00+08:00",
         )
 
+    def test_weekend_rest_mode_applies_without_statutory_holiday_toggle(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO simulation_state (
+                singleton_key,
+                current_date,
+                updated_at
+            ) VALUES (?, ?, ?)
+            ON CONFLICT(singleton_key) DO UPDATE SET
+                current_date = excluded.current_date,
+                updated_at = excluded.updated_at
+            """,
+            ("default", "2026-04-17", "2026-04-17T00:00:00+00:00"),
+        )
+        self.connection.commit()
+        self._seed_route_and_topology("MAT-WEEKEND", "PROC-A", capacity_per_shift=10)
+        self._seed_order("MO-WEEKEND-001", "MAT-WEEKEND", 30)
+
+        self.service.save_schedule_calendar_rules(
+            {
+                "skip_statutory_holidays": False,
+                "weekend_rest_mode": "DOUBLE",
+            }
+        )
+        self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+        double_row = self.service.list_order_pool()["items"][0]
+
+        self.service.save_schedule_calendar_rules(
+            {
+                "skip_statutory_holidays": False,
+                "weekend_rest_mode": "NONE",
+            }
+        )
+        self.service.generate_schedule(
+            {
+                "strategy_code": "KEY_ORDER_FIRST",
+                "capacity_source_mode": "DEFAULT",
+                "use_order_state_window": True,
+            }
+        )
+        none_row = self.service.list_order_pool()["items"][0]
+
+        self.assertEqual(str(double_row["scheduled_finish_date"]), "2026-04-21")
+        self.assertEqual(str(none_row["scheduled_finish_date"]), "2026-04-19")
+
     def test_capacity_change_type_and_reason_are_separate_fields(self) -> None:
         self._seed_route_and_topology("MAT-SEM", "PROC-A", capacity_per_shift=10)
         payload = self.service.save_line_daily_capacity(

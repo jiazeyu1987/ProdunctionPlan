@@ -5983,13 +5983,14 @@ class AppService:
                 )
             if self._is_cn_statutory_holiday(date_text):
                 mode = "REST"
-            else:
-                weekday = date.fromisoformat(date_text).weekday()
-                weekend_mode = planning_rules["weekend_rest_mode"]
-                if weekend_mode == "DOUBLE" and weekday in (5, 6):
-                    mode = "REST"
-                elif weekend_mode == "SINGLE" and weekday == 6:
-                    mode = "REST"
+
+        if mode != "REST":
+            weekday = date.fromisoformat(date_text).weekday()
+            weekend_mode = planning_rules["weekend_rest_mode"]
+            if weekend_mode == "DOUBLE" and weekday in (5, 6):
+                mode = "REST"
+            elif weekend_mode == "SINGLE" and weekday == 6:
+                mode = "REST"
 
         day_mode_cache[date_text] = mode
         return mode

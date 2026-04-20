@@ -35,11 +35,11 @@ For `real-browser` validation, include at least one evidence ref that resolves t
 
 ## Final Verdict
 
-- Outcome: pending
+- Outcome: blocked
 - Verified acceptance ids:
-- Blocking prerequisites:
-- Summary:
+- Blocking prerequisites: Worker subagent execution is unavailable because repeated upstream `502 Bad Gateway` errors prevent the assigned Worker from producing implementation or verification output.
+- Summary: This round did not run product tests. The current supervised subtask is blocked before execution because the Worker runtime is unavailable.
 
 ## Open Issues
 
-- None yet.
+- Worker subagent execution failed before task execution, so no Worker-owned validation for `P1-AC1` could be completed.
