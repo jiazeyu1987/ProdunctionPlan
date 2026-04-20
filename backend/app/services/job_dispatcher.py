@@ -211,6 +211,8 @@ class JobDispatcher:
             return self.factory.build_app_service().rebuild_line_daily_actual_capacity(payload)
         if job_type == "LEGACY_SIMULATION_ADVANCE_DAY":
             return self.factory.build_app_service().advance_simulation_one_day(payload)
+        if job_type == "LEGACY_SIMULATION_ADVANCE_DAYS":
+            return self.factory.build_app_service().advance_simulation_days(payload)
         if job_type == "LEGACY_SIMULATION_RESET":
             return self.factory.build_app_service().reset_manual_simulation()
         if job_type == "LEGACY_IMPORT_PRODUCTION_ORDERS":

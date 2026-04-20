@@ -49,6 +49,7 @@ def _build_dashboard_change_items(
     *,
     code_key: str,
     name_key: str,
+    actual_totals_by_code: dict[str, dict[str, float]] | None = None,
 ) -> list[dict[str, Any]]:
     items: list[dict[str, Any]] = []
     for option in _build_dashboard_options(
@@ -61,9 +62,14 @@ def _build_dashboard_change_items(
             continue
         previous_planned_capacity_qty: float | None = None
         planned_by_date = totals_by_code.get(code) or {}
+        actual_by_date = actual_totals_by_code.get(code) if actual_totals_by_code else {}
         for calendar_date in calendar_dates:
             planned_capacity_qty = round(
                 _to_number(planned_by_date.get(calendar_date), 0),
+                4,
+            )
+            actual_capacity_qty = round(
+                _to_number((actual_by_date or {}).get(calendar_date), 0),
                 4,
             )
             planned_capacity_change_qty = (
@@ -77,6 +83,7 @@ def _build_dashboard_change_items(
                     code_key: code,
                     name_key: str(option.get(name_key) or code).strip() or code,
                     "planned_capacity_qty": planned_capacity_qty,
+                    "actual_capacity_qty": actual_capacity_qty,
                     "planned_capacity_change_qty": planned_capacity_change_qty,
                 }
             )
@@ -176,6 +183,8 @@ class DashboardQueryService:
         process_meta_by_code: dict[str, dict[str, str]] = {}
         line_planned_capacity_by_code: dict[str, dict[str, float]] = defaultdict(dict)
         process_planned_capacity_by_code: dict[str, dict[str, float]] = defaultdict(dict)
+        line_actual_capacity_by_code: dict[str, dict[str, float]] = defaultdict(dict)
+        process_actual_capacity_by_code: dict[str, dict[str, float]] = defaultdict(dict)
         line_daily_stats_by_key: dict[tuple[str, str], dict[str, Any]] = {}
         process_daily_stats_by_key: dict[tuple[str, str], dict[str, Any]] = {}
         daily_pressure_items: list[dict[str, Any]] = []
@@ -277,6 +286,10 @@ class DashboardQueryService:
             )
             for line_code, planned_capacity in day_line_planned_capacity.items():
                 line_planned_capacity_by_code[line_code][calendar_date] = planned_capacity
+                line_actual_capacity_by_code[line_code][calendar_date] = round(
+                    day_line_actual_capacity.get(line_code, 0),
+                    4,
+                )
                 line_daily_stats_by_key[(calendar_date, line_code)] = {
                     "calendar_date": calendar_date,
                     "line_code": line_code,
@@ -290,6 +303,10 @@ class DashboardQueryService:
                 }
             for process_code, planned_capacity in day_process_planned_capacity.items():
                 process_planned_capacity_by_code[process_code][calendar_date] = planned_capacity
+                process_actual_capacity_by_code[process_code][calendar_date] = round(
+                    day_process_actual_capacity.get(process_code, 0),
+                    4,
+                )
                 process_daily_stats_by_key[(calendar_date, process_code)] = {
                     "calendar_date": calendar_date,
                     "process_code": process_code,
@@ -306,18 +323,18 @@ class DashboardQueryService:
             overload_line_count = sum(
                 1
                 for item in day_line_stats
-                if _to_number(item.get("planned_capacity_qty"), 0)
+                if _to_number(item.get("actual_capacity_qty"), 0)
                 > _to_number(item.get("default_capacity_qty"), 0) + SCHEDULE_NUMBER_EPSILON
             )
             idle_line_count = sum(
                 1
                 for item in day_line_stats
-                if _to_number(item.get("planned_capacity_qty"), 0)
+                if _to_number(item.get("actual_capacity_qty"), 0)
                 + SCHEDULE_NUMBER_EPSILON
                 < _to_number(item.get("default_capacity_qty"), 0)
             )
             utilization_rate = (
-                round(day_planned_capacity_qty / day_default_capacity_qty * 100, 2)
+                round(day_actual_capacity_qty / day_default_capacity_qty * 100, 2)
                 if day_default_capacity_qty > SCHEDULE_NUMBER_EPSILON
                 else 0
             )
@@ -328,8 +345,8 @@ class DashboardQueryService:
                     "planned_capacity_qty": round(day_planned_capacity_qty, 4),
                     "actual_capacity_qty": round(day_actual_capacity_qty, 4),
                     "utilization_rate": utilization_rate,
-                    "overload_qty": round(max(0.0, day_planned_capacity_qty - day_default_capacity_qty), 4),
-                    "idle_qty": round(max(0.0, day_default_capacity_qty - day_planned_capacity_qty), 4),
+                    "overload_qty": round(max(0.0, day_actual_capacity_qty - day_default_capacity_qty), 4),
+                    "idle_qty": round(max(0.0, day_default_capacity_qty - day_actual_capacity_qty), 4),
                     "overload_line_count": overload_line_count,
                     "idle_line_count": idle_line_count,
                 }
@@ -390,15 +407,6 @@ class DashboardQueryService:
                 tuple(sorted(order_no_set)),
             )
 
-        if len(material_rows) == 0:
-            raise bad_request(
-                code="DASHBOARD_MATERIAL_DATA_EMPTY",
-                message="No material_issue_items rows exist for the requested orders.",
-                details={
-                    "order_count": len(order_no_set),
-                },
-            )
-
         material_aggregate_map: dict[str, dict[str, Any]] = {}
         for row in material_rows:
             order_no = str(row.get("production_order_no") or "").strip()
@@ -436,11 +444,6 @@ class DashboardQueryService:
                 str(item.get("material_code") or ""),
             ),
         )
-        if len(ranked_material_items) == 0:
-            raise bad_request(
-                code="DASHBOARD_MATERIAL_CONSUMPTION_EMPTY",
-                message="Material consumption ranking is empty in the requested range.",
-            )
         material_ranking = ranked_material_items[:normalized_top_n]
         material_consumption_items = [
             {
@@ -457,15 +460,14 @@ class DashboardQueryService:
         line_overload_items = []
         for item in line_daily_stats_by_key.values():
             default_capacity_qty = _to_number(item.get("default_capacity_qty"), 0)
-            planned_capacity_qty = _to_number(item.get("planned_capacity_qty"), 0)
             actual_capacity_qty = _to_number(item.get("actual_capacity_qty"), 0)
             utilization_rate = (
-                round(planned_capacity_qty / default_capacity_qty * 100, 2)
+                round(actual_capacity_qty / default_capacity_qty * 100, 2)
                 if default_capacity_qty > SCHEDULE_NUMBER_EPSILON
                 else 0
             )
-            overload_qty = max(0.0, planned_capacity_qty - default_capacity_qty)
-            idle_qty = max(0.0, default_capacity_qty - planned_capacity_qty)
+            overload_qty = max(0.0, actual_capacity_qty - default_capacity_qty)
+            idle_qty = max(0.0, default_capacity_qty - actual_capacity_qty)
             line_overload_items.append(
                 {
                     **item,
@@ -494,9 +496,9 @@ class DashboardQueryService:
             peak_utilization_rate = 0.0
             for item in grouped_items:
                 default_capacity_qty = _to_number(item.get("default_capacity_qty"), 0)
-                planned_capacity_qty = _to_number(item.get("planned_capacity_qty"), 0)
+                actual_capacity_qty = _to_number(item.get("actual_capacity_qty"), 0)
                 utilization_rate = (
-                    round(planned_capacity_qty / default_capacity_qty * 100, 2)
+                    round(actual_capacity_qty / default_capacity_qty * 100, 2)
                     if default_capacity_qty > SCHEDULE_NUMBER_EPSILON
                     else 0
                 )
@@ -519,6 +521,10 @@ class DashboardQueryService:
                     "peak_utilization_rate": peak_utilization_rate,
                     "average_utilization_rate": average_utilization_rate,
                     "peak_date": (peak_item or {}).get("calendar_date"),
+                    "peak_actual_capacity_qty": round(
+                        _to_number((peak_item or {}).get("actual_capacity_qty"), 0),
+                        4,
+                    ),
                     "peak_planned_capacity_qty": round(
                         _to_number((peak_item or {}).get("planned_capacity_qty"), 0),
                         4,
@@ -590,6 +596,7 @@ class DashboardQueryService:
                     line_meta_by_code,
                     code_key="line_code",
                     name_key="line_name",
+                    actual_totals_by_code=line_actual_capacity_by_code,
                 ),
             },
             "capacity_change_by_process": {
@@ -604,6 +611,7 @@ class DashboardQueryService:
                     process_meta_by_code,
                     code_key="process_code",
                     name_key="process_name_cn",
+                    actual_totals_by_code=process_actual_capacity_by_code,
                 ),
             },
             "material_consumption": {

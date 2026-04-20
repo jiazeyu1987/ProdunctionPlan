@@ -116,6 +116,10 @@ class _StubAppService:
         self.calls.append(("advance_simulation_one_day", (payload,)))
         return {"ok": True}
 
+    def advance_simulation_days(self, payload: dict[str, object]) -> dict[str, object]:
+        self.calls.append(("advance_simulation_days", (payload,)))
+        return {"ok": True}
+
     def reset_manual_simulation(self) -> dict[str, object]:
         self.calls.append(("reset_manual_simulation", ()))
         return {"ok": True}
@@ -214,6 +218,7 @@ class JobDispatcherCommandServicesTestCase(unittest.TestCase):
         self.dispatcher.dispatch({"job_type": "LEGACY_DAILY_LINE_CAPACITY_SAVE", "payload": {"calendar_date": "2026-04-13"}})
         self.dispatcher.dispatch({"job_type": "LEGACY_DAILY_LINE_CAPACITY_ACTUAL_REBUILD", "payload": {"calendar_date": "2026-04-13"}})
         self.dispatcher.dispatch({"job_type": "LEGACY_SIMULATION_ADVANCE_DAY", "payload": {"client_date": "2026-04-13"}})
+        self.dispatcher.dispatch({"job_type": "LEGACY_SIMULATION_ADVANCE_DAYS", "payload": {"client_date": "2026-04-13", "days": 30}})
         self.dispatcher.dispatch({"job_type": "LEGACY_SIMULATION_RESET", "payload": {}})
         self.dispatcher.dispatch({"job_type": "LEGACY_IMPORT_PRODUCTION_ORDERS", "payload": {"material_code": "MAT-1"}})
         self.dispatcher.dispatch({"job_type": "LEGACY_TEST_MATERIAL_ISSUES_QUERY", "payload": {"order_no": "MO-1", "mode": "fast"}})
@@ -232,6 +237,7 @@ class JobDispatcherCommandServicesTestCase(unittest.TestCase):
                 "save_line_daily_capacity",
                 "rebuild_line_daily_actual_capacity",
                 "advance_simulation_one_day",
+                "advance_simulation_days",
                 "reset_manual_simulation",
                 "import_production_orders_from_erp",
                 "test_material_issues",

@@ -7,6 +7,7 @@ from ..db import fetch_all
 from ..errors import bad_request, forbidden
 from .user_scope_support import (
     ROLE_SCHEDULER,
+    ROLE_WORKSHOP_MANAGER,
     current_user_role_code,
     resolve_order_summary_scope_manager_user_id,
 )

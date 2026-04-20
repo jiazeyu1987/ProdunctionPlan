@@ -372,6 +372,23 @@ def advance_simulation_one_day(
     )
 
 
+@router.post("/simulation/manual/advance-days", status_code=202)
+def advance_simulation_days(
+    payload: dict[str, Any] = Body(default_factory=dict),
+    connection: Annotated[sqlite3.Connection, Depends(get_db)] = None,
+    _: Annotated[dict[str, Any], Depends(require_roles(ROLE_SCHEDULER))] = None,
+) -> AcceptedCommandResponse:
+    assert connection is not None
+    return enqueue_command_job(
+        connection,
+        job_type="LEGACY_SIMULATION_ADVANCE_DAYS",
+        target_type="SIMULATION",
+        target_key="default",
+        request_id=str(payload.get("request_id") or "").strip() or None,
+        payload=payload,
+    )
+
+
 @router.post("/simulation/manual/reset", status_code=202)
 def reset_manual_simulation(
     payload: dict[str, Any] = Body(default_factory=dict),

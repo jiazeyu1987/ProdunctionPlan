@@ -3300,15 +3300,9 @@ class AppService:
         current = self._get_simulation_state()
         current_date = _normalize_date_text(current.get("current_date"))
         client_date = _normalize_date_text(payload.get("client_date"))
-        baseline_candidates = [
-            candidate
-            for candidate in (current_date, client_date, _today_text())
-            if candidate is not None
-        ]
-        baseline_date = (
-            max(date.fromisoformat(candidate) for candidate in baseline_candidates).isoformat()
-            if baseline_candidates
-            else None
+        baseline_date = self._resolve_simulation_baseline_date(
+            current_date=current_date,
+            client_date=client_date,
         )
         if baseline_date is None:
             raise server_error(
@@ -3316,33 +3310,130 @@ class AppService:
                 message="Current simulation date is invalid.",
                 details={"current_date": current.get("current_date")},
             )
-        next_date = (date.fromisoformat(baseline_date) + timedelta(days=1)).isoformat()
         with transaction(self.connection):
-            if current_date is None or date.fromisoformat(current_date) < date.fromisoformat(baseline_date):
-                self._clear_simulation_restore_snapshot()
-            snapshot_created = self._ensure_simulation_restore_snapshot(
-                baseline_date=baseline_date
+            return self._advance_simulation_through_date(
+                baseline_date=baseline_date,
+                current_date=current_date,
             )
-            seeded_capacity_count = self._seed_simulated_morning_capacity(
-                baseline_date
+
+    def advance_simulation_days(self, payload: dict[str, Any]) -> dict[str, Any]:
+        current = self._get_simulation_state()
+        current_date = _normalize_date_text(current.get("current_date"))
+        client_date = _normalize_date_text(payload.get("client_date"))
+        raw_days = payload.get("days")
+        try:
+            days = int(raw_days)
+        except (TypeError, ValueError):
+            raise bad_request(
+                code="SIMULATION_DAYS_INVALID",
+                message="days must be a positive integer.",
+                details={"days": raw_days},
+            ) from None
+        if days <= 0:
+            raise bad_request(
+                code="SIMULATION_DAYS_INVALID",
+                message="days must be a positive integer.",
+                details={"days": raw_days},
             )
-            reporting_stats = self._simulate_same_day_reportings(baseline_date)
-            rebuilt_actual_row_count, skipped_rebuild_report_count = (
-                self._rebuild_line_daily_actual_capacity_rows(baseline_date)
+        baseline_date = self._resolve_simulation_baseline_date(
+            current_date=current_date,
+            client_date=client_date,
+        )
+        if baseline_date is None:
+            raise server_error(
+                code="SIMULATION_CURRENT_DATE_INVALID",
+                message="Current simulation date is invalid.",
+                details={"current_date": current.get("current_date")},
             )
-            self.connection.execute(
-                """
-                INSERT INTO simulation_state (
-                    singleton_key,
-                    current_date,
-                    updated_at
-                ) VALUES (?, ?, ?)
-                ON CONFLICT(singleton_key) DO UPDATE SET
-                    current_date = excluded.current_date,
-                    updated_at = excluded.updated_at
-                """,
-                (RULES_SINGLETON_KEY, next_date, utc_now()),
-            )
+        daily_results: list[dict[str, Any]] = []
+        with transaction(self.connection):
+            active_current_date = current_date
+            next_baseline_date = baseline_date
+            for _ in range(days):
+                day_result = self._advance_simulation_through_date(
+                    baseline_date=next_baseline_date,
+                    current_date=active_current_date,
+                )
+                daily_results.append(day_result)
+                active_current_date = str(day_result["current_date"])
+                next_baseline_date = active_current_date
+        end_date = str(daily_results[-1]["current_date"]) if daily_results else baseline_date
+        return {
+            "current_date": end_date,
+            "message": f"Simulation advanced {days} day(s) to {end_date}.",
+            "start_date": baseline_date,
+            "end_date": end_date,
+            "advanced_days": len(daily_results),
+            "daily_results": daily_results,
+            "total_simulated_reporting_count": sum(
+                int(_to_number(item.get("simulated_reporting_count"), 0))
+                for item in daily_results
+            ),
+            "total_skipped_existing_reporting_count": sum(
+                int(_to_number(item.get("skipped_existing_reporting_count"), 0))
+                for item in daily_results
+            ),
+            "total_skipped_zero_capacity_reporting_count": sum(
+                int(_to_number(item.get("skipped_zero_capacity_reporting_count"), 0))
+                for item in daily_results
+            ),
+            "total_rebuild_actual_row_count": sum(
+                int(_to_number(item.get("rebuild_actual_row_count"), 0))
+                for item in daily_results
+            ),
+            "total_rebuild_skipped_report_count": sum(
+                int(_to_number(item.get("rebuild_skipped_report_count"), 0))
+                for item in daily_results
+            ),
+        }
+
+    def _resolve_simulation_baseline_date(
+        self,
+        *,
+        current_date: str | None,
+        client_date: str | None,
+    ) -> str | None:
+        baseline_candidates = [
+            candidate
+            for candidate in (current_date, client_date, _today_text())
+            if candidate is not None
+        ]
+        if not baseline_candidates:
+            return None
+        return max(date.fromisoformat(candidate) for candidate in baseline_candidates).isoformat()
+
+    def _advance_simulation_through_date(
+        self,
+        *,
+        baseline_date: str,
+        current_date: str | None,
+    ) -> dict[str, Any]:
+        next_date = (date.fromisoformat(baseline_date) + timedelta(days=1)).isoformat()
+        if current_date is None or date.fromisoformat(current_date) < date.fromisoformat(baseline_date):
+            self._clear_simulation_restore_snapshot()
+        snapshot_created = self._ensure_simulation_restore_snapshot(
+            baseline_date=baseline_date
+        )
+        seeded_capacity_count = self._seed_simulated_morning_capacity(
+            baseline_date
+        )
+        reporting_stats = self._simulate_same_day_reportings(baseline_date)
+        rebuilt_actual_row_count, skipped_rebuild_report_count = (
+            self._rebuild_line_daily_actual_capacity_rows(baseline_date)
+        )
+        self.connection.execute(
+            """
+            INSERT INTO simulation_state (
+                singleton_key,
+                current_date,
+                updated_at
+            ) VALUES (?, ?, ?)
+            ON CONFLICT(singleton_key) DO UPDATE SET
+                current_date = excluded.current_date,
+                updated_at = excluded.updated_at
+            """,
+            (RULES_SINGLETON_KEY, next_date, utc_now()),
+        )
         return {
             "current_date": next_date,
             "message": f"Simulation advanced to {next_date}.",
@@ -4038,8 +4129,8 @@ class AppService:
             f"{calendar_date}|{company_code}|{workshop_code}|{line_code}|{process_code}"
         )
         weighted_sum = sum((index + 1) * ord(ch) for index, ch in enumerate(seed_text))
-        bucket = weighted_sum % 31
-        return 0.65 + (bucket / 100.0)
+        bucket = weighted_sum % 101
+        return 0.5 + (bucket / 100.0)
 
     def test_material_issues(self, order_no: str, mode: str) -> dict[str, Any]:
         normalized_mode = str(mode or "fast").strip().lower()
