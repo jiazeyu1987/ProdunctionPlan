@@ -158,15 +158,6 @@ class DashboardQueryService:
             if isinstance(order_summary.get("order_items"), list)
             else []
         )
-        if len(order_items) == 0:
-            raise bad_request(
-                code="DASHBOARD_ORDER_DATA_EMPTY",
-                message="No order summary rows exist for the requested date range.",
-                details={
-                    "start_date": normalized_start_date,
-                    "end_date": normalized_end_date,
-                },
-            )
 
         start_date_value = date.fromisoformat(normalized_start_date)
         end_date_value = date.fromisoformat(normalized_end_date)

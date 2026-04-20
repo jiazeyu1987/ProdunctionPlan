@@ -132,6 +132,19 @@ class _OrderSummaryServiceStub:
         }
 
 
+class _EmptyOrderSummaryServiceStub:
+    def get_order_summary(self, **_: object) -> dict[str, object]:
+        return {
+            "summary": {
+                "order_count": 0,
+                "completed_order_count": 0,
+                "completion_rate": 0,
+            },
+            "order_items": [],
+            "process_items": [],
+        }
+
+
 class DashboardQueryServiceTestCase(unittest.TestCase):
     def setUp(self) -> None:
         super().setUp()
@@ -215,6 +228,60 @@ class DashboardQueryServiceTestCase(unittest.TestCase):
         assert isinstance(summary, dict)
         self.assertEqual(summary.get("order_count"), 1)
         self.assertEqual(summary.get("total_capacity_qty"), 80.0)
+
+    def test_get_scheduler_dashboard_allows_empty_order_summary_rows(self) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO masterdata_line_topology (
+                company_code,
+                workshop_code,
+                workshop_name,
+                line_code,
+                line_name,
+                process_code,
+                capacity_per_shift,
+                required_workers,
+                required_machines,
+                updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "COMPANY-A",
+                "WS-1",
+                "1车间",
+                "LINE-1",
+                "1产线",
+                "PROC-1",
+                100,
+                1,
+                1,
+                "2026-04-01T00:00:00+00:00",
+            ),
+        )
+        self.connection.commit()
+        service = DashboardQueryService(
+            _DashboardHostStub(self.connection),
+            _EmptyOrderSummaryServiceStub(),
+        )
+
+        result = service.get_scheduler_dashboard(
+            start_date="2026-04-01",
+            end_date="2026-04-01",
+            top_n=8,
+            current_user={"role_code": "SCHEDULER"},
+        )
+
+        summary = result.get("summary")
+        self.assertIsInstance(summary, dict)
+        assert isinstance(summary, dict)
+        self.assertEqual(summary.get("order_count"), 0)
+        self.assertEqual(summary.get("completed_order_count"), 0)
+        self.assertEqual(summary.get("order_completion_rate"), 0)
+        self.assertEqual(summary.get("total_capacity_qty"), 80.0)
+        material_payload = result.get("material_consumption")
+        self.assertIsInstance(material_payload, dict)
+        assert isinstance(material_payload, dict)
+        self.assertEqual(material_payload.get("items"), [])
 
     def test_get_scheduler_dashboard_includes_actual_capacity_in_line_and_process_series(self) -> None:
         self.connection.execute(
